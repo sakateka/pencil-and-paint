@@ -130,45 +130,56 @@ export async function run(url) {
         const ctx = document.querySelector('#game').getContext('2d');
         const R = 60;
         const img = ctx.getImageData(cx - R, cy - R * 1.4, R * 2, R * 1.6);
-        let skin = 0;
-        let skinN = 0;
-        let hair = 0;
-        let hairN = 0;
+        // Head band only, so the brush hand does not count as a face.
+        let eyeX = 0;
+        let eyeN = 0;
+        // Track both extremes: "front" is the max x facing right and the min x
+        // facing left, and measuring max for both silently compared the nose
+        // against the back of the head.
+        let skinMax = -Infinity;
+        let skinMin = Infinity;
+        let hairMax = -Infinity;
+        let hairMin = Infinity;
         for (let y = 0; y < img.height; y++) {
           for (let x = 0; x < img.width; x++) {
             const i = (y * img.width + x) * 4;
             if (img.data[i + 3] < 200) continue;
+            const headY = y - R * 1.4;
+            if (headY <= -48 || headY >= -26) continue;
             const [r, g, b] = [img.data[i], img.data[i + 1], img.data[i + 2]];
+            if (near(r, 58, 8) && near(g, 47, 8) && near(b, 38, 8)) {
+              eyeX += x - R;
+              eyeN++;
+            }
             if (near(r, 242, 12) && near(g, 195, 12) && near(b, 152, 12)) {
-              skin += x - R;
-              skinN++;
+              skinMax = Math.max(skinMax, x - R);
+              skinMin = Math.min(skinMin, x - R);
             }
             if (near(r, 74, 12) && near(g, 53, 12) && near(b, 39, 12)) {
-              hair += x - R;
-              hairN++;
+              hairMax = Math.max(hairMax, x - R);
+              hairMin = Math.min(hairMin, x - R);
             }
           }
         }
-        return { skin: skin / skinN, hair: hair / hairN };
+        return { eye: eyeN ? eyeX / eyeN : null, skinMax, skinMin, hairMax, hairMin };
       };
       return { right: measure(1), left: measure(-1) };
     });
 
-    // The invariant is that the face leads and the hair sits behind it — not
-    // an absolute offset for either. A proper full hair cap is fairly centred;
-    // only a bald crown-band sits far back, which is what an absolute
-    // threshold here would quietly have demanded.
-    suite.atLeast(+profile.right.skin.toFixed(1), 1.5, 'facing right, the face leads');
+    // The head must read as a profile pointing the way it is going. The cue is
+    // the single forward eye and the nose breaking the hairline — deliberately
+    // NOT the hair, which is the same cut from every angle.
+    suite.atLeast(+profile.right.eye.toFixed(1), 3, 'facing right, the eye sits forward');
+    suite.atMost(+profile.left.eye.toFixed(1), -3, 'facing left, the eye sits forward');
     suite.atLeast(
-      +(profile.right.skin - profile.right.hair).toFixed(1),
-      3,
-      'facing right, the hair sits behind the face',
+      +(profile.right.skinMax - profile.right.hairMax).toFixed(1),
+      1.5,
+      'facing right, the nose leads the hairline',
     );
-    suite.atMost(+profile.left.skin.toFixed(1), -1.5, 'facing left, the face leads');
     suite.atLeast(
-      +(profile.left.hair - profile.left.skin).toFixed(1),
-      3,
-      'facing left, the hair sits behind the face',
+      +(profile.left.hairMin - profile.left.skinMin).toFixed(1),
+      1.5,
+      'facing left, the nose leads the hairline',
     );
 
     // The walk cycle. Two things went wrong here before and neither is visible

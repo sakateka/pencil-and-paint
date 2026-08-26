@@ -94,13 +94,25 @@ const HAIR = '#4a3527';
 const EYE = '#3a2f26';
 const BLUSH = 'rgba(230,140,120,.35)';
 
+/** The haircut. One shape, drawn wherever the head happens to be. */
+function drawHair(ctx: CanvasRenderingContext2D, offsetX: number): void {
+  ctx.fillStyle = HAIR;
+  ctx.beginPath();
+  ctx.arc(offsetX, -35.5, 9.4, Math.PI * 0.98, Math.PI * 2.12);
+  ctx.quadraticCurveTo(offsetX + 6, -33, offsetX + 8.6, -31.5);
+  ctx.quadraticCurveTo(offsetX + 4, -34.5, offsetX - 2, -33.5);
+  ctx.closePath();
+  ctx.fill();
+}
+
 /**
  * The head, drawn as a profile from the side and face-on from the front.
  *
  * The shape has to change, not just the features. A symmetrical head with one
  * small eye added reads as someone facing the viewer while sliding sideways —
- * which looks like walking backwards. A profile needs a nose leading the way,
- * the ear set back, and the weight of the hair behind the crown.
+ * which looks like walking backwards. So the skull leads and grows a nose,
+ * and the eye moves forward. The hair is deliberately left alone: it is the
+ * same haircut from every angle.
  *
  * Everything here is drawn facing +x; the caller mirrors for the other way.
  */
@@ -112,32 +124,19 @@ function drawHead(ctx: CanvasRenderingContext2D, facing: Facing): void {
     ctx.arc(1.6, -35, 9.2, 0, TAU);
     ctx.fill();
 
-    // Nose, and the small step of the brow above it.
-    ctx.beginPath();
-    ctx.moveTo(9.4, -37.6);
-    ctx.quadraticCurveTo(13.4, -34.8, 9.2, -32.4);
-    ctx.closePath();
-    ctx.fill();
+    // The same haircut from every angle — it just travels with the head.
+    // Giving the profile its own hairstyle made the walker look like a
+    // different person side-on than from the front.
+    drawHair(ctx, 1.6);
 
-    // Ear, set well back on the skull.
-    ctx.fillStyle = 'rgba(214,164,120,.9)';
+    // Nose, over the fringe. This cut sweeps forward far enough to bury it
+    // otherwise — and the face is painted over the hair here anyway, which is
+    // how the eyes have always worked in the front view.
+    ctx.fillStyle = SKIN;
     ctx.beginPath();
-    ctx.ellipse(-2.4, -33.8, 2, 2.6, 0.2, 0, TAU);
-    ctx.fill();
-
-    // Hair: a full cap over the crown with the bulk of it behind, and a
-    // hairline that sits high at the front so the face is not buried.
-    // The underside has to come back *below* the crown or the fill is a thin
-    // band at the very top and the walker looks bald.
-    ctx.fillStyle = HAIR;
-    ctx.beginPath();
-    ctx.arc(1.6, -35.8, 9.7, Math.PI * 0.86, Math.PI * 2.04);
-    ctx.quadraticCurveTo(10.6, -37.6, 7.2, -38.8); // fringe tip at the brow
-    ctx.quadraticCurveTo(0, -34.2, -7.2, -31.6); // sweeping down low behind
+    ctx.moveTo(9.6, -36.4);
+    ctx.quadraticCurveTo(15.0, -34.3, 9.4, -31.6);
     ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(-4.8, -34.2, 5.4, 6.4, 0.28, 0, TAU);
     ctx.fill();
 
     // One eye, forward on the face where a profile puts it.
@@ -158,13 +157,7 @@ function drawHead(ctx: CanvasRenderingContext2D, facing: Facing): void {
   ctx.arc(0, -35, 9.2, 0, TAU);
   ctx.fill();
 
-  ctx.fillStyle = HAIR;
-  ctx.beginPath();
-  ctx.arc(0, -35.5, 9.4, Math.PI * 0.98, Math.PI * 2.12);
-  ctx.quadraticCurveTo(6, -33, 8.6, -31.5);
-  ctx.quadraticCurveTo(4, -34.5, -2, -33.5);
-  ctx.closePath();
-  ctx.fill();
+  drawHair(ctx, 0);
 
   if (facing === 'up') return; // walking away: nothing to show but hair
 
