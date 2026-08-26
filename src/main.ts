@@ -46,6 +46,25 @@ function firstGesture(button: HTMLButtonElement | null): Promise<void> {
   });
 }
 
+/**
+ * How long the page has spent hidden since it loaded.
+ *
+ * `wall` minus `ready` says the page was not running, but not why. Time spent
+ * in another app looks identical to a browser freezing a visible tab, and the
+ * two mean completely different things: one is someone reading their messages,
+ * the other is a bug. This separates them.
+ */
+let hiddenMs = 0;
+let hiddenSince = document.hidden ? performance.now() : 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    hiddenSince = performance.now();
+  } else if (hiddenSince) {
+    hiddenMs += performance.now() - hiddenSince;
+    hiddenSince = 0;
+  }
+});
+
 async function boot(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('missing #game canvas');
@@ -113,7 +132,8 @@ async function boot(): Promise<void> {
     const thisLoad =
       `grain ${grainMs.toFixed(0)}ms · script ${ms(nav && nav.domContentLoadedEventStart - nav.responseEnd)}` +
       ` · net ${ms(nav?.responseEnd)} · paint ${ms(paint?.startTime)} · ready ${performance.now().toFixed(0)}` +
-      ` · wall ${(Date.now() - performance.timeOrigin).toFixed(0)}`;
+      ` · wall ${(Date.now() - performance.timeOrigin).toFixed(0)}` +
+      ` · hidden ${(hiddenMs + (hiddenSince ? performance.now() - hiddenSince : 0)).toFixed(0)}`;
     const lastLoad = remember(thisLoad);
     stamp.textContent =
       `${BUILD_ID}\n${world.bakeSummary}\n${thisLoad}` +
