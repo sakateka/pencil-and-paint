@@ -1,6 +1,6 @@
 # Pencil & Paint
 
-<img width="600" alt="image" src="https://github.com/user-attachments/assets/75fc5c60-1826-460f-8daa-de2c61141f36" />
+![A walker stands in a circle of colour — lit grass, sheep, a water trough — while the valley beyond stays an unfinished pencil drawing](docs/screenshot.webp)
 
 Someone left this valley half-finished, in graphite.
 
