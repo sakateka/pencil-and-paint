@@ -96,13 +96,18 @@ export class World {
     const scenery = [...layout.scenery].sort((a, b) => a.y - b.y);
     const seeds = scenery.map(() => rng.forkSeed());
 
-    const color = createSurface(WORLD_WIDTH, WORLD_HEIGHT);
-    const sketch = createSurface(WORLD_WIDTH, WORLD_HEIGHT);
-
-    for (const [surface, medium] of [
-      [color, 'color'],
-      [sketch, 'sketch'],
-    ] as const) {
+    /**
+     * Bake one medium and cut it into tiles, releasing the full-size canvas
+     * before the next one starts.
+     *
+     * Both layers used to be baked before either was tiled, which meant two
+     * 2800x2000 canvases plus a set of tiles alive at once — around ninety
+     * megabytes of canvas at the peak. Phones do not have that to spare, and a
+     * browser that refuses the allocation gives you a blank screen rather than
+     * an error.
+     */
+    const bakeLayer = (medium: Medium): Layer => {
+      const surface = createSurface(WORLD_WIDTH, WORLD_HEIGHT);
       const { ctx } = surface;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
@@ -112,16 +117,21 @@ export class World {
       scenery.forEach((piece, i) => {
         rng.replay(seeds[i], () => piece.draw(ctx, medium));
       });
-    }
 
-    // A whisper of grain over the colour too, so both media sit on one sheet.
-    isolate(color.ctx, () => {
-      const pattern = color.ctx.createPattern(GRAIN, 'repeat');
-      if (!pattern) return;
-      color.ctx.globalAlpha = 0.14;
-      color.ctx.fillStyle = pattern;
-      color.ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-    });
+      // A whisper of grain over the colour too, so both media sit on one sheet.
+      if (medium === 'color') {
+        isolate(ctx, () => {
+          const pattern = ctx.createPattern(GRAIN, 'repeat');
+          if (!pattern) return;
+          ctx.globalAlpha = 0.14;
+          ctx.fillStyle = pattern;
+          ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+        });
+      }
+      return toTiles(surface);
+    };
+
+    const layers = { color: bakeLayer('color'), sketch: bakeLayer('sketch') };
 
     const colliders = scenery.flatMap((piece) => piece.colliders ?? []);
 
@@ -131,13 +141,7 @@ export class World {
       occluders.push({ scenery: piece, bounds: piece.bounds, seed: seeds[i], sprites: new Map() });
     });
 
-    return new World(
-      { color: toTiles(color), sketch: toTiles(sketch) },
-      colliders,
-      occluders,
-      layout.pond,
-      layout.animals,
-    );
+    return new World(layers, colliders, occluders, layout.pond, layout.animals);
   }
 
   /**

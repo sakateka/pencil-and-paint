@@ -1,7 +1,7 @@
 import { roundRectPath } from '../core/geom';
 import { TAU } from '../core/math';
 import { rnd, rr } from '../core/rng';
-import { ink, inkArc, inkLine, inkPoly, jitter } from '../media/ink';
+import { ink, inkArc, inkArcs, inkLine, inkLines, inkPoly, jitter } from '../media/ink';
 import type { Medium } from '../media/medium';
 import { movingShadow } from '../media/sprites';
 import type { AnimalKind } from './animalKinds';
@@ -161,10 +161,9 @@ function drawSheep(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, _t:
     ctx.restore();
   } else {
     ink(ctx, 0.5, 1.1);
-    SHEEP_LEGS.forEach(([lx, ph], i) =>
-      inkLine(ctx, lx, -11, lx + sw * ph * 2.6, -0.5, k + i * 5));
+    inkLines(ctx, SHEEP_LEGS.map(([lx, ph]) => [lx, -11, lx + sw * ph * 2.6, -0.5] as const), k);
     ink(ctx, 0.46, 1.15);
-    SHEEP_FLUFF.forEach((b, i) => inkArc(ctx, b[0], b[1], b[2], k + 40 + i * 4));
+    inkArcs(ctx, SHEEP_FLUFF, k + 40);
     ctx.save(); ctx.translate(hx, hy); ctx.rotate(g * 0.55);
     ink(ctx, 0.55, 1.2);
     ctx.beginPath();
@@ -172,7 +171,11 @@ function drawSheep(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, _t:
     ctx.stroke();
     // the muzzle is the dark bit, so it gets hatched
     ink(ctx, 0.3, 0.8);
-    for (let i = 0; i < 4; i++) inkLine(ctx, -1 + i * 1.7, -3.4, 1.5 + i * 1.7, 3.4, k + 90 + i * 4);
+    inkLines(
+      ctx,
+      [0, 1, 2, 3].map((i) => [-1 + i * 1.7, -3.4, 1.5 + i * 1.7, 3.4] as const),
+      k + 90,
+    );
     ink(ctx, 0.5, 1);
     inkArc(ctx, -3.4, -3.4, 3.4, k + 110);
     ctx.restore();
@@ -233,8 +236,7 @@ function drawCow(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
     ctx.restore();
   } else {
     ink(ctx, 0.5, 1.2);
-    COW_LEGS.forEach(([lx, ph], i) =>
-      inkLine(ctx, lx, -14, lx + sw * ph * 3, -0.5, k + i * 5));
+    inkLines(ctx, COW_LEGS.map(([lx, ph]) => [lx, -14, lx + sw * ph * 3, -0.5] as const), k);
     ink(ctx, 0.45, 1.1);
     ctx.beginPath();
     ctx.moveTo(-19, -31);
@@ -250,8 +252,14 @@ function drawCow(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
     ctx.beginPath(); ctx.ellipse(-9 + jitter(k + 50, .6), -27, 7.5, 6, 0.3, 0, TAU); ctx.stroke();
     ctx.beginPath(); ctx.ellipse(7 + jitter(k + 52, .6), -21, 6.5, 5, -0.2, 0, TAU); ctx.stroke();
     ink(ctx, 0.3, 0.85);
-    for (let i = 0; i < 6; i++) inkLine(ctx, -16 + i * 2.4, -31, -11 + i * 2.4, -22, k + 60 + i * 3);
-    for (let i = 0; i < 5; i++) inkLine(ctx, 1 + i * 2.4, -25, 6 + i * 2.4, -17, k + 80 + i * 3);
+    inkLines(
+      ctx,
+      [
+        ...[0, 1, 2, 3, 4, 5].map((i) => [-16 + i * 2.4, -31, -11 + i * 2.4, -22] as const),
+        ...[0, 1, 2, 3, 4].map((i) => [1 + i * 2.4, -25, 6 + i * 2.4, -17] as const),
+      ],
+      k + 60,
+    );
     ctx.restore();
     // head
     ctx.save(); ctx.translate(hx, hy); ctx.rotate(g * 0.6);

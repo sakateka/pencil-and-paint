@@ -168,4 +168,24 @@ function chime(index: number): void {
   }
 }
 
-boot();
+/**
+ * A blank screen tells you nothing. If the world cannot be built — most likely
+ * a phone refusing the canvas memory — say so on the page, where whoever is
+ * holding the phone can actually read it.
+ */
+try {
+  boot();
+} catch (error) {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  const note = document.createElement('pre');
+  note.style.cssText =
+    'position:fixed;inset:12px;z-index:99;margin:0;padding:14px;overflow:auto;' +
+    'background:rgba(20,18,15,.9);color:#f0c0c0;border-radius:8px;' +
+    'font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap';
+  note.textContent =
+    `Pencil & Paint could not start.\n\n${message}\n\n` +
+    `screen ${innerWidth}x${innerHeight} at dpr ${devicePixelRatio}\n` +
+    `${navigator.userAgent}`;
+  document.body.append(note);
+  throw error;
+}

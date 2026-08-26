@@ -117,6 +117,20 @@ export class Game {
     return lerp(this.litRadius, FLOOD_RADIUS, t);
   }
 
+  /**
+   * Is this point deep enough inside the colour to be fully opaque?
+   *
+   * The mask holds full alpha out to about half its radius before it starts to
+   * fall away, so anything comfortably inside that is painted over completely.
+   */
+  isBuriedInColour = (x: number, y: number, margin: number): boolean => {
+    const solid = this.maskRadius * 0.5 - margin;
+    if (solid <= 0) return false;
+    const dx = x - this.walker.x;
+    const dy = y - this.walker.y - 14;
+    return dx * dx + dy * dy < solid * solid;
+  };
+
   /** Has the colour reached this spot? */
   isAwakeAt = (x: number, y: number, pad = 0): boolean => {
     const r = this.maskRadius + pad;
@@ -252,6 +266,7 @@ export class Game {
       pots: this.pots,
       particles: this.particles,
       litRadius: this.litRadius,
+      isBuriedInColour: this.isBuriedInColour,
       maskRadius: this.maskRadius,
       elapsed: this.elapsed,
     };

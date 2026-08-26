@@ -78,6 +78,46 @@ export function inkLine(
   ctx.stroke();
 }
 
+/**
+ * Several strokes of the same weight as one path.
+ *
+ * Each `stroke()` is a separate path submission, and for the livestock that
+ * added up — a cow was some forty of them, every frame, for every animal awake.
+ * Batching the ones that share a style costs nothing visually and cuts the
+ * submissions by most of that.
+ */
+export function inkLines(
+  ctx: CanvasRenderingContext2D,
+  segments: readonly (readonly [number, number, number, number])[],
+  k: number,
+): void {
+  ctx.beginPath();
+  segments.forEach(([x1, y1, x2, y2], i) => {
+    const j = k + i * 4;
+    ctx.moveTo(x1 + jitter(j, 0.7), y1 + jitter(j + 1, 0.7));
+    ctx.lineTo(x2 + jitter(j + 2, 0.7), y2 + jitter(j + 3, 0.7));
+  });
+  ctx.stroke();
+}
+
+/** Several circles of the same weight as one path. */
+export function inkArcs(
+  ctx: CanvasRenderingContext2D,
+  circles: readonly (readonly [number, number, number])[],
+  k: number,
+): void {
+  ctx.beginPath();
+  circles.forEach(([x, y, r], i) => {
+    const j = k + i * 3;
+    const cx = x + jitter(j, 0.7);
+    const cy = y + jitter(j + 1, 0.7);
+    const radius = r + jitter(j + 2, 0.5);
+    ctx.moveTo(cx + radius, cy);
+    ctx.arc(cx, cy, radius, 0, TAU);
+  });
+  ctx.stroke();
+}
+
 export function inkPoly(
   ctx: CanvasRenderingContext2D,
   pts: Poly,

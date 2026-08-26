@@ -29,6 +29,11 @@ export interface Scene {
   readonly particles: Particles;
   /** Colour radius in world units, before the ending's flood. */
   readonly litRadius: number;
+  /**
+   * Is this point far enough inside the colour that the pencil beneath it can
+   * never show through? Anything that answers yes can skip the sketch pass.
+   */
+  isBuriedInColour(x: number, y: number, margin: number): boolean;
   /** Colour radius including the flood, which is what the mask actually uses. */
   readonly maskRadius: number;
   readonly elapsed: number;
@@ -193,14 +198,30 @@ export class Renderer {
     );
   }
 
-  /** Livestock and paint pots, in whichever medium is being laid down. */
+  /**
+   * Livestock and paint pots, in whichever medium is being laid down.
+   *
+   * In the pencil pass, anything buried deep inside the colour is skipped: the
+   * colour pass will paint straight over it at full opacity, so drawing it in
+   * graphite first is work nobody ever sees. That matters because a live animal
+   * is the most expensive thing in the frame — a cow is some forty separate
+   * strokes — and standing in a herd means every one of them is awake.
+   */
   private drawLive(ctx: CanvasRenderingContext2D, scene: Scene, medium: Medium): void {
     const { camera } = scene;
+    const hidden = (x: number, y: number, margin: number) =>
+      medium === 'sketch' && scene.isBuriedInColour(x, y, margin);
+
     for (const pot of scene.pots) {
       if (pot.found || !camera.canSee(pot.x, pot.y, 60)) continue;
+      if (hidden(pot.x, pot.y, 40)) continue;
       drawPot(ctx, pot, medium);
     }
-    scene.herd.draw(ctx, medium, (x, y) => camera.canSee(x, y, 90));
+    scene.herd.draw(
+      ctx,
+      medium,
+      (x, y) => camera.canSee(x, y, 90) && !hidden(x, y, 60),
+    );
   }
 
   /**
