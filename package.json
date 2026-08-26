@@ -2,13 +2,20 @@
   "name": "pencil-and-paint",
   "version": "1.0.0",
   "private": true,
-  "description": "A browser game where colour exists only around the walker, and the rest of the world is an unfinished pencil sketch.",
+  "type": "module",
+  "description": "A game about a person who carries colour through an unfinished pencil sketch.",
   "license": "SEE LICENSE IN LICENSE",
   "scripts": {
-    "start": "python3 -m http.server 8080",
-    "test": "node tmp/final.js"
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "test": "node tests/run.js"
   },
   "devDependencies": {
-    "playwright": "^1.62.1"
+    "@types/node": "^26.3.0",
+    "playwright": "^1.62.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   }
 }

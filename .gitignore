@@ -1,10 +1,7 @@
-# dev-only: Playwright and the browsers it downloads
 node_modules/
+dist/
 
-# local scratch: test scripts and screenshots
+# local scratch
 tmp/
-
-# build output for the Pages workflow
-_site/
 
 .DS_Store

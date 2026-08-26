@@ -1,17 +1,16 @@
-name: Deploy to GitHub Pages
+name: Build, test and deploy
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:        # lets you redeploy by hand from the Actions tab
+  pull_request:
+  workflow_dispatch: # lets you redeploy by hand from the Actions tab
 
-# Least privilege needed to publish Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Let a running deploy finish; queue at most one more behind it
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -22,19 +21,30 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The game is a single self-contained HTML file — no build, no bundler.
-      # Assemble the site explicitly so nothing else in the repo gets published.
-      - name: Assemble site
-        run: |
-          mkdir -p _site
-          cp index.html _site/
-          touch _site/.nojekyll
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Typechecks, then bundles to dist/.
+      - run: npm run build
+
+      # Playwright drives the real build in a headless browser.
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+
+      - name: Prepare site
+        run: touch dist/.nojekyll
 
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: _site
+          path: dist
 
   deploy:
+    # Only publish from main; pull requests build and test but do not deploy.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

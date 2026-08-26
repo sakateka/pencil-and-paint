@@ -1,0 +1,158 @@
+import { createSurface, isolate, type Surface } from '../core/canvas';
+import { boundsOverlap, type Bounds } from '../core/geom';
+import { rng } from '../core/rng';
+import type { Medium } from '../media/medium';
+import { withoutGroundShadows } from '../media/pencil';
+import { GRAIN } from '../media/sprites';
+import { buildLayout, WORLD_HEIGHT, WORLD_WIDTH, type AnimalSpawn } from './layout';
+import { drawGround, drawPath, drawTufts, type Ellipse } from './terrain';
+import type { Collider, Scenery } from './types';
+
+/**
+ * A tall piece of scenery, plus what is needed to lay it back over the walker.
+ *
+ * `seed` is the whole trick. It records where the rng stood when this object was
+ * baked into the world layers, so re-running its draw call reproduces the exact
+ * same pencil strokes. The overlay lands pixel-for-pixel on the baked copy and
+ * is invisible except where it covers the walker — no ghosting, no double image.
+ */
+interface Occluder {
+  readonly scenery: Scenery;
+  readonly bounds: Bounds;
+  readonly seed: number;
+  readonly sprites: Map<Medium, OccluderSprite>;
+}
+
+interface OccluderSprite {
+  canvas: HTMLCanvasElement;
+  x: number;
+  y: number;
+}
+
+const SPRITE_PAD = 3;
+
+/**
+ * The valley, drawn twice and held in memory.
+ *
+ * Both layers are baked once at startup rather than drawn per frame, because
+ * hatching every blade of grass sixty times a second is not a thing anyone can
+ * afford. What moves — the walker, the livestock, the pots — is drawn live on
+ * top; everything that stands still is a bitmap.
+ */
+export class World {
+  readonly width = WORLD_WIDTH;
+  readonly height = WORLD_HEIGHT;
+
+  /** The finished illustration. */
+  readonly color: HTMLCanvasElement;
+  /** The same valley as an unfinished pencil drawing. */
+  readonly sketch: HTMLCanvasElement;
+
+  readonly colliders: readonly Collider[];
+  readonly pond: Ellipse;
+  readonly animalSpawns: readonly AnimalSpawn[];
+
+  private readonly occluders: Occluder[];
+
+  private constructor(
+    color: Surface,
+    sketch: Surface,
+    colliders: Collider[],
+    occluders: Occluder[],
+    pond: Ellipse,
+    animalSpawns: AnimalSpawn[],
+  ) {
+    this.color = color.canvas;
+    this.sketch = sketch.canvas;
+    this.colliders = colliders;
+    this.occluders = occluders;
+    this.pond = pond;
+    this.animalSpawns = animalSpawns;
+  }
+
+  /** Lay the world out and bake both media. Runs once, costs a few hundred ms. */
+  static generate(): World {
+    const layout = buildLayout();
+
+    // Depth order: further up the page is further away.
+    const scenery = [...layout.scenery].sort((a, b) => a.y - b.y);
+    const seeds = scenery.map(() => rng.forkSeed());
+
+    const color = createSurface(WORLD_WIDTH, WORLD_HEIGHT);
+    const sketch = createSurface(WORLD_WIDTH, WORLD_HEIGHT);
+
+    for (const [surface, medium] of [
+      [color, 'color'],
+      [sketch, 'sketch'],
+    ] as const) {
+      const { ctx } = surface;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+      drawGround(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT);
+      for (const path of layout.paths) drawPath(ctx, path, medium);
+      drawTufts(ctx, layout.tufts, medium);
+      scenery.forEach((piece, i) => {
+        rng.replay(seeds[i], () => piece.draw(ctx, medium));
+      });
+    }
+
+    // A whisper of grain over the colour too, so both media sit on one sheet.
+    isolate(color.ctx, () => {
+      const pattern = color.ctx.createPattern(GRAIN, 'repeat');
+      if (!pattern) return;
+      color.ctx.globalAlpha = 0.14;
+      color.ctx.fillStyle = pattern;
+      color.ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    });
+
+    const colliders = scenery.flatMap((piece) => piece.colliders ?? []);
+
+    const occluders: Occluder[] = [];
+    scenery.forEach((piece, i) => {
+      if (!piece.tall || !piece.bounds) return;
+      occluders.push({ scenery: piece, bounds: piece.bounds, seed: seeds[i], sprites: new Map() });
+    });
+
+    return new World(color, sketch, colliders, occluders, layout.pond, layout.animals);
+  }
+
+  /**
+   * Tall scenery standing in front of `body` — closer to the viewer and
+   * overlapping it. These get drawn over the walker so they hide them.
+   */
+  *occludersInFrontOf(bodyY: number, body: Bounds): Generator<Occluder> {
+    for (const occluder of this.occluders) {
+      if (occluder.scenery.y <= bodyY) continue; // behind the walker
+      if (!boundsOverlap(occluder.bounds, body)) continue;
+      yield occluder;
+    }
+  }
+
+  /** The occluder rendered on its own transparent canvas, cached per medium. */
+  spriteFor(occluder: Occluder, medium: Medium): OccluderSprite {
+    const cached = occluder.sprites.get(medium);
+    if (cached) return cached;
+
+    const { bounds } = occluder;
+    const width = Math.ceil(bounds.x1 - bounds.x0) + SPRITE_PAD * 2;
+    const height = Math.ceil(bounds.y1 - bounds.y0) + SPRITE_PAD * 2;
+    const { canvas, ctx } = createSurface(width, height);
+    ctx.translate(-bounds.x0 + SPRITE_PAD, -bounds.y0 + SPRITE_PAD);
+
+    // Same seed as the bake, and no ground shadow: the shadow is already on the
+    // ground underneath, and drawing it twice would darken it.
+    rng.replay(occluder.seed, () => {
+      withoutGroundShadows(() => occluder.scenery.draw(ctx, medium));
+    });
+
+    const sprite: OccluderSprite = {
+      canvas,
+      x: bounds.x0 - SPRITE_PAD,
+      y: bounds.y0 - SPRITE_PAD,
+    };
+    occluder.sprites.set(medium, sprite);
+    return sprite;
+  }
+}
+
+export type { Occluder, OccluderSprite };

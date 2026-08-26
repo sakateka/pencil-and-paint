@@ -2,67 +2,35 @@
 
 <img width="600" alt="image" src="https://github.com/user-attachments/assets/75fc5c60-1826-460f-8daa-de2c61141f36" />
 
-A small browser game about a person who carries colour with them.
+Someone left this valley half-finished, in graphite.
 
-The world is drawn twice: once as a flat colour illustration, once in graphite —
-hand-drawn outlines and cross-hatching. Only the area around the walker is
-painted in. Everything beyond that is an unfinished pencil sketch, and it holds
-perfectly still, because a drawing does not move. Walk toward a grazing sheep
-and it wakes up.
+Colour exists only where you are standing. Step away and the world goes back to
+being an unfinished drawing — hatched, outlined, waiting. The sheep out in the
+pencil are not paused; they are *drawn*, and a drawing does not move. Walk close
+enough and one will lift its head.
 
-Find the fourteen spilled paint pots to widen the colour until the whole page is
-awake — then stay and wander it for as long as you like.
+Fourteen pots of paint were spilled somewhere in the fields. Each one you find
+widens the circle you carry, until there is nothing left of the sketch.
 
-## Play
+**[Play it →](https://sakateka.github.io/pencil-and-paint/)**
 
-Open `index.html` in a browser. That is the whole game: one self-contained file,
-no build step, no dependencies, no network.
+---
 
-| Input | Action |
-| --- | --- |
-| `W A S D` / arrow keys | walk |
-| drag / touch | walk (mobile) |
-| `R` | new world (the pots are scattered afresh) |
-| `F` | performance readout — fps, frame time, render scale, composited area |
+The valley is drawn twice — once as a colour illustration, once as pencil — and
+the two are composited every frame through a soft mask that follows you.
 
-## How it works
+Most of what makes it work is not the mask, though. It is the hatching that
+reads its density from how dark a colour was, so the drawing has tone. It is the
+wobble on a live pencil line, which has to hold still for a seventh of a second
+or it vibrates instead of looking drawn. It is the seed every tree remembers, so
+that it can be re-drawn on top of you, stroke for stroke, when you walk behind it.
 
-- The whole world is pre-rendered once into two offscreen canvases, colour and
-  graphite. Each frame blits the graphite one, then composites the colour one
-  through a soft, wobbly mask centred on the walker.
-- That compositing runs inside a dirty rectangle tracking the mask, so the
-  per-frame cost scales with the colour radius rather than the window size.
-- Render resolution adapts to the machine, capped at 1.25x — the world is a
-  bitmap authored at 1x, so drawing it at 2x costs four times the fill rate and
-  adds no detail.
-- Livestock and paint pots are drawn live in whichever medium they fall in, so
-  a cow can be half-inked and half-graphite as you walk past. Frozen ones are
-  cached as sprites, since a still drawing is the same pixels every frame.
-- Tall objects standing in front of the walker are re-drawn over them, so you
-  pass behind houses and trees instead of across their roofs. Each object stores
-  the RNG seed it was baked with, so the overlay reproduces exactly the same
-  pencil strokes and lands pixel-for-pixel on the original.
+All of that is in [`src/`](src/). Start at
+[`media/pencil.ts`](src/media/pencil.ts), which is where a colour becomes a
+drawing, or [`render/colorField.ts`](src/render/colorField.ts), which decides
+where the colour is.
 
-## Deploying
-
-Pushing to `main` publishes via `.github/workflows/deploy.yml`. It needs
-**Settings → Pages → Source → GitHub Actions** set once on the repository.
-
-## Development
-
-Playwright drives the game headlessly for testing — collision assertions, frame
-timing, and screenshots.
-
-```sh
-npm install
-npx playwright install chromium
-node tmp/final.js       # end-to-end: collect all pots, win, restart
-node tmp/occlude2.js    # walking behind buildings
-node tmp/freeze.js      # animals hold still outside the colour
-node tmp/cost.js        # draw-call counts and frame timing
-```
-
-Nothing under `tmp/` ships; it is scratch, and git-ignored.
+Building, playing and testing: [BUILDING.md](BUILDING.md).
 
 ## License
 

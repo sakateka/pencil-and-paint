@@ -1,0 +1,42 @@
+import { existsSync } from 'node:fs';
+import { serve } from './harness.js';
+
+import { run as collision } from './collision.test.js';
+import { run as stillness } from './stillness.test.js';
+import { run as progression } from './progression.test.js';
+import { run as rendering } from './rendering.test.js';
+
+const SUITES = [collision, stillness, progression, rendering];
+
+/**
+ * Runs every suite against the production build, served over HTTP the way a
+ * static host would. Testing `dist/` rather than the dev server means the thing
+ * under test is the thing that ships.
+ */
+async function main() {
+  const dist = new URL('../dist/index.html', import.meta.url).pathname;
+  if (!existsSync(dist)) {
+    console.error('No build found. Run `npm run build` first.');
+    process.exit(1);
+  }
+
+  const server = await serve();
+  let allPassed = true;
+
+  try {
+    for (const suite of SUITES) {
+      const result = await suite(server.url);
+      if (!result.report()) allPassed = false;
+    }
+  } finally {
+    await server.close();
+  }
+
+  console.log(allPassed ? '\nall suites passed\n' : '\nFAILURES\n');
+  process.exit(allPassed ? 0 : 1);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
