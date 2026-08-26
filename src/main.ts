@@ -135,6 +135,20 @@ async function boot(): Promise<void> {
       .getEntriesByType('paint')
       .find((e) => e.name === 'first-contentful-paint');
     const ms = (v: number | undefined) => (v === undefined ? '?' : v.toFixed(0));
+    // The document request, split into the phases the network stack reports. A
+    // slow `net` means something very different depending on whether it went to
+    // DNS, the TLS handshake, or the server thinking before the first byte.
+    const netPhases = (n: PerformanceNavigationTiming): string => {
+      const tls = n.secureConnectionStart ? n.connectEnd - n.secureConnectionStart : 0;
+      const tcp = Math.max(0, n.connectEnd - n.connectStart - tls);
+      return (
+        `net dns ${ms(n.domainLookupEnd - n.domainLookupStart)}` +
+        ` · tcp ${ms(tcp)} · tls ${ms(tls)}` +
+        ` · ttfb ${ms(n.responseStart - n.requestStart)}` +
+        ` · body ${ms(n.responseEnd - n.responseStart)}` +
+        ` · wait ${ms(n.domainLookupStart - n.fetchStart)}`
+      );
+    };
     const thisLoad =
       `grain ${grainMs.toFixed(0)}ms · script ${ms(nav && nav.domContentLoadedEventStart - nav.responseEnd)}` +
       ` · net ${ms(nav?.responseEnd)} · paint ${ms(paint?.startTime)} · ready ${performance.now().toFixed(0)}` +
@@ -148,7 +162,8 @@ async function boot(): Promise<void> {
        * browser refusing to run us, while `tap 15000/15000` is fifteen seconds
        * of our own work — a different bug entirely.
        */
-      ` · tap ${(performance.now() - tappedAt).toFixed(0)}/${(Date.now() - tappedAtWall).toFixed(0)}`;
+      ` · tap ${(performance.now() - tappedAt).toFixed(0)}/${(Date.now() - tappedAtWall).toFixed(0)}` +
+      (nav ? `\n${netPhases(nav)}` : '');
     const lastLoad = remember(thisLoad);
     const report = `${BUILD_ID}\n${world.bakeSummary}\n${thisLoad}` +
       (lastLoad ? `\nprevious load: ${lastLoad}` : '');
