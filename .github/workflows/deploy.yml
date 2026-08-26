@@ -28,11 +28,31 @@ jobs:
 
       - run: npm ci
 
+      # Cache the browser Playwright downloads — around 150MB, and it only
+      # changes when Playwright itself does. Keyed on the resolved version
+      # rather than the lockfile, so an unrelated dependency bump does not
+      # throw the browser away.
+      - id: playwright-version
+        run: echo "v=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.v }}
+
+      # Run unconditionally: it verifies and skips the download when the cache
+      # restored the browser, and cannot leave a half-populated cache working
+      # by accident.
+      - run: npx playwright install chromium
+
+      # System libraries live on the runner, not in the cache, so they are
+      # installed every time regardless of whether the browser was restored.
+      - run: npx playwright install-deps chromium
+
       # Typechecks, then bundles to dist/.
       - run: npm run build
 
       # Playwright drives the real build in a headless browser.
-      - run: npx playwright install --with-deps chromium
       - run: npm test
 
       - name: Prepare site
