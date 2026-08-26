@@ -11,8 +11,16 @@ import { circleCollider, type Scenery } from './types';
 /** Trees, bushes, rocks, flowers, fences, lamps — what fills the meadow. */
 
 export function makeTree(x: number, y: number, scale: number): Scenery {
-  const trunkWidth = 11 * scale;
-  const trunkHeight = 30 * scale;
+  /*
+   * Slender, and tall enough to show.
+   *
+   * These used to read as stumps, and the arithmetic says why: the canopy hung
+   * down to within ten units of the ground while the trunk was twelve across,
+   * so the visible bit was wider than it was tall. Narrowing the trunk and
+   * lifting the crown puts the proportions back at about three to one.
+   */
+  const trunkWidth = 7 * scale;
+  const trunkHeight = 44 * scale;
   const trunk: Poly = [
     [x - trunkWidth * 0.55, y],
     [x + trunkWidth * 0.55, y],
@@ -47,8 +55,8 @@ export function makeTree(x: number, y: number, scale: number): Scenery {
   return {
     y,
     tall: true,
-    colliders: [circleCollider(x, y - 4, 13 * scale)],
-    bounds: { x0: x - 58 * scale, y0: y - 92 * scale, x1: x + 58 * scale, y1: y + 8 },
+    colliders: [circleCollider(x, y - 4, 11 * scale)],
+    bounds: { x0: x - 58 * scale, y0: y - 102 * scale, x1: x + 58 * scale, y1: y + 8 },
     draw(ctx, medium) {
       groundShadow(ctx, x, y + 3, 34 * scale, 12 * scale, medium);
       paint(ctx, trunk, BARK, medium, { angle: 1.4, edge: BARK_EDGE });
