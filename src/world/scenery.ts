@@ -206,7 +206,17 @@ export function makeFlower(x: number, y: number): Scenery {
   };
 }
 
-export function makeFence(x1: number, y1: number, x2: number, y2: number): Scenery {
+/**
+ * A run of post-and-rail fence. `height` lets the same fence serve as stock
+ * railing round a paddock or as low palings round a vegetable plot.
+ */
+export function makeFence(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  height = 32,
+): Scenery {
   const count = Math.max(2, Math.round(Math.hypot(x2 - x1, y2 - y1) / 34));
   const posts: Point[] = [];
   for (let i = 0; i <= count; i++) {
@@ -214,8 +224,8 @@ export function makeFence(x1: number, y1: number, x2: number, y2: number): Scene
     posts.push([lerp(x1, x2, t) + rr(-1.5, 1.5), lerp(y1, y2, t) + rr(-1.5, 1.5)]);
   }
 
-  const RAIL_HEIGHTS = [14, 24];
-  const POST_HEIGHT = 32;
+  const RAIL_HEIGHTS = [height * 0.44, height * 0.75];
+  const POST_HEIGHT = height;
 
   return {
     // Deliberately not solid: a paddock you cannot walk into is a paddock you

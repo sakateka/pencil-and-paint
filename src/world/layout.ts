@@ -2,7 +2,15 @@ import { TAU } from '../core/math';
 import { rng, rnd, rr } from '../core/rng';
 import type { AnimalKind } from '../entities/animalKinds';
 import { makeBarn, makeHouse } from './buildings';
-import { makeBench, makeHayBale, makeHaystack, makeScarecrow, makeTrough, makeWell } from './farm';
+import {
+  makeBench,
+  makeGardenBed,
+  makeHayBale,
+  makeHaystack,
+  makeScarecrow,
+  makeTrough,
+  makeWell,
+} from './farm';
 import { makeBush, makeFence, makeFlower, makeLamp, makeRock, makeTree } from './scenery';
 import { makePond, makeTuft, type Ellipse, type Path, type Tuft } from './terrain';
 import type { Scenery } from './types';
@@ -68,6 +76,64 @@ class Sites {
     }
     return null;
   }
+}
+
+
+/** A rectangular plot, given as world coordinates of its edges. */
+interface Plot {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+const PADDOCK: Plot = { left: 1900, right: 2570, top: 700, bottom: 1030 };
+const SW_PASTURE: Plot = { left: 460, right: 960, top: 1570, bottom: 1830 };
+const CHICKEN_RUN: Plot = { left: 2200, right: 2430, top: 1290, bottom: 1420 };
+/**
+ * Sits in the lane between the paddock rail and the path. Both edges matter:
+ * pushed any lower the fence crosses the path, which looks like a mistake.
+ */
+const GARDEN: Plot = { left: 1750, right: 2050, top: 1060, bottom: 1180 };
+
+/**
+ * Fence a plot in, leaving one gap to walk through.
+ *
+ * Every run shares its corner coordinates with its neighbours, so the rails
+ * meet instead of almost meeting — which is what made the old paddock look like
+ * it had been assembled by someone in a hurry.
+ */
+function enclose(
+  into: Scenery[],
+  plot: Plot,
+  options: {
+    gate: { side: 'top' | 'bottom' | 'left' | 'right'; from: number; to: number };
+    height?: number;
+  },
+): void {
+  const { left, right, top, bottom } = plot;
+  const { gate, height } = options;
+
+  const run = (x1: number, y1: number, x2: number, y2: number) => {
+    if (Math.hypot(x2 - x1, y2 - y1) > 8) into.push(makeFence(x1, y1, x2, y2, height));
+  };
+
+  // Horizontal edges are split by a gate given in x; vertical ones in y.
+  const horizontal = (y: number, side: 'top' | 'bottom') => {
+    if (gate.side !== side) return run(left, y, right, y);
+    run(left, y, gate.from, y);
+    run(gate.to, y, right, y);
+  };
+  const vertical = (x: number, side: 'left' | 'right') => {
+    if (gate.side !== side) return run(x, top, x, bottom);
+    run(x, top, x, gate.from);
+    run(x, gate.to, x, bottom);
+  };
+
+  horizontal(top, 'top');
+  horizontal(bottom, 'bottom');
+  vertical(left, 'left');
+  vertical(right, 'right');
 }
 
 const HOUSES: readonly [number, number, number, number][] = [
@@ -147,33 +213,40 @@ export function buildLayout(): Layout {
   scenery.push(makeBarn(2180, 645, 235, 150));
   sites.reserve(2180, 580, 210);
 
-  // paddock rails, with a gap left open as a gate
-  scenery.push(makeFence(1900, 700, 2210, 700));
-  scenery.push(makeFence(2330, 700, 2570, 706));
-  scenery.push(makeFence(2570, 706, 2560, 1030));
-  scenery.push(makeFence(2560, 1030, 2180, 1040));
-  scenery.push(makeFence(1980, 1036, 1900, 1030));
-  scenery.push(makeFence(1900, 1030, 1900, 700));
+  // The paddock: a closed rectangle with one gate, under the barn door so the
+  // stock have somewhere to be driven to. Corners share coordinates, so the
+  // rails actually meet.
+  enclose(scenery, PADDOCK, { gate: { side: 'top', from: 2120, to: 2240 } });
 
   scenery.push(makeHaystack(2585, 590, 1));
   scenery.push(makeHayBale(1935, 610, 1));
   scenery.push(makeHayBale(1988, 632, 0.9));
   scenery.push(makeHayBale(2612, 1075, 1.05));
   scenery.push(makeTrough(2090, 985));
-  scenery.push(makeScarecrow(1840, 1160));
   scenery.push(makeWell(1655, 1205));
   scenery.push(makeBench(1425, 1255));
   sites.reserve(2585, 590, 90);
   sites.reserve(1960, 620, 80);
-  sites.reserve(1840, 1160, 60);
   sites.reserve(1655, 1205, 60);
   sites.reserve(1425, 1255, 50);
 
-  // a second, smaller pasture behind the south-west cottage
-  scenery.push(makeFence(660, 1520, 900, 1500));
-  scenery.push(makeFence(900, 1500, 930, 1330));
-  scenery.push(makeFence(2150, 1300, 2400, 1330));
+  // The south-west pasture, drawn round the herds that actually live in it
+  // rather than as two rails ending in mid-air.
+  enclose(scenery, SW_PASTURE, { gate: { side: 'top', from: 640, to: 760 } });
   scenery.push(makeHayBale(700, 1640, 0.95));
+
+  // A chicken run tucked against the south-east cottage.
+  enclose(scenery, CHICKEN_RUN, { gate: { side: 'left', from: 1320, to: 1380 }, height: 24 });
+
+  // The vegetable garden, with the scarecrow standing in the middle of it
+  // where a scarecrow belongs.
+  enclose(scenery, GARDEN, { gate: { side: 'bottom', from: 1870, to: 1930 }, height: 22 });
+  scenery.push(makeGardenBed(1825, 1105, 110, 28, 'carrot'));
+  scenery.push(makeGardenBed(1975, 1105, 110, 28, 'cabbage'));
+  scenery.push(makeGardenBed(1825, 1165, 110, 28, 'onion'));
+  scenery.push(makeGardenBed(1975, 1165, 110, 28, 'carrot'));
+  scenery.push(makeScarecrow(1900, 1148));
+  sites.reserve(1900, 1120, 190);
 
   for (const [x, y] of LAMPS) {
     scenery.push(makeLamp(x, y));

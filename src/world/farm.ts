@@ -5,7 +5,7 @@ import { rnd, rr } from '../core/rng';
 import { PENCIL, type Medium } from '../media/medium';
 import { groundShadow, paint } from '../media/pencil';
 import { STONE, STONE_EDGE, STRAW, STRAW_EDGE, WATER, WOOD, WOOD_EDGE } from './palette';
-import { circleCollider, type Scenery } from './types';
+import { circleCollider, rectCollider, type Scenery } from './types';
 
 /** Haystacks, bales, a well, a scarecrow, a bench, a trough. */
 
@@ -382,6 +382,120 @@ export function makeTrough(x: number, y: number): Scenery {
           ctx.stroke();
         }
       });
+    },
+  };
+}
+
+/** What is growing in a bed. Each reads differently at a glance. */
+export type Crop = 'carrot' | 'cabbage' | 'onion';
+
+const SOIL = '#6b4a32';
+const SOIL_EDGE = '#4a3324';
+const LEAF = '#5b9c46';
+
+/**
+ * A raised vegetable bed: a plank frame, turned soil, and rows of something
+ * growing. `x, y` is the middle of the front edge, as everywhere else.
+ */
+export function makeGardenBed(x: number, y: number, w: number, h: number, crop: Crop): Scenery {
+  const top = y - h;
+  const soil = rectPoly(x - w / 2, top, w, h);
+  const plank = 3.5;
+
+  // Two tidy rows, nudged just enough that they are not machine-perfect.
+  const columns = Math.max(3, Math.round(w / 26));
+  const plants: { x: number; y: number }[] = [];
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < columns; col++) {
+      plants.push({
+        x: x - w / 2 + (w / (columns + 1)) * (col + 1) + rr(-2, 2),
+        y: top + (h / 3) * (row + 1) + rr(-1.5, 1.5),
+      });
+    }
+  }
+
+  const drawPlant = (ctx: CanvasRenderingContext2D, px: number, py: number, medium: Medium) => {
+    if (medium === 'color') {
+      ctx.strokeStyle = LEAF;
+      ctx.lineCap = 'round';
+      if (crop === 'carrot') {
+        ctx.lineWidth = 1.4;
+        for (const lean of [-2.6, 0, 2.6]) {
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.quadraticCurveTo(px + lean * 0.5, py - 4, px + lean, py - 7.5);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#e08b3a';
+        ctx.beginPath();
+        ctx.ellipse(px, py + 0.6, 2, 1.4, 0, 0, TAU);
+        ctx.fill();
+        return;
+      }
+      if (crop === 'cabbage') {
+        ctx.fillStyle = LEAF;
+        ctx.beginPath();
+        ctx.arc(px, py - 2, 4.2, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = '#7fbc5e';
+        ctx.beginPath();
+        ctx.arc(px - 0.8, py - 2.8, 2.2, 0, TAU);
+        ctx.fill();
+        return;
+      }
+      ctx.lineWidth = 1.6; // onion: upright blades
+      for (const lean of [-1.6, 0.4, 2.2]) {
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(px + lean, py - 8);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#e6dfc6';
+      ctx.beginPath();
+      ctx.ellipse(px, py + 0.4, 2.2, 1.6, 0, 0, TAU);
+      ctx.fill();
+      return;
+    }
+
+    isolate(ctx, () => {
+      ctx.strokeStyle = PENCIL;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = 0.85;
+      if (crop === 'cabbage') {
+        ctx.beginPath();
+        ctx.arc(px + rr(-0.5, 0.5), py - 2, 4.2, 0, TAU);
+        ctx.stroke();
+        return;
+      }
+      const leans = crop === 'carrot' ? [-2.6, 0, 2.6] : [-1.6, 0.4, 2.2];
+      for (const lean of leans) {
+        ctx.beginPath();
+        ctx.moveTo(px + rr(-0.4, 0.4), py);
+        ctx.lineTo(px + lean, py - (crop === 'carrot' ? 7.5 : 8));
+        ctx.stroke();
+      }
+    });
+  };
+
+  return {
+    y,
+    colliders: [rectCollider(x - w / 2, top, w, h)],
+    draw(ctx, medium) {
+      groundShadow(ctx, x, y + 1, w * 0.55, 7, medium);
+      // Turned soil, hatched dark in graphite because it is the darkest thing
+      // in the garden.
+      paint(ctx, soil, SOIL, medium, { angle: -0.2, edge: SOIL_EDGE, darkScale: 1.1 });
+      for (const p of plants) drawPlant(ctx, p.x, p.y, medium);
+      // Plank frame last, so the crops sit inside it.
+      for (const side of [
+        rectPoly(x - w / 2, top, w, plank),
+        rectPoly(x - w / 2, y - plank, w, plank),
+        rectPoly(x - w / 2, top, plank, h),
+        rectPoly(x + w / 2 - plank, top, plank, h),
+      ]) {
+        paint(ctx, side, WOOD, medium, { angle: 1.5, edge: WOOD_EDGE, outlineAlpha: 0.4 });
+      }
     },
   };
 }
