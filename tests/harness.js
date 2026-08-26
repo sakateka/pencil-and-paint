@@ -3,7 +3,11 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 
-const ROOT = new URL('../dist/', import.meta.url).pathname;
+// Defaults to dist/, overridable so a build can be verified without clobbering
+// someone else's output in a shared checkout, and for CI variants.
+const ROOT = process.env.PENCIL_DIST
+  ? `${process.env.PENCIL_DIST.replace(/\/?$/, '/')}`
+  : new URL('../dist/', import.meta.url).pathname;
 
 const MIME = {
   '.html': 'text/html',

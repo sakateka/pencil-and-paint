@@ -14,7 +14,9 @@ const SUITES = [collision, stillness, progression, rendering];
  * under test is the thing that ships.
  */
 async function main() {
-  const dist = new URL('../dist/index.html', import.meta.url).pathname;
+  const dist = process.env.PENCIL_DIST
+    ? `${process.env.PENCIL_DIST.replace(/\/?$/, '/')}index.html`
+    : new URL('../dist/index.html', import.meta.url).pathname;
   if (!existsSync(dist)) {
     console.error('No build found. Run `npm run build` first.');
     process.exit(1);

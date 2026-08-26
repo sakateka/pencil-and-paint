@@ -63,6 +63,101 @@ function drawWalkerShadow(ctx: CanvasRenderingContext2D, x: number, y: number): 
   drawShadowBlob(ctx, x, y, 17, 7.2);
 }
 
+const SKIN = '#f2c398';
+const HAIR = '#4a3527';
+const EYE = '#3a2f26';
+const BLUSH = 'rgba(230,140,120,.35)';
+
+/**
+ * The head, drawn as a profile from the side and face-on from the front.
+ *
+ * The shape has to change, not just the features. A symmetrical head with one
+ * small eye added reads as someone facing the viewer while sliding sideways —
+ * which looks like walking backwards. A profile needs a nose leading the way,
+ * the ear set back, and the weight of the hair behind the crown.
+ *
+ * Everything here is drawn facing +x; the caller mirrors for the other way.
+ */
+function drawHead(ctx: CanvasRenderingContext2D, facing: Facing): void {
+  if (facing === 'side') {
+    // Skull, nudged forward so the face leads the body.
+    ctx.fillStyle = SKIN;
+    ctx.beginPath();
+    ctx.arc(1.6, -35, 9.2, 0, TAU);
+    ctx.fill();
+
+    // Nose, and the small step of the brow above it.
+    ctx.beginPath();
+    ctx.moveTo(9.4, -37.6);
+    ctx.quadraticCurveTo(13.4, -34.8, 9.2, -32.4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Ear, set well back on the skull.
+    ctx.fillStyle = 'rgba(214,164,120,.9)';
+    ctx.beginPath();
+    ctx.ellipse(-2.4, -33.8, 2, 2.6, 0.2, 0, TAU);
+    ctx.fill();
+
+    // Hair: over the crown, with the bulk of it behind.
+    ctx.fillStyle = HAIR;
+    ctx.beginPath();
+    ctx.arc(1.6, -35.8, 9.6, Math.PI * 0.84, Math.PI * 2.0);
+    ctx.quadraticCurveTo(9.8, -40.4, 4.5, -42.2);
+    ctx.quadraticCurveTo(-2, -43.4, -7.4, -39.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-4.8, -34.2, 5.4, 6.4, 0.28, 0, TAU);
+    ctx.fill();
+
+    // One eye, forward on the face where a profile puts it.
+    ctx.fillStyle = EYE;
+    ctx.beginPath();
+    ctx.arc(6.4, -35.2, 1.25, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = BLUSH;
+    ctx.beginPath();
+    ctx.arc(8.2, -32.4, 2.1, 0, TAU);
+    ctx.fill();
+    return;
+  }
+
+  // Face-on, or the back of the head when walking away.
+  ctx.fillStyle = SKIN;
+  ctx.beginPath();
+  ctx.arc(0, -35, 9.2, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = HAIR;
+  ctx.beginPath();
+  ctx.arc(0, -35.5, 9.4, Math.PI * 0.98, Math.PI * 2.12);
+  ctx.quadraticCurveTo(6, -33, 8.6, -31.5);
+  ctx.quadraticCurveTo(4, -34.5, -2, -33.5);
+  ctx.closePath();
+  ctx.fill();
+
+  if (facing === 'up') return; // walking away: nothing to show but hair
+
+  ctx.fillStyle = EYE;
+  ctx.beginPath();
+  ctx.arc(-3.2, -34.4, 1.25, 0, TAU);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(3.2, -34.4, 1.25, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(180,90,70,.65)';
+  ctx.lineWidth = 1.1;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(0, -32.4, 2.6, 0.25, Math.PI - 0.25);
+  ctx.stroke();
+  ctx.fillStyle = BLUSH;
+  ctx.beginPath();
+  ctx.arc(6.2, -32.6, 2.2, 0, TAU);
+  ctx.fill();
+}
+
 export function drawWalker(ctx: CanvasRenderingContext2D, player: Walker, t: number): void {
   const moving = Math.hypot(player.vx, player.vy) > 6;
   const sw = moving ? Math.sin(player.step) : 0;          // leg/arm swing
@@ -113,31 +208,7 @@ export function drawWalker(ctx: CanvasRenderingContext2D, player: Walker, t: num
   ctx.save(); ctx.translate(-7, -25); ctx.rotate(-sw * 0.5);
   roundRectPath(ctx, -3, 0, 5.5, 13, 2.6); ctx.fill(); ctx.restore();
 
-  // head
-  ctx.fillStyle = '#f2c398';
-  ctx.beginPath(); ctx.arc(0, -35, 9.2, 0, TAU); ctx.fill();
-  // hair
-  ctx.fillStyle = '#4a3527';
-  ctx.beginPath();
-  ctx.arc(0, -35.5, 9.4, Math.PI * 0.98, Math.PI * 2.12);
-  ctx.quadraticCurveTo(6, -33, 8.6, -31.5);
-  ctx.quadraticCurveTo(4, -34.5, -2, -33.5);
-  ctx.closePath(); ctx.fill();
-
-  // face (only when not walking away from the viewer)
-  if (player.facing !== 'up') {
-    ctx.fillStyle = '#3a2f26';
-    if (player.facing === 'down') {
-      ctx.beginPath(); ctx.arc(-3.2, -34.4, 1.25, 0, TAU); ctx.fill();
-      ctx.beginPath(); ctx.arc( 3.2, -34.4, 1.25, 0, TAU); ctx.fill();
-      ctx.strokeStyle = 'rgba(180,90,70,.65)'; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.arc(0, -32.4, 2.6, 0.25, Math.PI - 0.25); ctx.stroke();
-    } else {
-      ctx.beginPath(); ctx.arc(4.2, -34.6, 1.25, 0, TAU); ctx.fill();
-    }
-    ctx.fillStyle = 'rgba(230,140,120,.35)';
-    ctx.beginPath(); ctx.arc(6.2, -32.6, 2.2, 0, TAU); ctx.fill();
-  }
+  drawHead(ctx, player.facing);
 
   // front arm holding the brush
   ctx.save();

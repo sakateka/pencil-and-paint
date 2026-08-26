@@ -59,9 +59,12 @@
     position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
     background:rgba(233,227,213,.72);
     text-align:center;
-    transition:opacity .6s ease, visibility 0s linear 0s;
+    /* Kept short on purpose: play can begin by simply walking off, and a long
+       fade means a translucent wash sitting over a world that is already
+       moving. */
+    transition:opacity .25s ease, visibility 0s linear 0s;
   }
-  .overlay.hidden { transition:opacity .6s ease, visibility 0s linear .6s; }
+  .overlay.hidden { transition:opacity .25s ease, visibility 0s linear .25s; }
   .overlay .card {
     background:rgba(248,244,234,.95);
     border:2px solid rgba(60,55,45,.6);
