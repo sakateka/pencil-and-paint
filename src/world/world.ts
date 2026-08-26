@@ -181,9 +181,22 @@ export class World {
     let sliceStarted = performance.now();
     let longestSlice = 0;
     let yields = 0;
+    /*
+     * How long to work before handing back.
+     *
+     * Deliberately coarse. A yield is not free: on Firefox for Android the page
+     * is throttled hard enough during load that one costs tens of milliseconds,
+     * so a bake that yields 250 times spends fifteen seconds doing nothing but
+     * asking permission to continue — while reporting 60ms of actual work.
+     *
+     * The load shows a static card and takes well under a second of real work,
+     * so there is little to be responsive *for*. A handful of longer slices
+     * beats hundreds of short ones.
+     */
+    const SLICE_MS = 45;
     const breathe = async (): Promise<void> => {
       const ran = performance.now() - sliceStarted;
-      if (ran < 12) return;
+      if (ran < SLICE_MS) return;
       // Measured here, synchronously, rather than by watching a timer from
       // outside: this is the work actually done without yielding, where a timer
       // gap also contains however long the OS felt like descheduling us.
@@ -229,8 +242,8 @@ export class World {
       // of the build — measured at 84ms of a 110ms bake, which is a visible
       // freeze on a phone.
       const detail = GROUND_DETAIL[medium];
-      for (let i = 0; i < detail; i += 8) {
-        drawGroundDetail(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT, i, Math.min(i + 8, detail));
+      for (let i = 0; i < detail; i += 30) {
+        drawGroundDetail(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT, i, Math.min(i + 30, detail));
         mark('ground');
         await breathe();
       }
@@ -240,8 +253,8 @@ export class World {
         await breathe();
       }
 
-      for (let i = 0; i < layout.tufts.length; i += 40) {
-        drawTufts(ctx, layout.tufts, medium, i, Math.min(i + 40, layout.tufts.length));
+      for (let i = 0; i < layout.tufts.length; i += 300) {
+        drawTufts(ctx, layout.tufts, medium, i, Math.min(i + 300, layout.tufts.length));
         mark('tufts');
         await breathe();
       }
@@ -249,7 +262,7 @@ export class World {
       for (let i = 0; i < scenery.length; i++) {
         rng.replay(seeds[i], () => scenery[i].draw(ctx, medium));
         mark('scenery');
-        if ((i & 3) === 0) {
+        if ((i & 31) === 0) {
           onProgress(done + (0.45 * (i + 1)) / scenery.length);
           await breathe();
         }

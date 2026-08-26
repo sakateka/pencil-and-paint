@@ -135,9 +135,31 @@ async function boot(): Promise<void> {
       ` · wall ${(Date.now() - performance.timeOrigin).toFixed(0)}` +
       ` · hidden ${(hiddenMs + (hiddenSince ? performance.now() - hiddenSince : 0)).toFixed(0)}`;
     const lastLoad = remember(thisLoad);
-    stamp.textContent =
-      `${BUILD_ID}\n${world.bakeSummary}\n${thisLoad}` +
+    const report = `${BUILD_ID}\n${world.bakeSummary}\n${thisLoad}` +
       (lastLoad ? `\nprevious load: ${lastLoad}` : '');
+    stamp.textContent = report;
+
+    /*
+     * Also show it once play has begun.
+     *
+     * The title card is dismissed the moment the world is ready, so a report
+     * written only there is never readable on a phone — which is exactly the
+     * device it exists for.
+     */
+    const hint = document.querySelector<HTMLElement>('#hint');
+    if (hint) {
+      const original = hint.textContent;
+      hint.style.whiteSpace = 'pre-line';
+      hint.style.fontFamily = 'ui-monospace, Menlo, Consolas, monospace';
+      hint.style.fontSize = '11px';
+      hint.textContent = report;
+      setTimeout(() => {
+        hint.style.whiteSpace = '';
+        hint.style.fontFamily = '';
+        hint.style.fontSize = '';
+        hint.textContent = original;
+      }, 20000);
+    }
   }
   const renderer = new Renderer(canvas);
   const perf = new Performance();
