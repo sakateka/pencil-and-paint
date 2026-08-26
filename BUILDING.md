@@ -18,7 +18,15 @@ npm run typecheck  # tsc --noEmit
 | `W A S D` / arrow keys | walk |
 | drag | walk (touch) |
 | `R` | new world — the pots are scattered afresh |
-| `F` | performance readout: fps, frame time, render scale, composited area |
+| `F` | performance readout: fps, frame time, render scale, per-stage costs |
+| `` ` `` | development panel — **only when served from localhost** |
+
+The development panel has shortcuts for testing: collect every pot at once (to
+see the finished world without walking the map), flood the colour without
+ending the game, restart, and teleports to the farm, the garden, the pond and
+the spawn. It is built only when `location.hostname` is local, so it does not
+exist on the published site — [a test](tests/devpanel.test.js) serves the same
+build under a real hostname and asserts its absence.
 
 ## Testing
 
