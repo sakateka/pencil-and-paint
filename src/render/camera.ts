@@ -42,15 +42,22 @@ export class Camera {
     this.y = lerp(this.y, targetY - 14, Math.min(1, 5 * dt));
   }
 
-  /** Recompute the visible region for a viewport of this size, in CSS pixels. */
-  frame(viewportWidth: number, viewportHeight: number): void {
+  /**
+   * Recompute the visible region for a viewport of this size, in CSS pixels.
+   *
+   * The origin is snapped to whole device pixels. A fractional source rectangle
+   * makes `drawImage` resample even when the scale is one to one, and the world
+   * blit is far too big to pay that for a fraction of a pixel of camera smoothness.
+   */
+  frame(viewportWidth: number, viewportHeight: number, pixelScale = 1): void {
     this.zoom = Math.max(1, viewportWidth / this.worldWidth, viewportHeight / this.worldHeight);
     this.viewWidth = viewportWidth / this.zoom;
     this.viewHeight = viewportHeight / this.zoom;
     const cx = clamp(this.x, this.viewWidth / 2, this.worldWidth - this.viewWidth / 2);
     const cy = clamp(this.y, this.viewHeight / 2, this.worldHeight - this.viewHeight / 2);
-    this.viewX = cx - this.viewWidth / 2;
-    this.viewY = cy - this.viewHeight / 2;
+    const quantum = 1 / (this.zoom * pixelScale);
+    this.viewX = Math.round((cx - this.viewWidth / 2) / quantum) * quantum;
+    this.viewY = Math.round((cy - this.viewHeight / 2) / quantum) * quantum;
   }
 
   toScreenX(worldX: number): number {

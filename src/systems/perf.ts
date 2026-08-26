@@ -4,12 +4,23 @@
  */
 
 /**
- * Capped at 1.25 deliberately. The world is a bitmap authored at 1x and it is by
- * far the biggest thing drawn each frame; rendering it at 2x device pixels costs
- * four times the fill rate and adds no detail at all, because it is a plain
- * upscale. Only the vector overlays gain, and not nearly enough to pay for it.
+ * Only 1, or a clean half.
+ *
+ * The world is a bitmap authored at 1x and blitting it is the biggest thing in
+ * the frame. At scale 1 that blit is one-to-one — source pixel to canvas pixel,
+ * the fast path — and the compositor does any device-pixel scaling for free.
+ * At any other ratio the scaling moves *into* the canvas and becomes a
+ * fractional resample of a 2800x2000 source, which is enormously slower.
+ *
+ * So the old ladder was actively harmful: dropping to 0.7 to save fill rate
+ * turned a free blit into a resampled one, which made frames slower, which
+ * dropped the scale again. Measured on a dpr-2 machine stuck at 0.7, the world
+ * blit alone cost 14.5ms a frame.
+ *
+ * A half is kept as the one fallback, because 2:1 is the cheapest resample
+ * there is and it quarters the fill rate for a machine that truly needs it.
  */
-const SCALES = [0.7, 0.85, 1, 1.25] as const;
+const SCALES = [0.5, 1] as const;
 
 /** Frames slower than this are counted as dropped (a 60Hz frame is 16.7ms). */
 const SLOW_FRAME_MS = 26;
@@ -44,11 +55,10 @@ export class Performance {
   private goodWindows = 0;
 
   constructor() {
-    const dpr = globalThis.devicePixelRatio || 1;
-    let ceiling = 0;
-    while (ceiling + 1 < SCALES.length && SCALES[ceiling + 1] <= dpr) ceiling++;
-    this.ceiling = ceiling;
-    this.index = Math.min(2, ceiling);
+    // 1 is both the ceiling and the starting point: there is nothing above it
+    // worth having, because the world bitmap has no detail above 1x anyway.
+    this.ceiling = SCALES.length - 1;
+    this.index = this.ceiling;
     this.startIndex = this.index;
   }
 

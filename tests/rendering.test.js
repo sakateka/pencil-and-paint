@@ -310,9 +310,57 @@ export async function run(url) {
     // The hair is a filled cap, not a thin band around the crown.
     suite.atLeast(gait.hairShare, 0.3, 'the walker has hair on their head');
 
+    // Blitting the world is the biggest thing in the frame, and it is only
+    // cheap when it is one-to-one. Every rung of an earlier scale ladder was
+    // slower than simply staying at 1, so dropping the resolution to save time
+    // cost time, and the machine sank to the bottom of the ladder.
+    const blit = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      const cost = (scale) => {
+        renderer.resize(innerWidth, innerHeight, scale, game.field);
+        game.camera.frame(renderer.width, renderer.height, scale);
+        const ctx = renderer.context;
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        const blitOnce = () =>
+          ctx.drawImage(
+            game.world.sketch,
+            game.camera.viewX,
+            game.camera.viewY,
+            game.camera.viewWidth,
+            game.camera.viewHeight,
+            0,
+            0,
+            renderer.width,
+            renderer.height,
+          );
+        for (let i = 0; i < 5; i++) blitOnce();
+        const started = performance.now();
+        for (let i = 0; i < 30; i++) blitOnce();
+        ctx.getImageData(0, 0, 1, 1); // flush, so the number means something
+        return (performance.now() - started) / 30;
+      };
+      const fractional = cost(0.7);
+      const oneToOne = cost(1);
+      renderer.resize(innerWidth, innerHeight, 1, game.field);
+      return { fractional, oneToOne };
+    });
+
+    suite.atMost(
+      +(blit.oneToOne / blit.fractional).toFixed(2),
+      1,
+      'a one-to-one world blit is no slower than a fractional one',
+    );
+    suite.equal(pencil_scale_ladder_ok(await game.evaluate((p) => p.perf.snapshot())), true,
+      'the render scale never exceeds 1');
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();
   }
   return suite;
+}
+
+/** The ladder must not offer a scale above 1: an upscaled blit is the worst case. */
+function pencil_scale_ladder_ok(snapshot) {
+  return snapshot.maxScale <= 1;
 }

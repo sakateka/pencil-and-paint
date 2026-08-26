@@ -113,7 +113,7 @@ export class Renderer {
     const { camera, world, field, walker } = scene;
     const { ctx, scale } = this;
 
-    camera.frame(this.width, this.height);
+    camera.frame(this.width, this.height, scale);
 
     const centreX = camera.toScreenX(walker.x);
     const centreY = camera.toScreenY(walker.y - 14);
