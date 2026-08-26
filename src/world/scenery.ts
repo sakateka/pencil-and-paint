@@ -207,22 +207,34 @@ export function makeFlower(x: number, y: number): Scenery {
 }
 
 /**
- * A run of post-and-rail fence. `height` lets the same fence serve as stock
- * railing round a paddock or as low palings round a vegetable plot.
+ * A run of post-and-rail fence following a path.
+ *
+ * Posts are spaced evenly along the whole path rather than per segment, so a
+ * boundary that bends does not bunch its posts up at every corner. The rails
+ * simply follow the posts, which is how the bends read.
  */
-export function makeFence(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  height = 32,
-): Scenery {
-  const count = Math.max(2, Math.round(Math.hypot(x2 - x1, y2 - y1) / 34));
-  const posts: Point[] = [];
-  for (let i = 0; i <= count; i++) {
-    const t = i / count;
-    posts.push([lerp(x1, x2, t) + rr(-1.5, 1.5), lerp(y1, y2, t) + rr(-1.5, 1.5)]);
+export function makeFenceRun(path: Point[], height = 32): Scenery {
+  const SPACING = 34;
+  const posts: Point[] = [[path[0][0] + rr(-1.5, 1.5), path[0][1] + rr(-1.5, 1.5)]];
+
+  let carried = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1];
+    const b = path[i];
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let travelled = SPACING - carried;
+    while (travelled <= length) {
+      const t = travelled / length;
+      posts.push([
+        lerp(a[0], b[0], t) + rr(-1.5, 1.5),
+        lerp(a[1], b[1], t) + rr(-1.5, 1.5),
+      ]);
+      travelled += SPACING;
+    }
+    carried = length - (travelled - SPACING);
   }
+  const last = path[path.length - 1];
+  posts.push([last[0] + rr(-1.5, 1.5), last[1] + rr(-1.5, 1.5)]);
 
   const RAIL_HEIGHTS = [height * 0.44, height * 0.75];
   const POST_HEIGHT = height;
@@ -230,11 +242,12 @@ export function makeFence(
   return {
     // Deliberately not solid: a paddock you cannot walk into is a paddock you
     // never see the inside of.
-    y: Math.max(y1, y2),
+    y: posts.reduce((lowest, p) => Math.max(lowest, p[1]), -Infinity),
     draw(ctx, medium) {
       if (medium === 'color') {
         ctx.strokeStyle = FENCE;
         ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         for (const offset of RAIL_HEIGHTS) {
           ctx.lineWidth = 3.5;
           ctx.beginPath();
@@ -255,6 +268,7 @@ export function makeFence(
       isolate(ctx, () => {
         ctx.strokeStyle = PENCIL;
         ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         ctx.globalAlpha = 0.5;
         for (const offset of RAIL_HEIGHTS) {
           ctx.lineWidth = 1.1;
@@ -276,6 +290,23 @@ export function makeFence(
       });
     },
   };
+}
+
+/** A straight run between two points. */
+export function makeFence(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  height = 32,
+): Scenery {
+  return makeFenceRun(
+    [
+      [x1, y1],
+      [x2, y2],
+    ],
+    height,
+  );
 }
 
 export function makeLamp(x: number, y: number): Scenery {

@@ -1,4 +1,4 @@
-import { TAU } from '../core/math';
+import { lerp, TAU } from '../core/math';
 import { rng, rnd, rr } from '../core/rng';
 import type { AnimalKind } from '../entities/animalKinds';
 import { makeBarn, makeHouse } from './buildings';
@@ -11,8 +11,16 @@ import {
   makeTrough,
   makeWell,
 } from './farm';
-import { makeBush, makeFence, makeFlower, makeLamp, makeRock, makeTree } from './scenery';
+import {
+  makeBush,
+  makeFenceRun,
+  makeFlower,
+  makeLamp,
+  makeRock,
+  makeTree,
+} from './scenery';
 import { makePond, makeTuft, type Ellipse, type Path, type Tuft } from './terrain';
+import type { Point } from '../core/geom';
 import type { Scenery } from './types';
 
 export const WORLD_WIDTH = 2800;
@@ -42,8 +50,12 @@ export interface Layout {
  * doorways, pastures, the pond. Rejection sampling: propose a spot, take it if
  * nothing has claimed the space.
  */
+type Claim =
+  | { kind: 'circle'; x: number; y: number; r: number }
+  | { kind: 'rect'; left: number; top: number; right: number; bottom: number };
+
 class Sites {
-  private claimed: { x: number; y: number; r: number }[] = [];
+  private claimed: Claim[] = [];
   private pond: Ellipse | null = null;
 
   setPond(pond: Ellipse): void {
@@ -51,7 +63,12 @@ class Sites {
   }
 
   reserve(x: number, y: number, r: number): void {
-    this.claimed.push({ x, y, r });
+    this.claimed.push({ kind: 'circle', x, y, r });
+  }
+
+  /** Whole fields, so nothing scatters inside a fence or grows through a rail. */
+  reserveArea(left: number, top: number, right: number, bottom: number): void {
+    this.claimed.push({ kind: 'rect', left, top, right, bottom });
   }
 
   inPond(x: number, y: number, pad: number): boolean {
@@ -64,7 +81,12 @@ class Sites {
   isFree(x: number, y: number, pad: number): boolean {
     if (x < 60 || y < 90 || x > WORLD_WIDTH - 60 || y > WORLD_HEIGHT - 60) return false;
     if (this.inPond(x, y, pad)) return false;
-    return !this.claimed.some((c) => Math.hypot(c.x - x, c.y - y) < c.r + pad);
+    return !this.claimed.some((c) => {
+      if (c.kind === 'circle') return Math.hypot(c.x - x, c.y - y) < c.r + pad;
+      return (
+        x > c.left - pad && x < c.right + pad && y > c.top - pad && y < c.bottom + pad
+      );
+    });
   }
 
   /** Try `attempts` times to find a clear spot. */
@@ -96,44 +118,94 @@ const CHICKEN_RUN: Plot = { left: 2200, right: 2430, top: 1290, bottom: 1420 };
  */
 const GARDEN: Plot = { left: 1750, right: 2050, top: 1060, bottom: 1180 };
 
+type Side = 'top' | 'right' | 'bottom' | 'left';
+
+/** Which way is out of the plot, per edge. */
+const OUTWARD: Record<Side, Point> = {
+  top: [0, -1],
+  right: [1, 0],
+  bottom: [0, 1],
+  left: [-1, 0],
+};
+
 /**
  * Fence a plot in, leaving one gap to walk through.
  *
- * Every run shares its corner coordinates with its neighbours, so the rails
- * meet instead of almost meeting — which is what made the old paddock look like
- * it had been assembled by someone in a hurry.
+ * The boundary is not the rectangle it is described by. Posts are walked round
+ * the perimeter and pushed in and out by a slow wave, so the enclosed ground
+ * bulges and pinches the way a field does when someone paced it out and drove
+ * the posts by eye. A surveyed rectangle looks like a spreadsheet.
+ *
+ * The wave is a function of distance travelled round the perimeter, so it stays
+ * continuous across corners rather than resetting at each one.
  */
 function enclose(
   into: Scenery[],
+  sites: Sites,
   plot: Plot,
   options: {
-    gate: { side: 'top' | 'bottom' | 'left' | 'right'; from: number; to: number };
+    gate: { side: Side; from: number; to: number };
     height?: number;
+    /** How far the boundary may wander from the nominal rectangle. */
+    bow?: number;
   },
 ): void {
   const { left, right, top, bottom } = plot;
   const { gate, height } = options;
+  const bow = options.bow ?? 10;
+  // A different starting phase per plot, so no two fields bend alike.
+  const phase = left * 0.0031 + top * 0.0017;
 
-  const run = (x1: number, y1: number, x2: number, y2: number) => {
-    if (Math.hypot(x2 - x1, y2 - y1) > 8) into.push(makeFence(x1, y1, x2, y2, height));
-  };
+  const edges: { from: Point; to: Point; side: Side }[] = [
+    { from: [left, top], to: [right, top], side: 'top' },
+    { from: [right, top], to: [right, bottom], side: 'right' },
+    { from: [right, bottom], to: [left, bottom], side: 'bottom' },
+    { from: [left, bottom], to: [left, top], side: 'left' },
+  ];
 
-  // Horizontal edges are split by a gate given in x; vertical ones in y.
-  const horizontal = (y: number, side: 'top' | 'bottom') => {
-    if (gate.side !== side) return run(left, y, right, y);
-    run(left, y, gate.from, y);
-    run(gate.to, y, right, y);
-  };
-  const vertical = (x: number, side: 'left' | 'right') => {
-    if (gate.side !== side) return run(x, top, x, bottom);
-    run(x, top, x, gate.from);
-    run(x, gate.to, x, bottom);
-  };
+  const boundary: { point: Point; side: Side; along: number }[] = [];
+  let travelled = 0;
+  for (const edge of edges) {
+    const length = Math.hypot(edge.to[0] - edge.from[0], edge.to[1] - edge.from[1]);
+    const steps = Math.max(2, Math.round(length / 55));
+    const [nx, ny] = OUTWARD[edge.side];
+    for (let i = 0; i < steps; i++) {
+      const t = i / steps;
+      const x = lerp(edge.from[0], edge.to[0], t);
+      const y = lerp(edge.from[1], edge.to[1], t);
+      const wander =
+        Math.sin(travelled * 0.013 + phase) * bow +
+        Math.sin(travelled * 0.034 + phase * 1.7) * bow * 0.45;
+      boundary.push({
+        point: [x + nx * wander, y + ny * wander],
+        side: edge.side,
+        along: edge.side === 'top' || edge.side === 'bottom' ? x : y,
+      });
+      travelled += length / steps;
+    }
+  }
 
-  horizontal(top, 'top');
-  horizontal(bottom, 'bottom');
-  vertical(left, 'left');
-  vertical(right, 'right');
+  const gateLow = Math.min(gate.from, gate.to);
+  const gateHigh = Math.max(gate.from, gate.to);
+  const inGate = (p: (typeof boundary)[number]) =>
+    p.side === gate.side && p.along >= gateLow && p.along <= gateHigh;
+
+  // Rotate so the run begins just past the gate, then take everything up to it.
+  const n = boundary.length;
+  let startAt = boundary.findIndex((p, i) => !inGate(p) && inGate(boundary[(i - 1 + n) % n]));
+  if (startAt < 0) startAt = 0;
+
+  const run: Point[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = boundary[(startAt + i) % n];
+    if (inGate(p)) break;
+    run.push(p.point);
+  }
+  if (run.length >= 2) into.push(makeFenceRun(run, height));
+
+  // Claim the field itself. Otherwise a tree scatters onto the boundary and
+  // grows straight through the rails.
+  sites.reserveArea(left - bow, top - bow, right + bow, bottom + bow);
 }
 
 const HOUSES: readonly [number, number, number, number][] = [
@@ -216,7 +288,7 @@ export function buildLayout(): Layout {
   // The paddock: a closed rectangle with one gate, under the barn door so the
   // stock have somewhere to be driven to. Corners share coordinates, so the
   // rails actually meet.
-  enclose(scenery, PADDOCK, { gate: { side: 'top', from: 2120, to: 2240 } });
+  enclose(scenery, sites, PADDOCK, { gate: { side: 'top', from: 2120, to: 2240 } });
 
   scenery.push(makeHaystack(2585, 590, 1));
   scenery.push(makeHayBale(1935, 610, 1));
@@ -232,15 +304,15 @@ export function buildLayout(): Layout {
 
   // The south-west pasture, drawn round the herds that actually live in it
   // rather than as two rails ending in mid-air.
-  enclose(scenery, SW_PASTURE, { gate: { side: 'top', from: 640, to: 760 } });
+  enclose(scenery, sites, SW_PASTURE, { gate: { side: 'top', from: 640, to: 760 } });
   scenery.push(makeHayBale(700, 1640, 0.95));
 
   // A chicken run tucked against the south-east cottage.
-  enclose(scenery, CHICKEN_RUN, { gate: { side: 'left', from: 1320, to: 1380 }, height: 24 });
+  enclose(scenery, sites, CHICKEN_RUN, { gate: { side: 'left', from: 1320, to: 1380 }, height: 24, bow: 5 });
 
   // The vegetable garden, with the scarecrow standing in the middle of it
   // where a scarecrow belongs.
-  enclose(scenery, GARDEN, { gate: { side: 'bottom', from: 1870, to: 1930 }, height: 22 });
+  enclose(scenery, sites, GARDEN, { gate: { side: 'bottom', from: 1870, to: 1930 }, height: 22, bow: 4 });
   scenery.push(makeGardenBed(1825, 1105, 110, 28, 'carrot'));
   scenery.push(makeGardenBed(1975, 1105, 110, 28, 'cabbage'));
   scenery.push(makeGardenBed(1825, 1165, 110, 28, 'onion'));
