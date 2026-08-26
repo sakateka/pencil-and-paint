@@ -65,6 +65,24 @@ async function boot(): Promise<void> {
     startButton.textContent = startLabel;
   }
   // Read this off the device: it says which phase of the bake was slow.
+  /*
+   * Keep the report across loads.
+   *
+   * A slow load is exactly the one that never gets far enough to show its own
+   * numbers — reload to look and you measure the fast load instead. So each run
+   * stores its report and displays the one before it, and the slow load leaves
+   * evidence even if you never see it happen.
+   */
+  const remember = (line: string) => {
+    try {
+      const previous = localStorage.getItem('pencil:lastLoad');
+      localStorage.setItem('pencil:lastLoad', line);
+      return previous;
+    } catch {
+      return null; // private browsing, or storage disabled
+    }
+  };
+
   if (stamp) {
     const nav = performance.getEntriesByType('navigation')[0] as
       | PerformanceNavigationTiming
@@ -73,10 +91,14 @@ async function boot(): Promise<void> {
       .getEntriesByType('paint')
       .find((e) => e.name === 'first-contentful-paint');
     const ms = (v: number | undefined) => (v === undefined ? '?' : v.toFixed(0));
-    stamp.textContent =
-      `${BUILD_ID}\n${world.bakeSummary}\n` +
+    const thisLoad =
       `grain ${grainMs.toFixed(0)}ms · script ${ms(nav && nav.domContentLoadedEventStart - nav.responseEnd)}` +
-      ` · net ${ms(nav?.responseEnd)} · paint ${ms(paint?.startTime)} · ready ${performance.now().toFixed(0)}`;
+      ` · net ${ms(nav?.responseEnd)} · paint ${ms(paint?.startTime)} · ready ${performance.now().toFixed(0)}` +
+      ` · wall ${(Date.now() - performance.timeOrigin).toFixed(0)}`;
+    const lastLoad = remember(thisLoad);
+    stamp.textContent =
+      `${BUILD_ID}\n${world.bakeSummary}\n${thisLoad}` +
+      (lastLoad ? `\nprevious load: ${lastLoad}` : '');
   }
   const renderer = new Renderer(canvas);
   const perf = new Performance();
