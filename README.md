@@ -1,5 +1,7 @@
 # Pencil & Paint
 
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/75fc5c60-1826-460f-8daa-de2c61141f36" />
+
 A small browser game about a person who carries colour with them.
 
 The world is drawn twice: once as a flat colour illustration, once in graphite —
