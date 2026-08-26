@@ -195,26 +195,4 @@ export class ColorField {
     ctx.globalCompositeOperation = 'source-over';
     ctx.restore();
   }
-
-  /** A faint pencil line where the colour gives out, so the edge reads as drawn. */
-  strokeRim(
-    ctx: CanvasRenderingContext2D,
-    t: number,
-    centreX: number,
-    centreY: number,
-    radius: number,
-  ): void {
-    ctx.save();
-    ctx.strokeStyle = 'rgba(46,43,38,.20)';
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    for (let i = 0; i <= RIM_SEGMENTS; i++) {
-      const a = (i / RIM_SEGMENTS) * TAU;
-      const k = rimScale(a, t) * 0.97;
-      ctx.lineTo(centreX + Math.cos(a) * radius * k, centreY + Math.sin(a) * radius * k);
-    }
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
-  }
 }

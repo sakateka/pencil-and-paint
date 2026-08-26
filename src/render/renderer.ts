@@ -131,7 +131,7 @@ export class Renderer {
   }
 
   render(scene: Scene): void {
-    const { camera, world, field, walker } = scene;
+    const { camera, world, walker } = scene;
     const { ctx, scale } = this;
 
     camera.frame(this.width, this.height, scale);
@@ -164,7 +164,6 @@ export class Renderer {
         }),
       );
       this.compositeColor(scene, centreX, centreY, radius);
-      field.strokeRim(ctx, scene.elapsed, centreX, centreY, radius);
     }
 
     isolate(ctx, () => {
