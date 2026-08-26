@@ -7,16 +7,16 @@ import { drawPot, type Pot } from '../entities/pots';
 import type { Medium } from '../media/medium';
 import type { World } from '../world/world';
 import type { Camera } from './camera';
-import type { ColorField } from './colorField';
+import type { ColorField, DirtyRect } from './colorField';
 
 /**
- * The widest the colour blob and its trail can be, in CSS pixels.
+ * How big the scratch surfaces start, in CSS pixels.
  *
- * The base radius plus every paint pot, plus the pulse and the trail's reach.
- * Once the ending floods the screen the renderer takes the `flooded` path and
- * does not use these surfaces at all.
+ * Enough for the blob and its trail during ordinary play. It is a starting
+ * point, not a limit — `ensureScratch` grows them if the colour ever needs
+ * more, which it does while the ending floods outwards.
  */
-const MAX_BLOB_SPAN = 1100;
+const INITIAL_SCRATCH_SPAN = 1100;
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -117,8 +117,8 @@ export class Renderer {
 
     // The scratch surfaces only ever hold the dirty rectangle, so they are
     // allocated to that rather than to the window.
-    const scratchW = Math.min(width, MAX_BLOB_SPAN) * scale;
-    const scratchH = Math.min(height, MAX_BLOB_SPAN) * scale;
+    const scratchW = Math.min(width, INITIAL_SCRATCH_SPAN) * scale;
+    const scratchH = Math.min(height, INITIAL_SCRATCH_SPAN) * scale;
     this.temp.canvas.width = Math.max(1, Math.round(scratchW));
     this.temp.canvas.height = Math.max(1, Math.round(scratchH));
     field.resize(scratchW, scratchH);
@@ -214,6 +214,11 @@ export class Renderer {
     const dirty = field.computeDirty(camera, centreX, centreY, radius, this.width, this.height);
     if (dirty.empty) return;
 
+    // The blob outgrows the scratch while the ending floods outwards. Without
+    // this the composite is silently clipped to whatever the surfaces can hold,
+    // and a wide stripe of the screen simply never gets its colour.
+    this.ensureScratch(dirty, field);
+
     this.time('mask', () =>
       field.build(scene.elapsed, camera, centreX, centreY, radius, scale),
     );
@@ -276,6 +281,25 @@ export class Renderer {
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     this.stages.composite =
       this.stages.composite * 0.9 + (performance.now() - compositeStarted) * 0.1;
+  }
+
+  /**
+   * Make sure the scratch surfaces can hold the dirty rectangle.
+   *
+   * Grows straight to the full viewport rather than creeping up frame by frame:
+   * the only thing that needs more than the initial span is the ending, and it
+   * is heading for the whole screen anyway.
+   */
+  private ensureScratch(dirty: DirtyRect, field: ColorField): void {
+    const needW = Math.ceil(dirty.width * this.scale) + 2;
+    const needH = Math.ceil(dirty.height * this.scale) + 2;
+    if (this.temp.canvas.width >= needW && this.temp.canvas.height >= needH) return;
+
+    const fullW = Math.max(needW, Math.round(this.width * this.scale));
+    const fullH = Math.max(needH, Math.round(this.height * this.scale));
+    this.temp.canvas.width = fullW;
+    this.temp.canvas.height = fullH;
+    field.resize(fullW, fullH);
   }
 
   /**

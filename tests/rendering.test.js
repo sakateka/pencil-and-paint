@@ -354,6 +354,55 @@ export async function run(url) {
     const snapshot = await game.evaluate((p) => p.perf.snapshot());
     suite.equal(snapshot.scale, 1, 'the render scale is one to one');
 
+    // The ending grows the colour past anything ordinary play needs. The
+    // scratch surfaces are sized for ordinary play, so they have to grow with
+    // it — when they did not, the composite was silently clipped to whatever
+    // they could hold and a wide stripe of the screen never got its colour.
+    const flood = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      game.teleport(1300, 1330);
+
+      const reach = () => {
+        const canvas = document.querySelector('#game');
+        const ctx = canvas.getContext('2d');
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const mid = Math.floor(img.height / 2);
+        let left = -1;
+        let right = -1;
+        for (let x = 0; x < img.width; x++) {
+          const i = (mid * img.width + x) * 4;
+          const [r, g, b] = [img.data[i], img.data[i + 1], img.data[i + 2]];
+          if (g > 90 && g > r * 1.15 && g > b * 1.15) {
+            if (left < 0) left = x;
+            right = x;
+          }
+        }
+        const walker = Math.round(game.camera.toScreenX(game.walker.x) * renderer.scale);
+        return { left: walker - left, right: right - walker };
+      };
+
+      const out = [];
+      game.won = true;
+      for (const radius of [700, 1000]) {
+        Object.defineProperty(game, 'maskRadius', { value: radius, configurable: true });
+        renderer.render(game.scene);
+        const r = reach();
+        // Only meaningful while both sides are still short of the screen edge.
+        out.push({ radius, left: r.left, right: r.right });
+      }
+      delete game.maskRadius;
+      game.won = false;
+      return out;
+    });
+
+    const midFlood = flood[0];
+    suite.atMost(
+      Math.abs(midFlood.left - midFlood.right),
+      120,
+      'the flooding colour is not clipped to one side',
+      `left ${midFlood.left}px, right ${midFlood.right}px`,
+    );
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();
