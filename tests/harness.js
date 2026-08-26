@@ -54,11 +54,12 @@ export async function openGame(url, { viewport = { width: 1280, height: 800 }, s
   });
 
   await page.goto(url);
-  await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 20000 });
-  if (start) {
-    await page.click('#startBtn');
-    await page.waitForTimeout(300);
-  }
+  // Nothing heavy runs until the page is touched — see `firstGesture` in
+  // main.ts — so the click comes first and the game appears after it.
+  await page.waitForSelector('#startBtn');
+  await page.click('#startBtn');
+  await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 30000 });
+  if (start) await page.waitForTimeout(300);
 
   return {
     page,

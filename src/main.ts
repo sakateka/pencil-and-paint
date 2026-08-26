@@ -5,6 +5,7 @@ import { installDebugPanel } from './debugPanel';
 import { WALK_CYCLE } from './entities/player';
 import { Game } from './game';
 import { tickBoil } from './media/ink';
+import { yieldToBrowser } from './core/schedule';
 import { GRAIN } from './media/sprites';
 import { Renderer } from './render/renderer';
 import { Input } from './systems/input';
@@ -15,48 +16,66 @@ import { World } from './world/world';
 /** Longest step the simulation will take, so a stall does not teleport anyone. */
 const MAX_STEP = 0.05;
 
+/**
+ * Wait for the first real gesture.
+ *
+ * Firefox on Android freezes a tab that has not been interacted with. Measured
+ * on a device: the load did 945ms of work spread over 100 seconds of wall clock
+ * — `performance.now()` counts only time the page was allowed to run, and it
+ * disagreed with `Date.now()` by 99 seconds. Nothing was slow; the page simply
+ * was not being scheduled, which is also why tapping the button "unstuck" it.
+ *
+ * So no heavy work happens until someone touches the page. After that the tab
+ * is foreground and awake, and the world builds in its own good time.
+ */
+function firstGesture(button: HTMLButtonElement | null): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      button?.removeEventListener('click', done);
+      removeEventListener('keydown', onKey);
+      removeEventListener('pointerdown', done);
+      resolve();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      done();
+    };
+    button?.addEventListener('click', done);
+    addEventListener('keydown', onKey);
+    addEventListener('pointerdown', done);
+  });
+}
+
 async function boot(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('missing #game canvas');
 
+  const stamp = document.querySelector<HTMLElement>('#build');
+  if (stamp) stamp.textContent = BUILD_ID;
+
+  const startButton = document.querySelector<HTMLButtonElement>('#startBtn');
+  const startLabel = startButton?.textContent ?? 'Start walking';
+
+  await firstGesture(startButton);
+  if (startButton) {
+    startButton.setAttribute('aria-busy', 'true');
+    startButton.textContent = 'drawing the valley…';
+  }
+  // Let the label paint before the bake takes the thread.
+  await yieldToBrowser();
+
   /*
    * Encoding the grain to a data URL is a canvas readback plus a PNG encode.
-   * Small, and instant on a desktop — but it sits before first paint, so if a
-   * phone is slow at it the whole page is held back and the title card simply
-   * does not appear. Timed, because a bake of 33ms behind a twenty second wait
-   * means the cost is somewhere other than where I was looking.
+   * Kept here, after the gesture, rather than on the critical path to first
+   * paint.
    */
   const grainStarted = performance.now();
   const grain = document.querySelector<HTMLElement>('#grain');
   if (grain) grain.style.backgroundImage = `url(${GRAIN.toDataURL()})`;
   const grainMs = performance.now() - grainStarted;
 
-  /*
-   * Take the button before the world is built, not after.
-   *
-   * Baking takes seconds on a phone. The title card is painted the whole time —
-   * it is plain HTML — so it is entirely reasonable to press Start, and until
-   * this listener existed that press went nowhere and the game looked dead.
-   * Now it is remembered and honoured the moment the valley is ready.
-   */
-  const stamp = document.querySelector<HTMLElement>('#build');
-  if (stamp) stamp.textContent = BUILD_ID;
-
-  const startButton = document.querySelector<HTMLButtonElement>('#startBtn');
-  const startLabel = startButton?.textContent ?? 'Start walking';
-  let pressedEarly = false;
-  if (startButton) {
-    // Deliberately NOT disabled: a disabled button dispatches no click at all,
-    // so the press this exists to catch would be swallowed.
-    startButton.setAttribute('aria-busy', 'true');
-    startButton.addEventListener('click', () => {
-      pressedEarly = true;
-      startButton.textContent = 'drawing the valley…';
-    });
-  }
-
   const world = await World.generate((fraction) => {
-    if (!startButton || pressedEarly) return;
+    if (!startButton) return;
     startButton.textContent = `drawing the valley… ${Math.round(fraction * 100)}%`;
   });
 
@@ -225,7 +244,7 @@ async function boot(): Promise<void> {
   }
   requestAnimationFrame(frame);
 
-  if (pressedEarly) start();
+  start();
 }
 
 /**

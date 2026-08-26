@@ -21,6 +21,8 @@ export async function run(url) {
     page.on('pageerror', (e) => errors.push(e.message));
     const loadStarted = Date.now();
     await page.goto(url);
+    await page.waitForSelector('#startBtn');
+    await page.click('#startBtn');
 
     await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 60000 });
 
@@ -60,7 +62,7 @@ export async function run(url) {
     await early.goto(url);
     await early.waitForSelector('#startBtn');
     // The button must not be `disabled`: a disabled button dispatches no click,
-    // so the very press this is meant to catch would never be seen.
+    // and the click is what starts the whole thing now.
     const disabled = await early.evaluate(
       () => document.querySelector('#startBtn').disabled,
     );

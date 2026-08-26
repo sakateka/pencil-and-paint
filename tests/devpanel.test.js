@@ -72,7 +72,9 @@ export async function run(url) {
       });
     });
     await page.goto('https://pencil.example.com/');
-    await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 20000 });
+    await page.waitForSelector('#startBtn');
+    await page.click('#startBtn');
+    await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 30000 });
     await page.keyboard.press('`');
     await page.waitForTimeout(150);
 
