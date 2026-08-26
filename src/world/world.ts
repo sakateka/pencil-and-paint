@@ -212,7 +212,7 @@ export class World {
           ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         });
       }
-      const tiles = toTiles(surface, bakeScale);
+      const tiles = await toTiles(surface, bakeScale, breathe);
       onProgress(done + 0.45);
       await breathe();
       return tiles;
@@ -346,8 +346,18 @@ export class World {
   }
 }
 
-/** Slice a baked layer into tiles and release the big canvas. */
-function toTiles(source: Surface, scale: number): Layer {
+/**
+ * Slice a baked layer into tiles and release the big canvas.
+ *
+ * Yields between tiles. Copying six 1024px tiles in one go was half the entire
+ * bake — measured at 91ms of 178ms — and being a single uninterrupted call it
+ * was the longest freeze in the whole load.
+ */
+async function toTiles(
+  source: Surface,
+  scale: number,
+  breathe: () => Promise<void>,
+): Promise<Layer> {
   const pixelWidth = source.canvas.width;
   const pixelHeight = source.canvas.height;
   const columns = Math.ceil(pixelWidth / TILE);
@@ -361,6 +371,7 @@ function toTiles(source: Surface, scale: number): Layer {
       const tile = createSurface(width, height);
       tile.ctx.drawImage(source.canvas, -col * TILE, -row * TILE);
       tiles.push(tile.canvas);
+      await breathe();
     }
   }
 

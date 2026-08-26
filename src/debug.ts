@@ -19,6 +19,15 @@ export interface DebugHandle {
   perf: Performance;
   /** Force a frame outside the rAF loop, for deterministic measurement. */
   renderOnce(): void;
+  /**
+   * Where the world generator's rng finished.
+   *
+   * Every draw during the bake draws jitter from it, so this is a fingerprint
+   * of the whole sequence: if the same calls happened in the same order, it
+   * matches. Unlike sampling pixels it is not disturbed by the paper grain,
+   * which is seeded from Math.random and differs every load.
+   */
+  rngEndState(): number;
 }
 
 declare global {

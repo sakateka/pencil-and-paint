@@ -1,4 +1,5 @@
 import { BUILD_ID } from './buildInfo';
+import { rng } from './core/rng';
 import { exposeForTests } from './debug';
 import { installDebugPanel } from './debugPanel';
 import { WALK_CYCLE } from './entities/player';
@@ -128,6 +129,7 @@ async function boot(): Promise<void> {
     renderer,
     perf,
     renderOnce: () => renderer.render(game.scene),
+    rngEndState: () => rng.seed,
   });
 
   let last = performance.now();
