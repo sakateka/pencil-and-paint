@@ -41,21 +41,20 @@ export async function run(url) {
         }),
     );
 
-    // The stall is the invariant that matters, and it holds regardless of how
-    // quick the machine is. The tick count only proves anything when the build
-    // was long enough to need slicing at all — a machine fast enough to finish
-    // within a single tick has nothing to demonstrate.
+    // Measured against the build's own duration rather than a fixed tick count.
+    // Were generation synchronous the single stall would be the whole build; if
+    // it is sliced properly the worst one is a small part of it. That holds on a
+    // fast machine and a slow one alike, where counting timer callbacks does not
+    // — they coalesce, and the count depends on how long the build happened to
+    // take.
+    const budget = Math.max(60, build.total * 0.6);
     suite.atMost(
       build.longestStall,
-      400,
-      'no single slice blocks the page for long',
+      budget,
+      'no slice blocks the page for anything like the whole build',
       `longest ${build.longestStall}ms of ${build.total}ms total`,
     );
-    if (build.total > 100) {
-      suite.atLeast(build.ticks, 3, 'the event loop runs while the world is baked');
-    } else {
-      suite.ok(true, 'world built inside one tick, nothing to slice', `${build.total}ms`);
-    }
+    suite.atMost(build.longestStall, 400, 'and never for long in absolute terms');
     suite.equal(errors.length, 0, 'no page errors', errors.join(' | '));
     await page.close();
 
