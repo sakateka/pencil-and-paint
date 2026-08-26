@@ -5,7 +5,14 @@ import type { Medium } from '../media/medium';
 import { withoutGroundShadows } from '../media/pencil';
 import { GRAIN } from '../media/sprites';
 import { buildLayout, WORLD_HEIGHT, WORLD_WIDTH, type AnimalSpawn } from './layout';
-import { drawGround, drawPath, drawTufts, type Ellipse } from './terrain';
+import {
+  drawGroundBase,
+  drawGroundDetail,
+  drawPath,
+  drawTufts,
+  GROUND_DETAIL,
+  type Ellipse,
+} from './terrain';
 import type { Collider, Scenery } from './types';
 
 /**
@@ -164,11 +171,28 @@ export class World {
       // the whole valley onto a smaller sheet.
       ctx.setTransform(bakeScale, 0, 0, bakeScale, 0, 0);
       ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-      drawGround(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT);
+      drawGroundBase(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT);
       await breathe();
-      for (const path of layout.paths) drawPath(ctx, path, medium);
-      drawTufts(ctx, layout.tufts, medium);
-      await breathe();
+
+      // Sliced, all of it. Drawn in one call each, the ground detail and the
+      // fifteen hundred grass tufts were the longest uninterruptible stretches
+      // of the build — measured at 84ms of a 110ms bake, which is a visible
+      // freeze on a phone.
+      const detail = GROUND_DETAIL[medium];
+      for (let i = 0; i < detail; i += 20) {
+        drawGroundDetail(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT, i, Math.min(i + 20, detail));
+        await breathe();
+      }
+
+      for (const path of layout.paths) {
+        drawPath(ctx, path, medium);
+        await breathe();
+      }
+
+      for (let i = 0; i < layout.tufts.length; i += 200) {
+        drawTufts(ctx, layout.tufts, medium, i, Math.min(i + 200, layout.tufts.length));
+        await breathe();
+      }
 
       for (let i = 0; i < scenery.length; i++) {
         rng.replay(seeds[i], () => scenery[i].draw(ctx, medium));

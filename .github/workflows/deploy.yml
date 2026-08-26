@@ -45,9 +45,17 @@ jobs:
       # by accident.
       - run: npx playwright install chromium
 
-      # System libraries live on the runner, not in the cache, so they are
-      # installed every time regardless of whether the browser was restored.
-      - run: npx playwright install-deps chromium
+      # System libraries are apt packages on the runner image, so there is
+      # nothing for the cache to restore and running install-deps every time
+      # costs an apt update for what is usually a no-op — GitHub's Ubuntu image
+      # already carries what Chromium needs. So: try launching, and only reach
+      # for apt if that actually fails.
+      - id: browser-check
+        continue-on-error: true
+        run: node -e "require('playwright').chromium.launch().then(b => b.close())"
+
+      - if: steps.browser-check.outcome == 'failure'
+        run: npx playwright install-deps chromium
 
       # Typechecks, then bundles to dist/.
       - run: npm run build

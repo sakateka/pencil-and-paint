@@ -205,7 +205,10 @@ export function drawPath(ctx: CanvasRenderingContext2D, path: Path, medium: Medi
   });
 }
 
-export function drawGround(
+/**
+ * The flat wash the world sits on. Cheap, and always drawn in one go.
+ */
+export function drawGroundBase(
   ctx: CanvasRenderingContext2D,
   medium: Medium,
   width: number,
@@ -214,7 +217,39 @@ export function drawGround(
   if (medium === 'color') {
     ctx.fillStyle = '#83b56a';
     ctx.fillRect(0, 0, width, height);
-    for (let i = 0; i < 90; i++) {
+    return;
+  }
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, width, height);
+  isolate(ctx, () => {
+    const pattern = ctx.createPattern(GRAIN, 'repeat');
+    if (!pattern) return;
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = pattern;
+    ctx.fillRect(0, 0, width, height);
+  });
+}
+
+/** How many detail marks the ground has, so the caller can slice the work. */
+export const GROUND_DETAIL = { color: 90, sketch: 150 } as const;
+
+/**
+ * Meadow patches, or the faint construction strokes of a hand warming up.
+ *
+ * Takes a range so baking can be cut into slices: drawn in one call this was
+ * the longest uninterruptible stretch of the whole build, which on a phone is
+ * a visible freeze.
+ */
+export function drawGroundDetail(
+  ctx: CanvasRenderingContext2D,
+  medium: Medium,
+  width: number,
+  height: number,
+  from: number,
+  to: number,
+): void {
+  if (medium === 'color') {
+    for (let i = from; i < to; i++) {
       const x = rr(0, width);
       const y = rr(0, height);
       const r = rr(70, 260);
@@ -230,21 +265,11 @@ export function drawGround(
     return;
   }
 
-  ctx.fillStyle = PAPER;
-  ctx.fillRect(0, 0, width, height);
-  isolate(ctx, () => {
-    const pattern = ctx.createPattern(GRAIN, 'repeat');
-    if (pattern) {
-      ctx.globalAlpha = 0.55;
-      ctx.fillStyle = pattern;
-      ctx.fillRect(0, 0, width, height);
-    }
-  });
   // Faint construction strokes, like a hand warming up on the page.
   isolate(ctx, () => {
     ctx.strokeStyle = PENCIL;
     ctx.lineCap = 'round';
-    for (let i = 0; i < 150; i++) {
+    for (let i = from; i < to; i++) {
       const x = rr(0, width);
       const y = rr(0, height);
       const len = rr(60, 300);
@@ -265,10 +290,13 @@ export function makeTuft(x: number, y: number): Tuft {
   return { x, y, blades, colour: pick(GREENS) };
 }
 
+/** Also takes a range, for the same reason as the ground detail. */
 export function drawTufts(
   ctx: CanvasRenderingContext2D,
   tufts: readonly Tuft[],
   medium: Medium,
+  from = 0,
+  to = tufts.length,
 ): void {
   isolate(ctx, () => {
     ctx.lineCap = 'round';
@@ -280,7 +308,8 @@ export function drawTufts(
       ctx.lineWidth = 0.85;
       ctx.globalAlpha = 0.26;
     }
-    for (const tuft of tufts) {
+    for (let i = from; i < to; i++) {
+      const tuft = tufts[i];
       if (medium === 'color') ctx.strokeStyle = tuft.colour;
       for (const [dx, dy] of tuft.blades) {
         const originX = medium === 'color' ? tuft.x : tuft.x + rr(-0.5, 0.5);
