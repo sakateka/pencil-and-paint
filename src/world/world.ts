@@ -1,6 +1,7 @@
 import { createSurface, isolate, type Surface } from '../core/canvas';
 import { boundsOverlap, type Bounds } from '../core/geom';
 import { rng } from '../core/rng';
+import { yieldToBrowser } from '../core/schedule';
 import type { Medium } from '../media/medium';
 import { withoutGroundShadows } from '../media/pencil';
 import { GRAIN } from '../media/sprites';
@@ -157,7 +158,7 @@ export class World {
       // outside: this is the work actually done without yielding, where a timer
       // gap also contains however long the OS felt like descheduling us.
       if (ran > longestSlice) longestSlice = ran;
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await yieldToBrowser();
       sliceStarted = performance.now();
     };
 
