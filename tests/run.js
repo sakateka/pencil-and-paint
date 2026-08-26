@@ -6,8 +6,9 @@ import { run as stillness } from './stillness.test.js';
 import { run as progression } from './progression.test.js';
 import { run as rendering } from './rendering.test.js';
 import { run as devpanel } from './devpanel.test.js';
+import { run as startup } from './startup.test.js';
 
-const SUITES = [collision, stillness, progression, rendering, devpanel];
+const SUITES = [startup, collision, stillness, progression, rendering, devpanel];
 
 /**
  * Runs every suite against the production build, served over HTTP the way a

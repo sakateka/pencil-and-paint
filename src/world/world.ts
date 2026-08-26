@@ -88,9 +88,29 @@ export class World {
     this.animalSpawns = animalSpawns;
   }
 
-  /** Lay the world out and bake both media. Runs once, costs a few hundred ms. */
-  static generate(): World {
+  /**
+   * Lay the world out and bake both media.
+   *
+   * Asynchronous, and deliberately so. Baking hatches every blade of grass in a
+   * 2800x2000 world, twice; on a desktop that is a few hundred milliseconds, on
+   * a phone it is seconds. Done in one synchronous call it locks the main
+   * thread for all of them — the title card is painted but nothing is listening,
+   * so the game looks frozen and the Start button does nothing.
+   *
+   * So it breathes: work is chopped into slices of about twelve milliseconds and
+   * the event loop gets a turn between them. `onProgress` runs from 0 to 1.
+   */
+  static async generate(onProgress: (fraction: number) => void = () => {}): Promise<World> {
+    // Hand back to the browser if this slice has run long enough.
+    let sliceStarted = performance.now();
+    const breathe = async (): Promise<void> => {
+      if (performance.now() - sliceStarted < 12) return;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      sliceStarted = performance.now();
+    };
+
     const layout = buildLayout();
+    await breathe();
 
     // Depth order: further up the page is further away.
     const scenery = [...layout.scenery].sort((a, b) => a.y - b.y);
@@ -106,17 +126,24 @@ export class World {
      * browser that refuses the allocation gives you a blank screen rather than
      * an error.
      */
-    const bakeLayer = (medium: Medium): Layer => {
+    const bakeLayer = async (medium: Medium, done: number): Promise<Layer> => {
       const surface = createSurface(WORLD_WIDTH, WORLD_HEIGHT);
       const { ctx } = surface;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
       drawGround(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT);
+      await breathe();
       for (const path of layout.paths) drawPath(ctx, path, medium);
       drawTufts(ctx, layout.tufts, medium);
-      scenery.forEach((piece, i) => {
-        rng.replay(seeds[i], () => piece.draw(ctx, medium));
-      });
+      await breathe();
+
+      for (let i = 0; i < scenery.length; i++) {
+        rng.replay(seeds[i], () => scenery[i].draw(ctx, medium));
+        if ((i & 15) === 0) {
+          onProgress(done + (0.45 * (i + 1)) / scenery.length);
+          await breathe();
+        }
+      }
 
       // A whisper of grain over the colour too, so both media sit on one sheet.
       if (medium === 'color') {
@@ -128,10 +155,17 @@ export class World {
           ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         });
       }
-      return toTiles(surface);
+      const tiles = toTiles(surface);
+      onProgress(done + 0.45);
+      await breathe();
+      return tiles;
     };
 
-    const layers = { color: bakeLayer('color'), sketch: bakeLayer('sketch') };
+    const layers = {
+      color: await bakeLayer('color', 0.05),
+      sketch: await bakeLayer('sketch', 0.5),
+    };
+    onProgress(1);
 
     const colliders = scenery.flatMap((piece) => piece.colliders ?? []);
 

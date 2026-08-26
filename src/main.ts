@@ -13,7 +13,7 @@ import { World } from './world/world';
 /** Longest step the simulation will take, so a stall does not teleport anyone. */
 const MAX_STEP = 0.05;
 
-function boot(): void {
+async function boot(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('missing #game canvas');
 
@@ -21,7 +21,36 @@ function boot(): void {
   const grain = document.querySelector<HTMLElement>('#grain');
   if (grain) grain.style.backgroundImage = `url(${GRAIN.toDataURL()})`;
 
-  const world = World.generate();
+  /*
+   * Take the button before the world is built, not after.
+   *
+   * Baking takes seconds on a phone. The title card is painted the whole time —
+   * it is plain HTML — so it is entirely reasonable to press Start, and until
+   * this listener existed that press went nowhere and the game looked dead.
+   * Now it is remembered and honoured the moment the valley is ready.
+   */
+  const startButton = document.querySelector<HTMLButtonElement>('#startBtn');
+  const startLabel = startButton?.textContent ?? 'Start walking';
+  let pressedEarly = false;
+  if (startButton) {
+    // Deliberately NOT disabled: a disabled button dispatches no click at all,
+    // so the press this exists to catch would be swallowed.
+    startButton.setAttribute('aria-busy', 'true');
+    startButton.addEventListener('click', () => {
+      pressedEarly = true;
+      startButton.textContent = 'drawing the valley…';
+    });
+  }
+
+  const world = await World.generate((fraction) => {
+    if (!startButton || pressedEarly) return;
+    startButton.textContent = `drawing the valley… ${Math.round(fraction * 100)}%`;
+  });
+
+  if (startButton) {
+    startButton.removeAttribute('aria-busy');
+    startButton.textContent = startLabel;
+  }
   const renderer = new Renderer(canvas);
   const perf = new Performance();
   let showPerf = false;
@@ -124,6 +153,8 @@ function boot(): void {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+
+  if (pressedEarly) start();
 }
 
 /**
@@ -174,7 +205,7 @@ function chime(index: number): void {
  * holding the phone can actually read it.
  */
 try {
-  boot();
+  await boot();
 } catch (error) {
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   const note = document.createElement('pre');
