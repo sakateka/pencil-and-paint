@@ -4,32 +4,33 @@
  */
 
 /**
- * Only 1, or a clean half.
+ * The render scale is fixed at 1, and this is load-bearing.
  *
- * The world is a bitmap authored at 1x and blitting it is the biggest thing in
- * the frame. At scale 1 that blit is one-to-one — source pixel to canvas pixel,
- * the fast path — and the compositor does any device-pixel scaling for free.
- * At any other ratio the scaling moves *into* the canvas and becomes a
- * fractional resample of a 2800x2000 source, which is enormously slower.
+ * The world is a bitmap authored at 1x, and blitting it is the biggest thing in
+ * the frame. Only a one-to-one blit is cheap: source pixel to canvas pixel, no
+ * resampling, and the compositor handles any device-pixel scaling for free.
+ * Measured at 1440x900 on a dpr-2 display, per world blit:
  *
- * So the old ladder was actively harmful: dropping to 0.7 to save fill rate
- * turned a free blit into a resampled one, which made frames slower, which
- * dropped the scale again. Measured on a dpr-2 machine stuck at 0.7, the world
- * blit alone cost 14.5ms a frame.
+ *   scale 0.5   0.97 ms
+ *   scale 1     0.81 ms
+ *   scale 1.5   8.88 ms
+ *   scale 2    15.89 ms
  *
- * A half is kept as the one fallback, because 2:1 is the cheapest resample
- * there is and it quarters the fill rate for a machine that truly needs it.
+ * So there is nothing above 1 worth having — an upscale cannot invent detail
+ * the bitmap does not hold, and it costs twenty times as much. And there is
+ * nothing below 1 worth having either: half resolution is *slower* than full,
+ * because it turns a copy into a resample.
+ *
+ * This used to be an adaptive ladder, which was worse than useless. Every rung
+ * was slower than standing still, so a machine that dipped would drop a notch
+ * to save time, lose more, and sink to the bottom — arriving at a quarter of
+ * the linear resolution AND a slower frame. Warm-up frames were enough to start
+ * it off. If the frame is too slow at 1:1, resolution is not the lever.
  */
-const SCALES = [0.5, 1] as const;
+const RENDER_SCALE = 1;
 
 /** Frames slower than this are counted as dropped (a 60Hz frame is 16.7ms). */
 const SLOW_FRAME_MS = 26;
-
-/** Frames per adaptation window. */
-const WINDOW = 90;
-
-/** Drop a notch if more than this many frames in a window were slow. */
-const SLOW_BUDGET = 18;
 
 export interface PerfSnapshot {
   fps: number;
@@ -43,34 +44,17 @@ export interface PerfSnapshot {
 }
 
 export class Performance {
-  private index: number;
-  private readonly ceiling: number;
-  private readonly startIndex: number;
-
   private frameAverage = 0;
   private drawAverage = 0;
   private slowFrames = 0;
   private windowFrames = 0;
-  private settleUntil = 0;
-  private goodWindows = 0;
 
-  constructor() {
-    // 1 is both the ceiling and the starting point: there is nothing above it
-    // worth having, because the world bitmap has no detail above 1x anyway.
-    this.ceiling = SCALES.length - 1;
-    this.index = this.ceiling;
-    this.startIndex = this.index;
-  }
+  readonly scale = RENDER_SCALE;
 
-  get scale(): number {
-    return SCALES[Math.min(this.index, this.ceiling)];
-  }
-
-  /** Give the first seconds of play a pass; warm-up is not a slow machine. */
-  pardonWarmUp(elapsed: number): void {
+  /** Clear the counters; warm-up is not a measurement. */
+  pardonWarmUp(): void {
     this.windowFrames = 0;
     this.slowFrames = 0;
-    this.settleUntil = elapsed + 2;
   }
 
   recordDraw(ms: number): void {
@@ -78,46 +62,19 @@ export class Performance {
   }
 
   /**
-   * Adapt on real frame time, not on how long the canvas calls took to return.
-   * Canvas work is queued and finishes on the GPU later, so timing the calls
-   * under-reports the true cost and misses GC pauses entirely — which is exactly
-   * the kind of stutter you feel but a call-timer never sees.
-   *
-   * Returns true if the resolution changed and the canvases need resizing.
+   * Real frame time, not how long the canvas calls took to return — canvas work
+   * is queued and finishes on the GPU later, so timing the calls under-reports
+   * and misses GC pauses entirely.
    */
-  recordFrame(dtMs: number, elapsed: number): boolean {
-    if (dtMs < 60) {
-      // Anything longer is a tab-switch or a breakpoint, not a slow frame.
-      this.frameAverage = this.frameAverage ? this.frameAverage * 0.92 + dtMs * 0.08 : dtMs;
-      if (dtMs > SLOW_FRAME_MS) this.slowFrames++;
-    }
+  recordFrame(dtMs: number): void {
+    if (dtMs >= 60) return; // a tab-switch or a breakpoint, not a slow frame
+    this.frameAverage = this.frameAverage ? this.frameAverage * 0.92 + dtMs * 0.08 : dtMs;
+    if (dtMs > SLOW_FRAME_MS) this.slowFrames++;
     this.windowFrames++;
-
-    if (elapsed < 4 || this.windowFrames < WINDOW || elapsed < this.settleUntil) return false;
-
-    const slow = this.slowFrames;
-    this.windowFrames = 0;
-    this.slowFrames = 0;
-
-    if (slow > SLOW_BUDGET && this.index > 0) {
-      this.index--;
-      this.settleUntil = elapsed + 4;
-      this.goodWindows = 0;
-      return true;
+    if (this.windowFrames >= 600) {
+      this.windowFrames = 0;
+      this.slowFrames = 0;
     }
-    if (slow === 0 && this.index < this.startIndex) {
-      // Recover from a transient dip, but never climb past where we began, so
-      // it settles rather than hunting up and down.
-      if (++this.goodWindows >= 2) {
-        this.index++;
-        this.settleUntil = elapsed + 6;
-        this.goodWindows = 0;
-        return true;
-      }
-    } else if (slow > 2) {
-      this.goodWindows = 0;
-    }
-    return false;
   }
 
   snapshot(): PerfSnapshot {
@@ -128,7 +85,7 @@ export class Performance {
       slowFrames: this.slowFrames,
       windowFrames: this.windowFrames,
       scale: this.scale,
-      maxScale: SCALES[this.ceiling],
+      maxScale: RENDER_SCALE,
       devicePixelRatio: globalThis.devicePixelRatio || 1,
     };
   }

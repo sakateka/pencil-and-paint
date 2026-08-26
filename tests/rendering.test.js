@@ -350,8 +350,8 @@ export async function run(url) {
       1,
       'a one-to-one world blit is no slower than a fractional one',
     );
-    suite.equal(pencil_scale_ladder_ok(await game.evaluate((p) => p.perf.snapshot())), true,
-      'the render scale never exceeds 1');
+    const snapshot = await game.evaluate((p) => p.perf.snapshot());
+    suite.equal(snapshot.scale, 1, 'the render scale is one to one');
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
@@ -360,7 +360,3 @@ export async function run(url) {
   return suite;
 }
 
-/** The ladder must not offer a scale above 1: an upscaled blit is the worst case. */
-function pencil_scale_ladder_ok(snapshot) {
-  return snapshot.maxScale <= 1;
-}

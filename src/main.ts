@@ -61,7 +61,7 @@ function boot(): void {
     game.running = true;
     // Building the world and baking the first sprites is a one-off cost and
     // must not be mistaken for a slow machine.
-    perf.pardonWarmUp(game.elapsed);
+    perf.pardonWarmUp();
   }
 
   function resize(): void {
@@ -105,13 +105,7 @@ function boot(): void {
       ]);
     }
     perf.recordDraw(performance.now() - drawStart);
-
-    // Resizing wipes the canvas, so redraw at once — otherwise the browser can
-    // composite the blank one and you see a flash.
-    if (perf.recordFrame(dt * 1000, game.elapsed)) {
-      resize();
-      renderer.render(game.scene);
-    }
+    perf.recordFrame(dt * 1000);
 
     requestAnimationFrame(frame);
   }
