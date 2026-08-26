@@ -322,8 +322,9 @@ export async function run(url) {
         const ctx = renderer.context;
         ctx.setTransform(scale, 0, 0, scale, 0, 0);
         const blitOnce = () =>
-          ctx.drawImage(
-            game.world.sketch,
+          game.world.drawRegion(
+            ctx,
+            'sketch',
             game.camera.viewX,
             game.camera.viewY,
             game.camera.viewWidth,

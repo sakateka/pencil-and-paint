@@ -127,7 +127,7 @@ export class Renderer {
     this.bakesThisFrame = 0;
 
     if (flooded) {
-      this.time('worldBlit', () => this.blitWorld(ctx, world.color, camera));
+      this.time('worldBlit', () => this.blitWorld(ctx, world, 'color', camera));
       this.time('live', () =>
         isolate(ctx, () => {
           camera.applyTransform(ctx);
@@ -135,7 +135,7 @@ export class Renderer {
         }),
       );
     } else {
-      this.time('worldBlit', () => this.blitWorld(ctx, world.sketch, camera));
+      this.time('worldBlit', () => this.blitWorld(ctx, world, 'sketch', camera));
       this.time('live', () =>
         isolate(ctx, () => {
           camera.applyTransform(ctx);
@@ -158,11 +158,13 @@ export class Renderer {
 
   private blitWorld(
     ctx: CanvasRenderingContext2D,
-    layer: HTMLCanvasElement,
+    world: World,
+    medium: Medium,
     camera: Camera,
   ): void {
-    ctx.drawImage(
-      layer,
+    world.drawRegion(
+      ctx,
+      medium,
       camera.viewX,
       camera.viewY,
       camera.viewWidth,
@@ -213,8 +215,9 @@ export class Renderer {
     t.beginPath();
     t.rect(dirty.x, dirty.y, dirty.width, dirty.height);
     t.clip();
-    t.drawImage(
-      world.color,
+    world.drawRegion(
+      t,
+      'color',
       sourceX,
       sourceY,
       sourceW,

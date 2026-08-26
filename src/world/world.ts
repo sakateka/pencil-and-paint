@@ -32,6 +32,24 @@ interface OccluderSprite {
 const SPRITE_PAD = 3;
 
 /**
+ * The world layers are held as a grid of tiles rather than one big canvas.
+ *
+ * Firefox declines to hardware-accelerate a canvas above a size threshold, and
+ * a 2800x2000 layer is comfortably over it. Once it falls back, every blit of
+ * it is a CPU copy, which showed up as ~10ms a frame spent in `drawImage` with
+ * a large fixed cost that barely moved when the destination shrank. Tiles stay
+ * small enough to be accelerated, and only the handful under the viewport is
+ * touched each frame.
+ */
+const TILE = 512;
+
+interface Layer {
+  tiles: HTMLCanvasElement[];
+  columns: number;
+  rows: number;
+}
+
+/**
  * The valley, drawn twice and held in memory.
  *
  * Both layers are baked once at startup rather than drawn per frame, because
@@ -43,10 +61,8 @@ export class World {
   readonly width = WORLD_WIDTH;
   readonly height = WORLD_HEIGHT;
 
-  /** The finished illustration. */
-  readonly color: HTMLCanvasElement;
-  /** The same valley as an unfinished pencil drawing. */
-  readonly sketch: HTMLCanvasElement;
+  /** The finished illustration, and the same valley as an unfinished drawing. */
+  private readonly layers: Record<Medium, Layer>;
 
   readonly colliders: readonly Collider[];
   readonly pond: Ellipse;
@@ -55,15 +71,13 @@ export class World {
   private readonly occluders: Occluder[];
 
   private constructor(
-    color: Surface,
-    sketch: Surface,
+    layers: Record<Medium, Layer>,
     colliders: Collider[],
     occluders: Occluder[],
     pond: Ellipse,
     animalSpawns: AnimalSpawn[],
   ) {
-    this.color = color.canvas;
-    this.sketch = sketch.canvas;
+    this.layers = layers;
     this.colliders = colliders;
     this.occluders = occluders;
     this.pond = pond;
@@ -113,7 +127,65 @@ export class World {
       occluders.push({ scenery: piece, bounds: piece.bounds, seed: seeds[i], sprites: new Map() });
     });
 
-    return new World(color, sketch, colliders, occluders, layout.pond, layout.animals);
+    return new World(
+      { color: toTiles(color), sketch: toTiles(sketch) },
+      colliders,
+      occluders,
+      layout.pond,
+      layout.animals,
+    );
+  }
+
+  /**
+   * Draw a region of a layer.
+   *
+   * Walks only the tiles the region touches. With a 1:1 scale this is a plain
+   * copy per tile, which is the fast path in every engine.
+   */
+  drawRegion(
+    ctx: CanvasRenderingContext2D,
+    medium: Medium,
+    sx: number,
+    sy: number,
+    sw: number,
+    sh: number,
+    dx: number,
+    dy: number,
+    dw: number,
+    dh: number,
+  ): void {
+    const layer = this.layers[medium];
+    const scaleX = dw / sw;
+    const scaleY = dh / sh;
+
+    const firstCol = Math.max(0, Math.floor(sx / TILE));
+    const lastCol = Math.min(layer.columns - 1, Math.floor((sx + sw - 0.001) / TILE));
+    const firstRow = Math.max(0, Math.floor(sy / TILE));
+    const lastRow = Math.min(layer.rows - 1, Math.floor((sy + sh - 0.001) / TILE));
+
+    for (let row = firstRow; row <= lastRow; row++) {
+      for (let col = firstCol; col <= lastCol; col++) {
+        const tile = layer.tiles[row * layer.columns + col];
+        // Overlap of the requested region with this tile, in world coordinates.
+        const left = Math.max(sx, col * TILE);
+        const top = Math.max(sy, row * TILE);
+        const right = Math.min(sx + sw, col * TILE + tile.width);
+        const bottom = Math.min(sy + sh, row * TILE + tile.height);
+        if (right <= left || bottom <= top) continue;
+
+        ctx.drawImage(
+          tile,
+          left - col * TILE,
+          top - row * TILE,
+          right - left,
+          bottom - top,
+          dx + (left - sx) * scaleX,
+          dy + (top - sy) * scaleY,
+          (right - left) * scaleX,
+          (bottom - top) * scaleY,
+        );
+      }
+    }
   }
 
   /**
@@ -153,6 +225,28 @@ export class World {
     occluder.sprites.set(medium, sprite);
     return sprite;
   }
+}
+
+/** Slice a baked layer into tiles and release the big canvas. */
+function toTiles(source: Surface): Layer {
+  const columns = Math.ceil(WORLD_WIDTH / TILE);
+  const rows = Math.ceil(WORLD_HEIGHT / TILE);
+  const tiles: HTMLCanvasElement[] = [];
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < columns; col++) {
+      const width = Math.min(TILE, WORLD_WIDTH - col * TILE);
+      const height = Math.min(TILE, WORLD_HEIGHT - row * TILE);
+      const tile = createSurface(width, height);
+      tile.ctx.drawImage(source.canvas, -col * TILE, -row * TILE);
+      tiles.push(tile.canvas);
+    }
+  }
+
+  // Let the oversized scratch canvas go; the tiles are the world now.
+  source.canvas.width = 1;
+  source.canvas.height = 1;
+  return { tiles, columns, rows };
 }
 
 export type { Occluder, OccluderSprite };

@@ -52,6 +52,9 @@ export class Input {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    // Ctrl+Shift+D and friends belong to the browser. Without this, a devtools
+    // shortcut also sets the walker off, which makes for confusing reports.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key.toLowerCase();
     this.keys.add(key);
     if (MOVEMENT_KEYS.has(key)) e.preventDefault();
