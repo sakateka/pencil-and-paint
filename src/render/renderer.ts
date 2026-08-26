@@ -93,7 +93,6 @@ export class Renderer {
     bakes: 0,
   };
 
-  private bakesThisFrame = 0;
 
   /** Blend a sample into the running average for one stage. */
   private time<T>(stage: keyof StageTimings, fn: () => T): T {
@@ -146,7 +145,7 @@ export class Renderer {
     // an opaque canvas a full-screen clear is a full-screen write for nothing.
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
-    this.bakesThisFrame = 0;
+    world.bakeCount = 0;
 
     if (flooded) {
       this.time('worldBlit', () => this.blitWorld(ctx, world, 'color', camera));
@@ -175,7 +174,7 @@ export class Renderer {
       this.time('occluders', () => this.drawOccluders(ctx, scene));
     });
 
-    this.stages.bakes = this.bakesThisFrame;
+    this.stages.bakes = world.bakeCount;
   }
 
   private blitWorld(

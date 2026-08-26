@@ -51,7 +51,28 @@ interface Layer {
   tiles: HTMLCanvasElement[];
   columns: number;
   rows: number;
+  /** Bitmap pixels per world unit. Below 1 on memory-constrained devices. */
+  scale: number;
 }
+
+/**
+ * How finely to bake the world, in bitmap pixels per world unit.
+ *
+ * At full resolution the two layers are 44.8MB of canvas, which is fine on a
+ * desktop and is not fine on a phone — Chrome on Android would run for a while
+ * and then take the tab out with a white screen. Two thirds of the resolution
+ * is a little under half the memory, and on a display that is upscaling the
+ * canvas anyway the softness barely registers.
+ */
+function pickBakeScale(): number {
+  const shortSide = Math.min(globalThis.innerWidth || 1280, globalThis.innerHeight || 800);
+  const memory = (navigator as { deviceMemory?: number }).deviceMemory;
+  const constrained = shortSide <= 520 || (memory !== undefined && memory <= 4);
+  return constrained ? 0.62 : 1;
+}
+
+/** Cap on cached occluder sprites, which are baked lazily as you explore. */
+const MAX_OCCLUDER_SPRITES = 48;
 
 /**
  * The valley, drawn twice and held in memory.
@@ -69,10 +90,17 @@ export class World {
   private readonly layers: Record<Medium, Layer>;
 
   readonly colliders: readonly Collider[];
+  /** Bitmap pixels per world unit the layers were baked at. */
+  readonly bakeScale: number;
   readonly pond: Ellipse;
   readonly animalSpawns: readonly AnimalSpawn[];
 
   private readonly occluders: Occluder[];
+  /** Insertion order of cached occluder sprites, oldest first. */
+  private readonly spriteOrder: { occluder: Occluder; medium: Medium }[] = [];
+
+  /** Sprites baked since the counter was last reset. Read by the perf overlay. */
+  bakeCount = 0;
 
   private constructor(
     layers: Record<Medium, Layer>,
@@ -82,6 +110,7 @@ export class World {
     animalSpawns: AnimalSpawn[],
   ) {
     this.layers = layers;
+    this.bakeScale = layers.color.scale;
     this.colliders = colliders;
     this.occluders = occluders;
     this.pond = pond;
@@ -126,10 +155,14 @@ export class World {
      * browser that refuses the allocation gives you a blank screen rather than
      * an error.
      */
+    const bakeScale = pickBakeScale();
+
     const bakeLayer = async (medium: Medium, done: number): Promise<Layer> => {
-      const surface = createSurface(WORLD_WIDTH, WORLD_HEIGHT);
+      const surface = createSurface(WORLD_WIDTH * bakeScale, WORLD_HEIGHT * bakeScale);
       const { ctx } = surface;
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      // Everything below draws in world coordinates; the transform is what puts
+      // the whole valley onto a smaller sheet.
+      ctx.setTransform(bakeScale, 0, 0, bakeScale, 0, 0);
       ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
       drawGround(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT);
       await breathe();
@@ -155,7 +188,7 @@ export class World {
           ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         });
       }
-      const tiles = toTiles(surface);
+      const tiles = toTiles(surface, bakeScale);
       onProgress(done + 0.45);
       await breathe();
       return tiles;
@@ -199,28 +232,32 @@ export class World {
     const layer = this.layers[medium];
     const scaleX = dw / sw;
     const scaleY = dh / sh;
+    // World units covered by one full tile.
+    const span = TILE / layer.scale;
 
-    const firstCol = Math.max(0, Math.floor(sx / TILE));
-    const lastCol = Math.min(layer.columns - 1, Math.floor((sx + sw - 0.001) / TILE));
-    const firstRow = Math.max(0, Math.floor(sy / TILE));
-    const lastRow = Math.min(layer.rows - 1, Math.floor((sy + sh - 0.001) / TILE));
+    const firstCol = Math.max(0, Math.floor(sx / span));
+    const lastCol = Math.min(layer.columns - 1, Math.floor((sx + sw - 0.001) / span));
+    const firstRow = Math.max(0, Math.floor(sy / span));
+    const lastRow = Math.min(layer.rows - 1, Math.floor((sy + sh - 0.001) / span));
 
     for (let row = firstRow; row <= lastRow; row++) {
       for (let col = firstCol; col <= lastCol; col++) {
         const tile = layer.tiles[row * layer.columns + col];
+        const tileX = col * span;
+        const tileY = row * span;
         // Overlap of the requested region with this tile, in world coordinates.
-        const left = Math.max(sx, col * TILE);
-        const top = Math.max(sy, row * TILE);
-        const right = Math.min(sx + sw, col * TILE + tile.width);
-        const bottom = Math.min(sy + sh, row * TILE + tile.height);
+        const left = Math.max(sx, tileX);
+        const top = Math.max(sy, tileY);
+        const right = Math.min(sx + sw, tileX + tile.width / layer.scale);
+        const bottom = Math.min(sy + sh, tileY + tile.height / layer.scale);
         if (right <= left || bottom <= top) continue;
 
         ctx.drawImage(
           tile,
-          left - col * TILE,
-          top - row * TILE,
-          right - left,
-          bottom - top,
+          (left - tileX) * layer.scale,
+          (top - tileY) * layer.scale,
+          (right - left) * layer.scale,
+          (bottom - top) * layer.scale,
           dx + (left - sx) * scaleX,
           dy + (top - sy) * scaleY,
           (right - left) * scaleX,
@@ -246,6 +283,7 @@ export class World {
   spriteFor(occluder: Occluder, medium: Medium): OccluderSprite {
     const cached = occluder.sprites.get(medium);
     if (cached) return cached;
+    this.bakeCount++;
 
     const { bounds } = occluder;
     const width = Math.ceil(bounds.x1 - bounds.x0) + SPRITE_PAD * 2;
@@ -265,20 +303,37 @@ export class World {
       y: bounds.y0 - SPRITE_PAD,
     };
     occluder.sprites.set(medium, sprite);
+
+    // Bounded. These are baked lazily as you walk past things, so left
+    // unchecked the cache grows with everything you have ever seen — which on a
+    // phone is memory the tab does not have to spare.
+    this.spriteOrder.push({ occluder, medium });
+    while (this.spriteOrder.length > MAX_OCCLUDER_SPRITES) {
+      const oldest = this.spriteOrder.shift();
+      if (!oldest) break;
+      const stale = oldest.occluder.sprites.get(oldest.medium);
+      if (stale) {
+        stale.canvas.width = 1;
+        stale.canvas.height = 1;
+        oldest.occluder.sprites.delete(oldest.medium);
+      }
+    }
     return sprite;
   }
 }
 
 /** Slice a baked layer into tiles and release the big canvas. */
-function toTiles(source: Surface): Layer {
-  const columns = Math.ceil(WORLD_WIDTH / TILE);
-  const rows = Math.ceil(WORLD_HEIGHT / TILE);
+function toTiles(source: Surface, scale: number): Layer {
+  const pixelWidth = source.canvas.width;
+  const pixelHeight = source.canvas.height;
+  const columns = Math.ceil(pixelWidth / TILE);
+  const rows = Math.ceil(pixelHeight / TILE);
   const tiles: HTMLCanvasElement[] = [];
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < columns; col++) {
-      const width = Math.min(TILE, WORLD_WIDTH - col * TILE);
-      const height = Math.min(TILE, WORLD_HEIGHT - row * TILE);
+      const width = Math.min(TILE, pixelWidth - col * TILE);
+      const height = Math.min(TILE, pixelHeight - row * TILE);
       const tile = createSurface(width, height);
       tile.ctx.drawImage(source.canvas, -col * TILE, -row * TILE);
       tiles.push(tile.canvas);
@@ -288,7 +343,7 @@ function toTiles(source: Surface): Layer {
   // Let the oversized scratch canvas go; the tiles are the world now.
   source.canvas.width = 1;
   source.canvas.height = 1;
-  return { tiles, columns, rows };
+  return { tiles, columns, rows, scale };
 }
 
 export type { Occluder, OccluderSprite };
