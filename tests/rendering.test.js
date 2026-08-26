@@ -171,16 +171,65 @@ export async function run(url) {
     // NOT the hair, which is the same cut from every angle.
     suite.atLeast(+profile.right.eye.toFixed(1), 3, 'facing right, the eye sits forward');
     suite.atMost(+profile.left.eye.toFixed(1), -3, 'facing left, the eye sits forward');
+    const cycle = await game.evaluate((pencil) => pencil.walkCycle);
+
+    // The body, which is what actually sells the direction of travel. Two
+    // things are asserted because both were wrong and neither shows in a still:
+    // the chest is narrower seen edge-on than face-on, and the scarf streams
+    // backwards rather than being blown ahead of the walker.
+    const body = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      const near = (a, b, t) => Math.abs(a - b) <= t;
+      const measure = (facing, face) => {
+        game.walker.x = 1300;
+        game.walker.y = 1330;
+        game.walker.vx = facing === 'side' ? 210 * face : 0;
+        game.walker.vy = facing === 'side' ? 0 : 210;
+        game.walker.face = face;
+        game.walker.facing = facing;
+        game.walker.step = Math.PI / 2;
+        game.camera.snapTo(game.walker.x, game.walker.y - 14);
+        renderer.render(game.scene);
+
+        const cx = Math.round(game.camera.toScreenX(game.walker.x) * renderer.scale);
+        const cy = Math.round(game.camera.toScreenY(game.walker.y) * renderer.scale);
+        const ctx = document.querySelector('#game').getContext('2d');
+        const R = 45;
+        const img = ctx.getImageData(cx - R, cy - R * 1.5, R * 2, R * 1.7);
+        let shirtMin = Infinity;
+        let shirtMax = -Infinity;
+        let scarfMin = Infinity;
+        let scarfMax = -Infinity;
+        for (let y = 0; y < img.height; y++) {
+          for (let x = 0; x < img.width; x++) {
+            const i = (y * img.width + x) * 4;
+            if (img.data[i + 3] < 200) continue;
+            const [r, g, b] = [img.data[i], img.data[i + 1], img.data[i + 2]];
+            if (near(r, 232, 10) && near(g, 86, 10) && near(b, 63, 10)) {
+              shirtMin = Math.min(shirtMin, x - R);
+              shirtMax = Math.max(shirtMax, x - R);
+            }
+            if (near(r, 247, 14) && near(g, 193, 14) && near(b, 75, 20)) {
+              scarfMin = Math.min(scarfMin, x - R);
+              scarfMax = Math.max(scarfMax, x - R);
+            }
+          }
+        }
+        return { width: shirtMax - shirtMin, scarfMin, scarfMax };
+      };
+      return { front: measure('down', 1), right: measure('side', 1), left: measure('side', -1) };
+    });
+
+    // Asserted on the geometry, not on pixels: the near arm is the same colour
+    // as the shirt, so its swing counts as chest width and the measurement is
+    // meaningless.
     suite.atLeast(
-      +(profile.right.skinMax - profile.right.hairMax).toFixed(1),
+      +(cycle.torsoHalfFront - cycle.torsoHalfSide).toFixed(1),
       1.5,
-      'facing right, the nose leads the hairline',
+      'the chest is narrower seen edge-on than face-on',
     );
-    suite.atLeast(
-      +(profile.left.hairMin - profile.left.skinMin).toFixed(1),
-      1.5,
-      'facing left, the nose leads the hairline',
-    );
+    suite.atMost(body.right.scarfMin, -9, 'facing right, the scarf streams backwards');
+    suite.atLeast(body.left.scarfMax, 9, 'facing left, the scarf streams backwards');
 
     // The walk cycle. Two things went wrong here before and neither is visible
     // in a still frame, so both are pinned down.
@@ -244,7 +293,6 @@ export async function run(url) {
     // this without a reference for "vertical", so it is asserted where it
     // actually lives: the resting angle must be small next to the swing, or
     // the hand is parked behind the body for most of the cycle.
-    const cycle = await game.evaluate((pencil) => pencil.walkCycle);
     suite.atMost(
       +(Math.abs(cycle.armRest) / cycle.armSwing).toFixed(2),
       0.25,

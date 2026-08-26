@@ -83,6 +83,13 @@ export const WALK_CYCLE = {
   armSwing: 0.46,
   /** A touch of slack, so the arms are not rigid when standing still. */
   armRest: 0.06,
+  /**
+   * Half-widths of the chest. A chest seen edge-on is not as wide as one seen
+   * face-on, and a full-width front-facing chest sliding sideways is a large
+   * part of what made the walk look like it was going the wrong way.
+   */
+  torsoHalfFront: 8.5,
+  torsoHalfSide: 6,
 } as const;
 
 const LEG_SWING = WALK_CYCLE.legSwing;
@@ -106,52 +113,12 @@ function drawHair(ctx: CanvasRenderingContext2D, offsetX: number): void {
 }
 
 /**
- * The head, drawn as a profile from the side and face-on from the front.
- *
- * The shape has to change, not just the features. A symmetrical head with one
- * small eye added reads as someone facing the viewer while sliding sideways —
- * which looks like walking backwards. So the skull leads and grows a nose,
- * and the eye moves forward. The hair is deliberately left alone: it is the
- * same haircut from every angle.
+ * The head. Exactly as it was: a round skull, the same haircut from every
+ * angle, two eyes face-on and one from the side.
  *
  * Everything here is drawn facing +x; the caller mirrors for the other way.
  */
 function drawHead(ctx: CanvasRenderingContext2D, facing: Facing): void {
-  if (facing === 'side') {
-    // Skull, nudged forward so the face leads the body.
-    ctx.fillStyle = SKIN;
-    ctx.beginPath();
-    ctx.arc(1.6, -35, 9.2, 0, TAU);
-    ctx.fill();
-
-    // The same haircut from every angle — it just travels with the head.
-    // Giving the profile its own hairstyle made the walker look like a
-    // different person side-on than from the front.
-    drawHair(ctx, 1.6);
-
-    // Nose, over the fringe. This cut sweeps forward far enough to bury it
-    // otherwise — and the face is painted over the hair here anyway, which is
-    // how the eyes have always worked in the front view.
-    ctx.fillStyle = SKIN;
-    ctx.beginPath();
-    ctx.moveTo(9.6, -36.4);
-    ctx.quadraticCurveTo(15.0, -34.3, 9.4, -31.6);
-    ctx.closePath();
-    ctx.fill();
-
-    // One eye, forward on the face where a profile puts it.
-    ctx.fillStyle = EYE;
-    ctx.beginPath();
-    ctx.arc(6.4, -35.2, 1.25, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = BLUSH;
-    ctx.beginPath();
-    ctx.arc(8.2, -32.4, 2.1, 0, TAU);
-    ctx.fill();
-    return;
-  }
-
-  // Face-on, or the back of the head when walking away.
   ctx.fillStyle = SKIN;
   ctx.beginPath();
   ctx.arc(0, -35, 9.2, 0, TAU);
@@ -162,41 +129,150 @@ function drawHead(ctx: CanvasRenderingContext2D, facing: Facing): void {
   if (facing === 'up') return; // walking away: nothing to show but hair
 
   ctx.fillStyle = EYE;
-  ctx.beginPath();
-  ctx.arc(-3.2, -34.4, 1.25, 0, TAU);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(3.2, -34.4, 1.25, 0, TAU);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(180,90,70,.65)';
-  ctx.lineWidth = 1.1;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.arc(0, -32.4, 2.6, 0.25, Math.PI - 0.25);
-  ctx.stroke();
+  if (facing === 'down') {
+    ctx.beginPath();
+    ctx.arc(-3.2, -34.4, 1.25, 0, TAU);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3.2, -34.4, 1.25, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(180,90,70,.65)';
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(0, -32.4, 2.6, 0.25, Math.PI - 0.25);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(4.2, -34.6, 1.25, 0, TAU);
+    ctx.fill();
+  }
   ctx.fillStyle = BLUSH;
   ctx.beginPath();
   ctx.arc(6.2, -32.6, 2.2, 0, TAU);
   ctx.fill();
 }
 
+/** Shoulder positions. Face-on the arms sit either side of a wide chest; in
+ *  profile they gather near the centre line, one in front of the torso and one
+ *  behind it. */
+const SHOULDER_FRONT_NEAR = 6.5;
+const SHOULDER_FRONT_FAR = -7;
+const SHOULDER_SIDE_NEAR = 2.8;
+const SHOULDER_SIDE_FAR = -2.5;
+
+const SHIRT = '#e8563f';
+const SHIRT_SHADE = '#c9452f';
+const SCARF = '#f7c14b';
+
+function drawArm(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  angle: number,
+  colour: string,
+): void {
+  ctx.save();
+  ctx.translate(x, SHOULDER_Y);
+  ctx.rotate(angle);
+  ctx.fillStyle = colour;
+  roundRectPath(ctx, -3, 0, 5.5, 13, 2.6);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** The near arm, with a hand and the brush it is carrying. */
+function drawBrushArm(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  angle: number,
+  brush: string,
+): void {
+  ctx.save();
+  ctx.translate(x, SHOULDER_Y);
+  ctx.rotate(angle);
+  ctx.fillStyle = SHIRT;
+  roundRectPath(ctx, -2.7, 0, 5.5, 13, 2.6);
+  ctx.fill();
+  ctx.fillStyle = SKIN;
+  ctx.beginPath();
+  ctx.arc(0, 13.5, 3.1, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = '#a9793f';
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, 13);
+  ctx.lineTo(6, 22);
+  ctx.stroke();
+  ctx.strokeStyle = brush;
+  ctx.lineWidth = 3.4;
+  ctx.beginPath();
+  ctx.moveTo(6, 22);
+  ctx.lineTo(9, 26.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * The torso. Narrower in profile, because a chest seen edge-on is not as wide
+ * as one seen face-on — and a full-width front-facing chest sliding sideways is
+ * a large part of what makes the walk look like it is going the wrong way.
+ */
+function drawTorso(ctx: CanvasRenderingContext2D, sideOn: boolean): void {
+  const half = sideOn ? WALK_CYCLE.torsoHalfSide : WALK_CYCLE.torsoHalfFront;
+  ctx.fillStyle = SHIRT;
+  roundRectPath(ctx, -half, -28, half * 2, 17, 6);
+  ctx.fill();
+  // A little light. Face-on it falls on one side; in profile it catches the
+  // leading edge, which helps say which way the body is pointed.
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  if (sideOn) roundRectPath(ctx, half - 4.5, -28, 4.5, 17, 5);
+  else roundRectPath(ctx, -half, -28, 7, 17, 6);
+  ctx.fill();
+}
+
+/**
+ * The scarf. In profile the loose end streams *backwards*.
+ *
+ * It used to hang forwards whichever way you were going, and a scarf blown
+ * ahead of you reads as wind from behind — which is to say, as walking
+ * backwards.
+ */
+function drawScarf(ctx: CanvasRenderingContext2D, sw: number, sideOn: boolean): void {
+  ctx.fillStyle = SCARF;
+  const half = sideOn ? WALK_CYCLE.torsoHalfSide : WALK_CYCLE.torsoHalfFront;
+  roundRectPath(ctx, -half, -29.5, half * 2, 5, 2.5);
+  ctx.fill();
+
+  ctx.beginPath();
+  if (sideOn) {
+    // A band with real width. Drawn as a thin sliver it was barely a pixel
+    // across at the tip and read as nothing at all.
+    ctx.moveTo(-2, -28.5);
+    ctx.quadraticCurveTo(-9 - sw * 2, -27 + sw, -14.5 - sw * 3, -23.5 + sw * 2);
+    ctx.lineTo(-13.5 - sw * 3, -19.5 + sw * 2);
+    ctx.quadraticCurveTo(-8 - sw * 2, -22.5 + sw, -2, -23.5);
+  } else {
+    ctx.moveTo(2, -27);
+    ctx.quadraticCurveTo(9 - sw * 3, -22 + sw * 2, 6 - sw * 4, -14 + sw * 3);
+    ctx.lineTo(2.5 - sw * 2, -15 + sw * 3);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
 export function drawWalker(ctx: CanvasRenderingContext2D, player: Walker, t: number): void {
   const moving = Math.hypot(player.vx, player.vy) > 6;
-  const sw = moving ? Math.sin(player.step) : 0;          // leg/arm swing
+  const sw = moving ? Math.sin(player.step) : 0;
   const bob = moving ? Math.abs(Math.sin(player.step)) * 2.2 : Math.sin(t * 2) * 0.8;
-  const x = player.x, y = player.y - bob;
-  const f = player.face;
+  const sideOn = player.facing === 'side';
 
   ctx.save();
-
   drawWalkerShadow(ctx, player.x, player.y + 3);
+  ctx.translate(player.x, player.y - bob);
+  ctx.scale(player.face, 1);
 
-  ctx.translate(x, y);
-  ctx.scale(f, 1);
-
-  // Legs swing as pendulums from the hip. They used to stretch and slide
-  // sideways instead of rotating, which is not a gait — the leading leg grew
-  // longer and sank through the ground line.
+  // Legs swing as pendulums from the hip, near and far taking opposite signs.
   for (const side of [-1, 1] as const) {
     ctx.save();
     ctx.translate(side * 3.0, HIP_Y);
@@ -210,49 +286,22 @@ export function drawWalker(ctx: CanvasRenderingContext2D, player: Walker, t: num
     ctx.restore();
   }
 
-  // body
-  ctx.fillStyle = '#e8563f';
-  roundRectPath(ctx, -8.5, -28, 17, 17, 6); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.16)';
-  roundRectPath(ctx, -8.5, -28, 7, 17, 6); ctx.fill();
+  const farAngle = sw * ARM_SWING + ARM_REST;
+  const nearAngle = -sw * ARM_SWING + ARM_REST;
 
-  // scarf
-  ctx.fillStyle = '#f7c14b';
-  roundRectPath(ctx, -8.5, -29.5, 17, 5, 2.5); ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(2, -27);
-  ctx.quadraticCurveTo(9 - sw * 3, -22 + sw * 2, 6 - sw * 4, -14 + sw * 3);
-  ctx.lineTo(2.5 - sw * 2, -15 + sw * 3);
-  ctx.closePath(); ctx.fill();
+  // In profile the far arm belongs *behind* the torso, so it is drawn first and
+  // only shows where it swings clear of the body. Drawn over the chest it read
+  // as a second front arm attached at the back.
+  if (sideOn) drawArm(ctx, SHOULDER_SIDE_FAR, farAngle, SHIRT_SHADE);
 
-  // Far arm, opposing the far leg.
-  ctx.save();
-  ctx.translate(-7, SHOULDER_Y);
-  ctx.rotate(sw * ARM_SWING + ARM_REST);
-  ctx.fillStyle = '#c9452f';
-  roundRectPath(ctx, -3, 0, 5.5, 13, 2.6);
-  ctx.fill();
-  ctx.restore();
+  drawTorso(ctx, sideOn);
+  drawScarf(ctx, sw, sideOn);
+
+  if (!sideOn) drawArm(ctx, SHOULDER_FRONT_FAR, farAngle, SHIRT_SHADE);
 
   drawHead(ctx, player.facing);
 
-  // front arm holding the brush
-  ctx.save();
-  ctx.translate(6.5, SHOULDER_Y);
-  // Near arm, opposing the near leg. No constant bias: the old `+ 0.25` held
-  // the hand behind the body for most of the cycle, and arms that only ever
-  // trail read as someone being dragged forwards rather than walking.
-  ctx.rotate(-sw * ARM_SWING + ARM_REST);
-  ctx.fillStyle = '#e8563f';
-  roundRectPath(ctx, -2.7, 0, 5.5, 13, 2.6); ctx.fill();
-  ctx.fillStyle = '#f2c398';
-  ctx.beginPath(); ctx.arc(0, 13.5, 3.1, 0, TAU); ctx.fill();
-  // brush
-  ctx.strokeStyle = '#a9793f'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(0, 13); ctx.lineTo(6, 22); ctx.stroke();
-  ctx.strokeStyle = player.brush; ctx.lineWidth = 3.4;
-  ctx.beginPath(); ctx.moveTo(6, 22); ctx.lineTo(9, 26.5); ctx.stroke();
-  ctx.restore();
+  drawBrushArm(ctx, sideOn ? SHOULDER_SIDE_NEAR : SHOULDER_FRONT_NEAR, nearAngle, player.brush);
 
   ctx.restore();
 }
