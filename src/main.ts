@@ -1,3 +1,4 @@
+import { BUILD_ID } from './buildInfo';
 import { exposeForTests } from './debug';
 import { installDebugPanel } from './debugPanel';
 import { WALK_CYCLE } from './entities/player';
@@ -29,6 +30,9 @@ async function boot(): Promise<void> {
    * this listener existed that press went nowhere and the game looked dead.
    * Now it is remembered and honoured the moment the valley is ready.
    */
+  const stamp = document.querySelector<HTMLElement>('#build');
+  if (stamp) stamp.textContent = BUILD_ID;
+
   const startButton = document.querySelector<HTMLButtonElement>('#startBtn');
   const startLabel = startButton?.textContent ?? 'Start walking';
   let pressedEarly = false;
@@ -215,6 +219,7 @@ try {
     'font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap';
   note.textContent =
     `Pencil & Paint could not start.\n\n${message}\n\n` +
+    `build ${BUILD_ID}\n` +
     `screen ${innerWidth}x${innerHeight} at dpr ${devicePixelRatio}\n` +
     `${navigator.userAgent}`;
   document.body.append(note);

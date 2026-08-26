@@ -99,6 +99,13 @@
      leaves a full-screen layer the compositor still has to deal with */
   .hidden { opacity:0; pointer-events:none; visibility:hidden; }
 
+  /* Which build this is. Small, but the only way to tell from a phone whether
+     you are looking at current code or a cached copy of yesterday's. */
+  .build {
+    margin-top:14px; font-size:11px; opacity:.4;
+    font-family:ui-monospace, Menlo, Consolas, monospace;
+  }
+
   /* the finish is a quiet note in the corner, not a wall across the screen */
   #done {
     right:14px; bottom:14px; max-width:290px; text-align:center;
@@ -149,6 +156,7 @@
     </div>
     <p style="font-size:15px;opacity:.7;margin-top:12px">Gather the spilled paint pots to widen the colour.</p>
     <button id="startBtn">Start walking</button>
+    <div id="build" class="build"></div>
   </div>
 </div>
 
