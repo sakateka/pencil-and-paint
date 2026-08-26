@@ -251,7 +251,10 @@ export class Renderer {
 
     const t = temp.ctx;
     t.setTransform(1, 0, 0, 1, 0, 0);
-    t.clearRect(0, 0, dirty.width * scale + 2, dirty.height * scale + 2);
+    // No clear. The colour blit below paints the whole dirty rectangle opaquely
+    // — the camera is clamped inside the world, so the region always has tiles
+    // under it — and nothing outside the rectangle is ever read back. Clearing
+    // first was a fourth full pass over the busiest area of the frame.
     // Local origin: the scratch surface holds only the dirty rectangle.
     t.setTransform(scale, 0, 0, scale, -dirty.x * scale, -dirty.y * scale);
     t.save();
