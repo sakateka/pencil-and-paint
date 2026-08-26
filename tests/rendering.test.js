@@ -154,10 +154,102 @@ export async function run(url) {
       return { right: measure(1), left: measure(-1) };
     });
 
+    // The invariant is that the face leads and the hair sits behind it — not
+    // an absolute offset for either. A proper full hair cap is fairly centred;
+    // only a bald crown-band sits far back, which is what an absolute
+    // threshold here would quietly have demanded.
     suite.atLeast(+profile.right.skin.toFixed(1), 1.5, 'facing right, the face leads');
-    suite.atMost(+profile.right.hair.toFixed(1), -1.5, 'facing right, the hair trails');
+    suite.atLeast(
+      +(profile.right.skin - profile.right.hair).toFixed(1),
+      3,
+      'facing right, the hair sits behind the face',
+    );
     suite.atMost(+profile.left.skin.toFixed(1), -1.5, 'facing left, the face leads');
-    suite.atLeast(+profile.left.hair.toFixed(1), 1.5, 'facing left, the hair trails');
+    suite.atLeast(
+      +(profile.left.hair - profile.left.skin).toFixed(1),
+      3,
+      'facing left, the hair sits behind the face',
+    );
+
+    // The walk cycle. Two things went wrong here before and neither is visible
+    // in a still frame, so both are pinned down.
+    const gait = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      const near = (a, b, t) => Math.abs(a - b) <= t;
+
+      const sample = (step, moving) => {
+        game.walker.x = 1300;
+        game.walker.y = 1330;
+        game.walker.vx = moving ? 210 : 0;
+        game.walker.vy = 0;
+        game.walker.face = 1;
+        game.walker.facing = 'side';
+        game.walker.step = step;
+        game.camera.snapTo(game.walker.x, game.walker.y - 14);
+        renderer.render(game.scene);
+
+        const cx = Math.round(game.camera.toScreenX(game.walker.x) * renderer.scale);
+        const cy = Math.round(game.camera.toScreenY(game.walker.y) * renderer.scale);
+        const ctx = document.querySelector('#game').getContext('2d');
+        const R = 60;
+        const img = ctx.getImageData(cx - R, cy - R * 1.4, R * 2, R * 1.6);
+
+        let woodX = 0;
+        let woodN = 0;
+        let hair = 0;
+        let skin = 0;
+        for (let y = 0; y < img.height; y++) {
+          for (let x = 0; x < img.width; x++) {
+            const i = (y * img.width + x) * 4;
+            if (img.data[i + 3] < 200) continue;
+            const [r, g, b] = [img.data[i], img.data[i + 1], img.data[i + 2]];
+            const worldY = y - R * 1.4; // relative to the feet
+            if (near(r, 169, 18) && near(g, 121, 18) && near(b, 63, 18)) {
+              woodX += x - R;
+              woodN++;
+            }
+            // only the head band, so hands do not count as skin
+            if (worldY > -48 && worldY < -26) {
+              if (near(r, 74, 12) && near(g, 53, 12) && near(b, 39, 12)) hair++;
+              if (near(r, 242, 12) && near(g, 195, 12) && near(b, 152, 12)) skin++;
+            }
+          }
+        }
+        return { brushX: woodN ? woodX / woodN : null, hair, skin };
+      };
+
+      const rest = sample(0, false);
+      const forward = sample(Math.PI / 2, true);
+      const back = sample(Math.PI * 1.5, true);
+      return {
+        restBrushX: +rest.brushX.toFixed(1),
+        forwardBrushX: +forward.brushX.toFixed(1),
+        backBrushX: +back.brushX.toFixed(1),
+        hairShare: +(rest.hair / (rest.hair + rest.skin)).toFixed(2),
+      };
+    });
+
+    // Standing still, the arm should hang near vertical. Pixels cannot express
+    // this without a reference for "vertical", so it is asserted where it
+    // actually lives: the resting angle must be small next to the swing, or
+    // the hand is parked behind the body for most of the cycle.
+    const cycle = await game.evaluate((pencil) => pencil.walkCycle);
+    suite.atMost(
+      +(Math.abs(cycle.armRest) / cycle.armSwing).toFixed(2),
+      0.25,
+      'the arm has no meaningful resting bias',
+    );
+
+    // And it must actually swing, reaching further forward at one end of the
+    // cycle than the other.
+    suite.atLeast(
+      +(gait.forwardBrushX - gait.backBrushX).toFixed(1),
+      6,
+      'the arm swings through the cycle',
+    );
+
+    // The hair is a filled cap, not a thin band around the crown.
+    suite.atLeast(gait.hairShare, 0.3, 'the walker has hair on their head');
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {

@@ -63,6 +63,32 @@ function drawWalkerShadow(ctx: CanvasRenderingContext2D, x: number, y: number): 
   drawShadowBlob(ctx, x, y, 17, 7.2);
 }
 
+/**
+ * The walk cycle: limbs are pendulums, and opposite limbs swing opposite ways.
+ *
+ * Canvas angles are clockwise, so for a limb hanging downwards a positive
+ * rotation carries its tip backwards. The near leg and the near arm therefore
+ * take opposite signs, which is what a contralateral gait actually looks like.
+ */
+const HIP_Y = -13;
+const SHOULDER_Y = -25;
+
+/**
+ * Exported so the test suite can assert the shape of the cycle directly. The
+ * bug this guards against is a resting bias large enough to park the hand
+ * behind the body for most of the cycle, which reads as walking backwards.
+ */
+export const WALK_CYCLE = {
+  legSwing: 0.4,
+  armSwing: 0.46,
+  /** A touch of slack, so the arms are not rigid when standing still. */
+  armRest: 0.06,
+} as const;
+
+const LEG_SWING = WALK_CYCLE.legSwing;
+const ARM_SWING = WALK_CYCLE.armSwing;
+const ARM_REST = WALK_CYCLE.armRest;
+
 const SKIN = '#f2c398';
 const HAIR = '#4a3527';
 const EYE = '#3a2f26';
@@ -99,12 +125,15 @@ function drawHead(ctx: CanvasRenderingContext2D, facing: Facing): void {
     ctx.ellipse(-2.4, -33.8, 2, 2.6, 0.2, 0, TAU);
     ctx.fill();
 
-    // Hair: over the crown, with the bulk of it behind.
+    // Hair: a full cap over the crown with the bulk of it behind, and a
+    // hairline that sits high at the front so the face is not buried.
+    // The underside has to come back *below* the crown or the fill is a thin
+    // band at the very top and the walker looks bald.
     ctx.fillStyle = HAIR;
     ctx.beginPath();
-    ctx.arc(1.6, -35.8, 9.6, Math.PI * 0.84, Math.PI * 2.0);
-    ctx.quadraticCurveTo(9.8, -40.4, 4.5, -42.2);
-    ctx.quadraticCurveTo(-2, -43.4, -7.4, -39.6);
+    ctx.arc(1.6, -35.8, 9.7, Math.PI * 0.86, Math.PI * 2.04);
+    ctx.quadraticCurveTo(10.6, -37.6, 7.2, -38.8); // fringe tip at the brow
+    ctx.quadraticCurveTo(0, -34.2, -7.2, -31.6); // sweeping down low behind
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
@@ -172,20 +201,20 @@ export function drawWalker(ctx: CanvasRenderingContext2D, player: Walker, t: num
   ctx.translate(x, y);
   ctx.scale(f, 1);
 
-  // legs
-  for (const s of [-1, 1]) {
-    const off = sw * 4.5 * s;
-    ctx.save(); ctx.translate(s * 3.4, 0);
-    roundRectPath(ctx, -3 + off * 0.35, -13, 6, 14 + off * 0.6, 3);
-    ctx.fillStyle = s > 0 ? '#3d5a80' : '#33496a';
+  // Legs swing as pendulums from the hip. They used to stretch and slide
+  // sideways instead of rotating, which is not a gait — the leading leg grew
+  // longer and sank through the ground line.
+  for (const side of [-1, 1] as const) {
+    ctx.save();
+    ctx.translate(side * 3.0, HIP_Y);
+    ctx.rotate(side * sw * LEG_SWING);
+    ctx.fillStyle = side > 0 ? '#3d5a80' : '#33496a';
+    roundRectPath(ctx, -3, 0, 6, 13, 3);
+    ctx.fill();
+    ctx.fillStyle = '#4a3527';
+    roundRectPath(ctx, -3.6, 9.5, 8, 4.5, 2);
     ctx.fill();
     ctx.restore();
-  }
-  // shoes
-  ctx.fillStyle = '#4a3527';
-  for (const s of [-1, 1]) {
-    const off = sw * 4.5 * s;
-    roundRectPath(ctx, s * 3.4 - 4, -1.5 + off * 0.6, 8, 4.5, 2); ctx.fill();
   }
 
   // body
@@ -203,16 +232,24 @@ export function drawWalker(ctx: CanvasRenderingContext2D, player: Walker, t: num
   ctx.lineTo(2.5 - sw * 2, -15 + sw * 3);
   ctx.closePath(); ctx.fill();
 
-  // back arm
+  // Far arm, opposing the far leg.
+  ctx.save();
+  ctx.translate(-7, SHOULDER_Y);
+  ctx.rotate(sw * ARM_SWING + ARM_REST);
   ctx.fillStyle = '#c9452f';
-  ctx.save(); ctx.translate(-7, -25); ctx.rotate(-sw * 0.5);
-  roundRectPath(ctx, -3, 0, 5.5, 13, 2.6); ctx.fill(); ctx.restore();
+  roundRectPath(ctx, -3, 0, 5.5, 13, 2.6);
+  ctx.fill();
+  ctx.restore();
 
   drawHead(ctx, player.facing);
 
   // front arm holding the brush
   ctx.save();
-  ctx.translate(6.5, -25); ctx.rotate(sw * 0.55 + 0.25);
+  ctx.translate(6.5, SHOULDER_Y);
+  // Near arm, opposing the near leg. No constant bias: the old `+ 0.25` held
+  // the hand behind the body for most of the cycle, and arms that only ever
+  // trail read as someone being dragged forwards rather than walking.
+  ctx.rotate(-sw * ARM_SWING + ARM_REST);
   ctx.fillStyle = '#e8563f';
   roundRectPath(ctx, -2.7, 0, 5.5, 13, 2.6); ctx.fill();
   ctx.fillStyle = '#f2c398';

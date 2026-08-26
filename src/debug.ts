@@ -1,4 +1,5 @@
 import type { Game } from './game';
+import type { WALK_CYCLE } from './entities/player';
 import type { Renderer } from './render/renderer';
 import type { Performance } from './systems/perf';
 
@@ -12,6 +13,8 @@ import type { Performance } from './systems/perf';
  */
 export interface DebugHandle {
   game: Game;
+  /** Walk-cycle tuning, asserted by the gait tests. */
+  walkCycle: typeof WALK_CYCLE;
   renderer: Renderer;
   perf: Performance;
   /** Force a frame outside the rAF loop, for deterministic measurement. */

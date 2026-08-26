@@ -1,4 +1,5 @@
 import { exposeForTests } from './debug';
+import { WALK_CYCLE } from './entities/player';
 import { Game } from './game';
 import { tickBoil } from './media/ink';
 import { Renderer } from './render/renderer';
@@ -71,6 +72,7 @@ function boot(): void {
 
   exposeForTests({
     game,
+    walkCycle: WALK_CYCLE,
     renderer,
     perf,
     renderOnce: () => renderer.render(game.scene),
