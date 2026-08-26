@@ -5,7 +5,6 @@ import type { Herd } from '../entities/herd';
 import type { Particles } from '../entities/particles';
 import { drawPot, type Pot } from '../entities/pots';
 import type { Medium } from '../media/medium';
-import { GRAIN } from '../media/sprites';
 import type { World } from '../world/world';
 import type { Camera } from './camera';
 import type { ColorField } from './colorField';
@@ -43,12 +42,26 @@ export interface Scene {
  * Once the colour covers the whole viewport, steps 1-4 collapse into a single
  * blit of the coloured world — there is no point masking what is entirely lit.
  */
+/**
+ * Per-stage timings, in milliseconds, averaged over recent frames.
+ *
+ * Canvas work is queued and finishes on the GPU later, so these under-report
+ * absolute cost — but they are measured the same way as each other, so the
+ * *proportions* are what localise a slow frame.
+ */
+export interface StageTimings {
+  worldBlit: number;
+  live: number;
+  mask: number;
+  composite: number;
+  occluders: number;
+  /** Sprites baked this frame — should settle to zero once explored. */
+  bakes: number;
+}
+
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly temp: Surface;
-  private paper: Surface;
-  private paperWidth = -1;
-  private paperHeight = -1;
 
   /** Viewport in CSS pixels. */
   width = 0;
@@ -57,12 +70,30 @@ export class Renderer {
   /** Device pixels per CSS pixel. Adapted at runtime by `systems/perf.ts`. */
   scale = 1;
 
+  readonly stages: StageTimings = {
+    worldBlit: 0,
+    live: 0,
+    mask: 0,
+    composite: 0,
+    occluders: 0,
+    bakes: 0,
+  };
+
+  private bakesThisFrame = 0;
+
+  /** Blend a sample into the running average for one stage. */
+  private time<T>(stage: keyof StageTimings, fn: () => T): T {
+    const started = performance.now();
+    const result = fn();
+    this.stages[stage] = this.stages[stage] * 0.9 + (performance.now() - started) * 0.1;
+    return result;
+  }
+
   constructor(private readonly canvas: HTMLCanvasElement) {
     // Deliberately not `alpha: false`: an opaque canvas clears to black, and a
     // resize clears the canvas, which shows up as a black flash.
     this.ctx = context2d(canvas);
     this.temp = createSurface(1, 1);
-    this.paper = createSurface(1, 1);
   }
 
   resize(width: number, height: number, scale: number, field: ColorField): void {
@@ -76,7 +107,6 @@ export class Renderer {
     field.resize(width * scale, height * scale);
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
-    this.paperWidth = -1; // force the overlay to be rebuilt
   }
 
   render(scene: Scene): void {
@@ -94,18 +124,24 @@ export class Renderer {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
+    this.bakesThisFrame = 0;
+
     if (flooded) {
-      this.blitWorld(ctx, world.color, camera);
-      isolate(ctx, () => {
-        camera.applyTransform(ctx);
-        this.drawLive(ctx, scene, 'color');
-      });
+      this.time('worldBlit', () => this.blitWorld(ctx, world.color, camera));
+      this.time('live', () =>
+        isolate(ctx, () => {
+          camera.applyTransform(ctx);
+          this.drawLive(ctx, scene, 'color');
+        }),
+      );
     } else {
-      this.blitWorld(ctx, world.sketch, camera);
-      isolate(ctx, () => {
-        camera.applyTransform(ctx);
-        this.drawLive(ctx, scene, 'sketch');
-      });
+      this.time('worldBlit', () => this.blitWorld(ctx, world.sketch, camera));
+      this.time('live', () =>
+        isolate(ctx, () => {
+          camera.applyTransform(ctx);
+          this.drawLive(ctx, scene, 'sketch');
+        }),
+      );
       this.compositeColor(scene, centreX, centreY, radius);
       field.strokeRim(ctx, scene.elapsed, centreX, centreY, radius);
     }
@@ -114,10 +150,10 @@ export class Renderer {
       camera.applyTransform(ctx);
       drawWalker(ctx, walker, scene.elapsed);
       scene.particles.draw(ctx, walker.x, walker.y, scene.litRadius, flooded);
-      this.drawOccluders(ctx, scene);
+      this.time('occluders', () => this.drawOccluders(ctx, scene));
     });
 
-    this.overlayPaper(ctx);
+    this.stages.bakes = this.bakesThisFrame;
   }
 
   private blitWorld(
@@ -159,7 +195,10 @@ export class Renderer {
     const dirty = field.computeDirty(camera, centreX, centreY, radius, this.width, this.height);
     if (dirty.empty) return;
 
-    field.build(scene.elapsed, camera, centreX, centreY, radius, scale);
+    this.time('mask', () =>
+      field.build(scene.elapsed, camera, centreX, centreY, radius, scale),
+    );
+    const compositeStarted = performance.now();
 
     const sourceX = camera.viewX + dirty.x / camera.zoom;
     const sourceY = camera.viewY + dirty.y / camera.zoom;
@@ -214,6 +253,8 @@ export class Renderer {
       dirty.height * scale,
     );
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    this.stages.composite =
+      this.stages.composite * 0.9 + (performance.now() - compositeStarted) * 0.1;
   }
 
   /**
@@ -238,47 +279,6 @@ export class Renderer {
       const sprite = world.spriteFor(occluder, lit ? 'color' : 'sketch');
       ctx.drawImage(sprite.canvas, sprite.x, sprite.y);
     }
-  }
-
-  /** Grain and vignette, baked once per resize into a single overlay. */
-  private overlayPaper(ctx: CanvasRenderingContext2D): void {
-    if (this.paperWidth !== this.width || this.paperHeight !== this.height) {
-      this.buildPaper();
-    }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(this.paper.canvas, 0, 0);
-    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
-  }
-
-  private buildPaper(): void {
-    this.paper = createSurface(this.width * this.scale, this.height * this.scale);
-    const { ctx } = this.paper;
-    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
-    ctx.clearRect(0, 0, this.width, this.height);
-
-    const pattern = ctx.createPattern(GRAIN, 'repeat');
-    if (pattern) {
-      ctx.globalAlpha = 0.13;
-      ctx.fillStyle = pattern;
-      ctx.fillRect(0, 0, this.width, this.height);
-      ctx.globalAlpha = 1;
-    }
-
-    const vignette = ctx.createRadialGradient(
-      this.width / 2,
-      this.height / 2,
-      Math.min(this.width, this.height) * 0.45,
-      this.width / 2,
-      this.height / 2,
-      Math.max(this.width, this.height) * 0.78,
-    );
-    vignette.addColorStop(0, 'rgba(90,80,60,0)');
-    vignette.addColorStop(1, 'rgba(90,80,60,.20)');
-    ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    this.paperWidth = this.width;
-    this.paperHeight = this.height;
   }
 
   /** Direct access for the diagnostics overlay, which draws last. */

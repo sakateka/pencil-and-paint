@@ -16,6 +16,14 @@
   }
   #game { display:block; position:fixed; inset:0; }
 
+  /* Paper grain and vignette. Static, screen-space, and identical every frame,
+     so they are layers for the compositor to cache rather than a full-screen
+     alpha blend the canvas repeats sixty times a second. */
+  #grain, #vignette { position:fixed; inset:0; pointer-events:none; z-index:1; }
+  #grain    { opacity:.13; }
+  #vignette { background:radial-gradient(ellipse at 50% 50%,
+                rgba(90,80,60,0) 45%, rgba(90,80,60,.20) 100%); }
+
   .panel {
     position:fixed;
     background:rgba(246,241,229,.86);
@@ -104,6 +112,8 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="grain"></div>
+<div id="vignette"></div>
 
 <div id="hud" class="panel">
   <div><b><span id="found">0</span> / <span id="total">0</span></b> paint pots</div>

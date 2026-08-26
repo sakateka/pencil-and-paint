@@ -2,6 +2,7 @@ import { exposeForTests } from './debug';
 import { WALK_CYCLE } from './entities/player';
 import { Game } from './game';
 import { tickBoil } from './media/ink';
+import { GRAIN } from './media/sprites';
 import { Renderer } from './render/renderer';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
@@ -14,6 +15,10 @@ const MAX_STEP = 0.05;
 function boot(): void {
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('missing #game canvas');
+
+  // The grain tile is generated, so hand it to CSS as an image once.
+  const grain = document.querySelector<HTMLElement>('#grain');
+  if (grain) grain.style.backgroundImage = `url(${GRAIN.toDataURL()})`;
 
   const world = World.generate();
   const renderer = new Renderer(canvas);
@@ -90,8 +95,13 @@ function boot(): void {
     renderer.render(game.scene);
     if (showPerf) {
       const awake = game.herd.animals.reduce((n, a) => n + (a.awake ? 1 : 0), 0);
+      const s = renderer.stages;
+      const ms = (v: number) => v.toFixed(1).padStart(4);
       drawPerfOverlay(renderer.context, perf.snapshot(), renderer.width, renderer.height, [
         `awake ${awake}/${game.herd.animals.length}   zoom ${game.camera.zoom.toFixed(2)}`,
+        `world ${ms(s.worldBlit)}  live ${ms(s.live)}  mask ${ms(s.mask)}`,
+        `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
+        `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
       ]);
     }
     perf.recordDraw(performance.now() - drawStart);
@@ -106,6 +116,20 @@ function boot(): void {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+}
+
+/**
+ * How many offscreen canvases are alive.
+ *
+ * Every cached sprite is a texture. Enough of them and the GPU starts evicting
+ * and re-uploading the big world layers each frame, which shows up as draw cost
+ * that does not fall when you drop the resolution.
+ */
+function countCanvases(game: Game): number {
+  let n = 4; // the two world layers, the scratch canvas and the paper overlay
+  n += game.herd.animals.filter((a) => a.frozenSprite).length;
+  n += game.pots.filter((p) => p.frozenSprite).length;
+  return n;
 }
 
 /** A small kalimba note per pot, tuned up a pentatonic scale as you go. */
