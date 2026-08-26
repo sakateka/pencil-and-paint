@@ -56,6 +56,8 @@ async function boot(): Promise<void> {
     startButton.removeAttribute('aria-busy');
     startButton.textContent = startLabel;
   }
+  // Read this off the device: it says which phase of the bake was slow.
+  if (stamp) stamp.textContent = `${BUILD_ID}\n${world.bakeSummary}`;
   const renderer = new Renderer(canvas);
   const perf = new Performance();
   let showPerf = false;

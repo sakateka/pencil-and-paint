@@ -114,6 +114,20 @@ export class World {
    * this code did, so it is not confused by a busy machine descheduling us.
    */
   longestSliceMs = 0;
+
+  /** Milliseconds spent in each phase of the bake. */
+  bakePhases: Record<string, number> = {};
+
+  /** How many times the bake handed control back to the browser. */
+  bakeYields = 0;
+
+  /** A one-line summary, short enough to read off a phone. */
+  get bakeSummary(): string {
+    const total = Object.values(this.bakePhases).reduce((a, b) => a + b, 0);
+    const worst = Object.entries(this.bakePhases).sort((a, b) => b[1] - a[1]);
+    const parts = worst.slice(0, 3).map(([k, v]) => `${k} ${v.toFixed(0)}`);
+    return `bake ${total.toFixed(0)}ms · ${parts.join(' · ')} · ${this.bakeYields} yields`;
+  }
   /** Insertion order of cached occluder sprites, oldest first. */
   private readonly spriteOrder: { occluder: Occluder; medium: Medium }[] = [];
 
@@ -149,8 +163,24 @@ export class World {
    */
   static async generate(onProgress: (fraction: number) => void = () => {}): Promise<World> {
     // Hand back to the browser if this slice has run long enough.
+    /*
+     * Where the bake spends its time, by phase.
+     *
+     * Reported on the title card, because the only machine that reproduces the
+     * slow load is a phone — and a number read off the device beats another
+     * round of guessing from a desktop that finishes in a fifth of a second.
+     */
+    const phases: Record<string, number> = {};
+    let phaseAt = performance.now();
+    const mark = (name: string) => {
+      const now = performance.now();
+      phases[name] = (phases[name] ?? 0) + (now - phaseAt);
+      phaseAt = now;
+    };
+
     let sliceStarted = performance.now();
     let longestSlice = 0;
+    let yields = 0;
     const breathe = async (): Promise<void> => {
       const ran = performance.now() - sliceStarted;
       if (ran < 12) return;
@@ -158,11 +188,13 @@ export class World {
       // outside: this is the work actually done without yielding, where a timer
       // gap also contains however long the OS felt like descheduling us.
       if (ran > longestSlice) longestSlice = ran;
+      yields++;
       await yieldToBrowser();
       sliceStarted = performance.now();
     };
 
     const layout = buildLayout();
+    mark('layout');
     await breathe();
 
     // Depth order: further up the page is further away.
@@ -189,6 +221,7 @@ export class World {
       ctx.setTransform(bakeScale, 0, 0, bakeScale, 0, 0);
       ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
       drawGroundBase(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT);
+      mark('ground');
       await breathe();
 
       // Sliced, all of it. Drawn in one call each, the ground detail and the
@@ -198,6 +231,7 @@ export class World {
       const detail = GROUND_DETAIL[medium];
       for (let i = 0; i < detail; i += 8) {
         drawGroundDetail(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT, i, Math.min(i + 8, detail));
+        mark('ground');
         await breathe();
       }
 
@@ -208,11 +242,13 @@ export class World {
 
       for (let i = 0; i < layout.tufts.length; i += 40) {
         drawTufts(ctx, layout.tufts, medium, i, Math.min(i + 40, layout.tufts.length));
+        mark('tufts');
         await breathe();
       }
 
       for (let i = 0; i < scenery.length; i++) {
         rng.replay(seeds[i], () => scenery[i].draw(ctx, medium));
+        mark('scenery');
         if ((i & 3) === 0) {
           onProgress(done + (0.45 * (i + 1)) / scenery.length);
           await breathe();
@@ -230,6 +266,7 @@ export class World {
         });
       }
       const tiles = await toTiles(surface, bakeScale, breathe);
+      mark('tiles');
       onProgress(done + 0.45);
       await breathe();
       return tiles;
@@ -251,6 +288,8 @@ export class World {
 
     const world = new World(layers, colliders, occluders, layout.pond, layout.animals);
     world.longestSliceMs = longestSlice;
+    world.bakePhases = phases;
+    world.bakeYields = yields;
     return world;
   }
 
