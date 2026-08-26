@@ -28,6 +28,8 @@ export interface DebugHandle {
    * which is seeded from Math.random and differs every load.
    */
   rngEndState(): number;
+  /** Longest unyielded stretch of the world bake, in milliseconds. */
+  longestBakeSliceMs(): number;
 }
 
 declare global {

@@ -134,6 +134,7 @@ async function boot(): Promise<void> {
     perf,
     renderOnce: () => renderer.render(game.scene),
     rngEndState: () => rng.seed,
+    longestBakeSliceMs: () => world.longestSliceMs,
   });
 
   /*

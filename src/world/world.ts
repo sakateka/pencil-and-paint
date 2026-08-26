@@ -105,6 +105,14 @@ export class World {
   private readonly occluders: Occluder[];
   /** Set once the canvases have been handed back; nothing may draw after. */
   private disposed = false;
+
+  /**
+   * The longest stretch of baking that ran without yielding, in milliseconds.
+   *
+   * The honest measure of whether the load blocks the page: it counts only work
+   * this code did, so it is not confused by a busy machine descheduling us.
+   */
+  longestSliceMs = 0;
   /** Insertion order of cached occluder sprites, oldest first. */
   private readonly spriteOrder: { occluder: Occluder; medium: Medium }[] = [];
 
@@ -141,8 +149,14 @@ export class World {
   static async generate(onProgress: (fraction: number) => void = () => {}): Promise<World> {
     // Hand back to the browser if this slice has run long enough.
     let sliceStarted = performance.now();
+    let longestSlice = 0;
     const breathe = async (): Promise<void> => {
-      if (performance.now() - sliceStarted < 12) return;
+      const ran = performance.now() - sliceStarted;
+      if (ran < 12) return;
+      // Measured here, synchronously, rather than by watching a timer from
+      // outside: this is the work actually done without yielding, where a timer
+      // gap also contains however long the OS felt like descheduling us.
+      if (ran > longestSlice) longestSlice = ran;
       await new Promise((resolve) => setTimeout(resolve, 0));
       sliceStarted = performance.now();
     };
@@ -181,8 +195,8 @@ export class World {
       // of the build — measured at 84ms of a 110ms bake, which is a visible
       // freeze on a phone.
       const detail = GROUND_DETAIL[medium];
-      for (let i = 0; i < detail; i += 20) {
-        drawGroundDetail(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT, i, Math.min(i + 20, detail));
+      for (let i = 0; i < detail; i += 8) {
+        drawGroundDetail(ctx, medium, WORLD_WIDTH, WORLD_HEIGHT, i, Math.min(i + 8, detail));
         await breathe();
       }
 
@@ -191,14 +205,14 @@ export class World {
         await breathe();
       }
 
-      for (let i = 0; i < layout.tufts.length; i += 200) {
-        drawTufts(ctx, layout.tufts, medium, i, Math.min(i + 200, layout.tufts.length));
+      for (let i = 0; i < layout.tufts.length; i += 40) {
+        drawTufts(ctx, layout.tufts, medium, i, Math.min(i + 40, layout.tufts.length));
         await breathe();
       }
 
       for (let i = 0; i < scenery.length; i++) {
         rng.replay(seeds[i], () => scenery[i].draw(ctx, medium));
-        if ((i & 15) === 0) {
+        if ((i & 3) === 0) {
           onProgress(done + (0.45 * (i + 1)) / scenery.length);
           await breathe();
         }
@@ -234,7 +248,9 @@ export class World {
       occluders.push({ scenery: piece, bounds: piece.bounds, seed: seeds[i], sprites: new Map() });
     });
 
-    return new World(layers, colliders, occluders, layout.pond, layout.animals);
+    const world = new World(layers, colliders, occluders, layout.pond, layout.animals);
+    world.longestSliceMs = longestSlice;
+    return world;
   }
 
   /**
