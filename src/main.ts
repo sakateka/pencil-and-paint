@@ -30,7 +30,9 @@ const MAX_STEP = 0.05;
  */
 function firstGesture(button: HTMLButtonElement | null): Promise<void> {
   return new Promise((resolve) => {
-    const done = () => {
+    const done = (e?: Event) => {
+      // Tapping the corner controls should not start the game.
+      if (e && (e.target as Element | null)?.closest?.('#corner')) return;
       button?.removeEventListener('click', done);
       removeEventListener('keydown', onKey);
       removeEventListener('pointerdown', done);
@@ -66,6 +68,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function boot(): Promise<void> {
+  /** The load timings, shown in the readout once the title card is gone. */
+  let loadReport: string[] = [];
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('missing #game canvas');
 
@@ -76,6 +80,8 @@ async function boot(): Promise<void> {
   const startLabel = startButton?.textContent ?? 'Start walking';
 
   await firstGesture(startButton);
+  const tappedAt = performance.now();
+  const tappedAtWall = Date.now();
   if (startButton) {
     startButton.setAttribute('aria-busy', 'true');
     startButton.textContent = 'drawing the valley…';
@@ -133,37 +139,41 @@ async function boot(): Promise<void> {
       `grain ${grainMs.toFixed(0)}ms · script ${ms(nav && nav.domContentLoadedEventStart - nav.responseEnd)}` +
       ` · net ${ms(nav?.responseEnd)} · paint ${ms(paint?.startTime)} · ready ${performance.now().toFixed(0)}` +
       ` · wall ${(Date.now() - performance.timeOrigin).toFixed(0)}` +
-      ` · hidden ${(hiddenMs + (hiddenSince ? performance.now() - hiddenSince : 0)).toFixed(0)}`;
+      ` · hidden ${(hiddenMs + (hiddenSince ? performance.now() - hiddenSince : 0)).toFixed(0)}` +
+      /*
+       * The gap between the tap and a playable world, in both clocks.
+       *
+       * They disagree when the page is suspended: the monotonic clock stops and
+       * the wall clock does not. So `tap 80/15000` is fifteen seconds of the
+       * browser refusing to run us, while `tap 15000/15000` is fifteen seconds
+       * of our own work — a different bug entirely.
+       */
+      ` · tap ${(performance.now() - tappedAt).toFixed(0)}/${(Date.now() - tappedAtWall).toFixed(0)}`;
     const lastLoad = remember(thisLoad);
     const report = `${BUILD_ID}\n${world.bakeSummary}\n${thisLoad}` +
       (lastLoad ? `\nprevious load: ${lastLoad}` : '');
     stamp.textContent = report;
 
     /*
-     * Also show it once play has begun.
-     *
-     * The title card is dismissed the moment the world is ready, so a report
-     * written only there is never readable on a phone — which is exactly the
-     * device it exists for.
+     * The report also goes into the readout behind the button, because the
+     * title card is dismissed the moment the world is ready — a load time
+     * written only there is never readable on the device that was slow.
      */
-    const hint = document.querySelector<HTMLElement>('#hint');
-    if (hint) {
-      const original = hint.textContent;
-      hint.style.whiteSpace = 'pre-line';
-      hint.style.fontFamily = 'ui-monospace, Menlo, Consolas, monospace';
-      hint.style.fontSize = '11px';
-      hint.textContent = report;
-      setTimeout(() => {
-        hint.style.whiteSpace = '';
-        hint.style.fontFamily = '';
-        hint.style.fontSize = '';
-        hint.textContent = original;
-      }, 20000);
-    }
+    loadReport = ['', ...report.split('\n')];
   }
   const renderer = new Renderer(canvas);
   const perf = new Performance();
   let showPerf = false;
+  const statsButton = document.querySelector<HTMLButtonElement>('#stats');
+  const hintPanel = document.querySelector<HTMLElement>('#hint');
+  const setPerf = (on: boolean) => {
+    showPerf = on;
+    statsButton?.setAttribute('aria-pressed', String(on));
+    // The hint sits exactly where the readout goes; on a phone they overlap.
+    if (hintPanel) hintPanel.style.visibility = on ? 'hidden' : '';
+  };
+  statsButton?.addEventListener('click', () => setPerf(!showPerf));
+
 
   const ui = new Ui({
     onStart: () => start(),
@@ -191,9 +201,7 @@ async function boot(): Promise<void> {
       ui.reset();
       ui.setProgress(0, game.pots.length, game.litRadius);
     },
-    onTogglePerf: () => {
-      showPerf = !showPerf;
-    },
+    onTogglePerf: () => setPerf(!showPerf),
   });
 
   function start(): void {
@@ -220,9 +228,7 @@ async function boot(): Promise<void> {
   ui.setProgress(0, game.pots.length, game.litRadius);
 
   installDebugPanel(game, {
-    togglePerf: () => {
-      showPerf = !showPerf;
-    },
+    togglePerf: () => setPerf(!showPerf),
     isPerfOn: () => showPerf,
     restart: () => {
       game.restart();
@@ -240,6 +246,7 @@ async function boot(): Promise<void> {
     renderOnce: () => renderer.render(game.scene),
     rngEndState: () => rng.seed,
     longestBakeSliceMs: () => world.longestSliceMs,
+    isPerfOn: () => showPerf,
   });
 
   /*
@@ -277,6 +284,7 @@ async function boot(): Promise<void> {
         `world ${ms(s.worldBlit)}  live ${ms(s.live)}  mask ${ms(s.mask)}`,
         `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
+        ...loadReport,
       ]);
     }
     perf.recordDraw(performance.now() - drawStart);

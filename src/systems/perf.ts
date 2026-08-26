@@ -99,7 +99,7 @@ export function drawPerfOverlay(
   viewportHeight: number,
   extra: readonly string[],
 ): void {
-  const lines = [
+  const written = [
     `fps ${perf.fps.toFixed(0)}   frame ${perf.frameMs.toFixed(1)}ms`,
     `draw ${perf.drawMs.toFixed(2)}ms   slow ${perf.slowFrames}/${perf.windowFrames}`,
     `scale ${perf.scale} (max ${perf.maxScale}, dpr ${perf.devicePixelRatio})`,
@@ -111,6 +111,12 @@ export function drawPerfOverlay(
   ctx.scale(perf.scale, perf.scale);
   ctx.font = '13px ui-monospace, Menlo, Consolas, monospace';
   ctx.textBaseline = 'top';
+
+  // A phone is narrow and some of these lines are long, so they are folded
+  // rather than run off the edge — a number you cannot see is not a readout.
+  const limit = viewportWidth / perf.scale - 44;
+  const lines: string[] = [];
+  for (const line of written) lines.push(...fold(ctx, line, limit));
 
   let width = 0;
   for (const line of lines) width = Math.max(width, ctx.measureText(line).width);
@@ -124,5 +130,22 @@ export function drawPerfOverlay(
   ctx.fillStyle = '#d8f0c0';
   lines.forEach((line, i) => ctx.fillText(line, x + 10, y + 8 + i * 17));
   ctx.restore();
-  void viewportWidth;
+}
+
+/** Breaks a line at spaces so it fits, keeping continuations indented. */
+function fold(ctx: CanvasRenderingContext2D, line: string, limit: number): string[] {
+  if (ctx.measureText(line).width <= limit) return [line];
+  const out: string[] = [];
+  let current = '';
+  for (const word of line.split(' ')) {
+    const next = current ? `${current} ${word}` : word;
+    if (current && ctx.measureText(next).width > limit) {
+      out.push(current);
+      current = `  ${word}`;
+    } else {
+      current = next;
+    }
+  }
+  if (current) out.push(current);
+  return out;
 }

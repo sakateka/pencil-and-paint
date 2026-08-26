@@ -30,6 +30,8 @@ export interface DebugHandle {
   rngEndState(): number;
   /** Longest unyielded stretch of the world bake, in milliseconds. */
   longestBakeSliceMs(): number;
+  /** Whether the performance readout is showing. */
+  isPerfOn(): boolean;
 }
 
 declare global {
