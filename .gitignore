@@ -1,0 +1,10 @@
+# dev-only: Playwright and the browsers it downloads
+node_modules/
+
+# local scratch: test scripts and screenshots
+tmp/
+
+# build output for the Pages workflow
+_site/
+
+.DS_Store

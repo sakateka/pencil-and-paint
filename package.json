@@ -1,0 +1,14 @@
+{
+  "name": "pencil-and-paint",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A browser game where colour exists only around the walker, and the rest of the world is an unfinished pencil sketch.",
+  "license": "SEE LICENSE IN LICENSE",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node tmp/final.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
