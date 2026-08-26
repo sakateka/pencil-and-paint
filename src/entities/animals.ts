@@ -55,11 +55,11 @@ export interface Animal {
   /** Whether the colour has reached it. */
   awake: boolean;
 
-  /**
-   * A frozen animal is the same pixels every frame, so it is cached as a sprite
-   * and blitted. Dropped the moment it wakes.
-   */
-  frozenSprite: HTMLCanvasElement | null;
+  /** Its reserved slot in the herd's sprite atlas. */
+  slot: number;
+
+  /** Whether its atlas slot currently holds a valid still. */
+  frozen: boolean;
 }
 
 const SHEEP_LEGS: readonly (readonly [number, number])[] = [
@@ -127,7 +127,8 @@ export function makeAnimal(
     headDown: 1,
     clock: rnd() * 20,
     awake: false,
-    frozenSprite: null,
+    slot: 0,
+    frozen: false,
   };
 }
 

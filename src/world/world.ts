@@ -40,8 +40,12 @@ const SPRITE_PAD = 3;
  * a large fixed cost that barely moved when the destination shrank. Tiles stay
  * small enough to be accelerated, and only the handful under the viewport is
  * touched each frame.
+ *
+ * Sized 1024 rather than smaller on purpose: every distinct source surface in a
+ * frame is something Firefox has to synchronise, so a fine grid trades one
+ * problem for another. Four tiles under a viewport is the balance.
  */
-const TILE = 512;
+const TILE = 1024;
 
 interface Layer {
   tiles: HTMLCanvasElement[];

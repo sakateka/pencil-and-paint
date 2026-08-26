@@ -121,7 +121,7 @@ function boot(): void {
  */
 function countCanvases(game: Game): number {
   let n = 4; // the two world layers, the scratch canvas and the paper overlay
-  n += game.herd.animals.filter((a) => a.frozenSprite).length;
+  n += 1; // the herd's sprite atlas
   n += game.pots.filter((p) => p.frozenSprite).length;
   return n;
 }

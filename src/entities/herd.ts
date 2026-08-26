@@ -1,4 +1,4 @@
-import { createSurface } from '../core/canvas';
+import { createSurface, type Surface } from '../core/canvas';
 import { clamp, TAU } from '../core/math';
 import { rnd, rr } from '../core/rng';
 import { withBoil } from '../media/ink';
@@ -27,6 +27,9 @@ const SPRITE_HEIGHT = 110;
 const SPRITE_ORIGIN_X = 60;
 const SPRITE_ORIGIN_Y = 88;
 
+/** Slots per row in the atlas. */
+const ATLAS_COLUMNS = 5;
+
 /** How close the walker can get before an animal moves off. */
 const SHY_DISTANCE: Record<AnimalKind, number> = {
   chicken: 78,
@@ -38,6 +41,16 @@ const SHY_DISTANCE: Record<AnimalKind, number> = {
 export class Herd {
   readonly animals: Animal[];
 
+  /**
+   * Every frozen animal's cached still, packed into one canvas.
+   *
+   * They used to be a canvas each. Firefox treats every distinct source surface
+   * in a frame as something to synchronise, and a field of livestock meant
+   * twenty-odd of them per frame — which showed up in a profile as a busy
+   * thread doing little but memcpy and buffer mapping. One atlas is one source.
+   */
+  private readonly atlas: Surface;
+
   constructor(
     spawns: readonly {
       kind: AnimalKind;
@@ -48,6 +61,9 @@ export class Herd {
     }[],
   ) {
     this.animals = spawns.map((s) => makeAnimal(s.kind, s.x, s.y, s.homeRadius, s.scale));
+    this.animals.forEach((a, i) => (a.slot = i));
+    const rows = Math.ceil(this.animals.length / ATLAS_COLUMNS);
+    this.atlas = createSurface(ATLAS_COLUMNS * SPRITE_WIDTH, rows * SPRITE_HEIGHT);
   }
 
   /** Send every animal back out to pasture. */
@@ -61,7 +77,7 @@ export class Herd {
       a.timer = rr(0.5, 4);
       a.headDown = 1;
       a.moving = false;
-      a.frozenSprite = null;
+      a.frozen = false;
     }
   }
 
@@ -71,7 +87,7 @@ export class Herd {
       // Asleep means asleep: no clock, no wandering, no tail. It is a drawing.
       if (!a.awake) continue;
 
-      a.frozenSprite = null;
+      a.frozen = false;
       a.clock += dt;
       if (a.kind === 'cat') continue; // committed to the nap
 
@@ -146,20 +162,37 @@ export class Herd {
       }
       // Asleep: invisible in the colour pass, a cached still in the pencil one.
       if (medium === 'color') continue;
-      ctx.drawImage(this.frozenSprite(a), a.x - SPRITE_ORIGIN_X, a.y - SPRITE_ORIGIN_Y);
+      if (!a.frozen) this.freeze(a);
+      const col = a.slot % ATLAS_COLUMNS;
+      const row = Math.floor(a.slot / ATLAS_COLUMNS);
+      ctx.drawImage(
+        this.atlas.canvas,
+        col * SPRITE_WIDTH,
+        row * SPRITE_HEIGHT,
+        SPRITE_WIDTH,
+        SPRITE_HEIGHT,
+        a.x - SPRITE_ORIGIN_X,
+        a.y - SPRITE_ORIGIN_Y,
+        SPRITE_WIDTH,
+        SPRITE_HEIGHT,
+      );
     }
   }
 
   /**
    * Stroking a sheep costs ~18 separate paths. A field of frozen livestock was
-   * ~400 stroke calls a frame for a picture that never changed; this makes it
-   * one blit each.
+   * ~400 stroke calls a frame for a picture that never changes; this makes it
+   * one blit each, all from the same atlas.
    */
-  private frozenSprite(a: Animal): HTMLCanvasElement {
-    if (a.frozenSprite) return a.frozenSprite;
+  private freeze(a: Animal): void {
+    const col = a.slot % ATLAS_COLUMNS;
+    const row = Math.floor(a.slot / ATLAS_COLUMNS);
+    const { ctx } = this.atlas;
 
-    const { canvas, ctx } = createSurface(SPRITE_WIDTH, SPRITE_HEIGHT);
-    ctx.translate(SPRITE_ORIGIN_X, SPRITE_ORIGIN_Y);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(col * SPRITE_WIDTH, row * SPRITE_HEIGHT, SPRITE_WIDTH, SPRITE_HEIGHT);
+    ctx.translate(col * SPRITE_WIDTH + SPRITE_ORIGIN_X, row * SPRITE_HEIGHT + SPRITE_ORIGIN_Y);
 
     const worldX = a.x;
     const worldY = a.y;
@@ -169,8 +202,8 @@ export class Herd {
     withBoil(false, () => drawAnimalLive(ctx, a, 'sketch'));
     a.x = worldX;
     a.y = worldY;
+    ctx.restore();
 
-    a.frozenSprite = canvas;
-    return canvas;
+    a.frozen = true;
   }
 }
