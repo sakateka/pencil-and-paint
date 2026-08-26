@@ -346,6 +346,14 @@ export class Renderer {
     }
   }
 
+  /** Release the scratch surfaces. See `World.dispose`. */
+  dispose(field: ColorField): void {
+    for (const canvas of [this.canvas, this.temp.canvas, field.surface.canvas]) {
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+  }
+
   /** Direct access for the diagnostics overlay, which draws last. */
   get context(): CanvasRenderingContext2D {
     return this.ctx;

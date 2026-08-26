@@ -103,6 +103,8 @@ export class World {
   readonly animalSpawns: readonly AnimalSpawn[];
 
   private readonly occluders: Occluder[];
+  /** Set once the canvases have been handed back; nothing may draw after. */
+  private disposed = false;
   /** Insertion order of cached occluder sprites, oldest first. */
   private readonly spriteOrder: { occluder: Occluder; medium: Medium }[] = [];
 
@@ -236,6 +238,35 @@ export class World {
   }
 
   /**
+   * Hand back every canvas this world holds.
+   *
+   * Called when the page goes away. On a reload the browser can build the new
+   * document before the old one is collected, so for a moment two worlds' worth
+   * of canvas is live — which on a phone is the difference between loading and
+   * a white screen. Zeroing the dimensions releases the backing store at once
+   * rather than waiting for the collector to get round to it.
+   */
+  dispose(): void {
+    for (const layer of [this.layers.color, this.layers.sketch]) {
+      for (const tile of layer.tiles) {
+        tile.width = 1;
+        tile.height = 1;
+      }
+      // The array is left in place. Emptying it while `columns` and `rows`
+      // still describe a full grid means any later draw indexes past the end.
+    }
+    for (const occluder of this.occluders) {
+      for (const sprite of occluder.sprites.values()) {
+        sprite.canvas.width = 1;
+        sprite.canvas.height = 1;
+      }
+      occluder.sprites.clear();
+    }
+    this.spriteOrder.length = 0;
+    this.disposed = true;
+  }
+
+  /**
    * Draw a region of a layer.
    *
    * Walks only the tiles the region touches. With a 1:1 scale this is a plain
@@ -253,6 +284,7 @@ export class World {
     dw: number,
     dh: number,
   ): void {
+    if (this.disposed) return;
     const layer = this.layers[medium];
     const scaleX = dw / sw;
     const scaleY = dh / sh;

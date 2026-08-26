@@ -66,6 +66,12 @@ export class Herd {
     this.atlas = createSurface(ATLAS_COLUMNS * SPRITE_WIDTH, rows * SPRITE_HEIGHT);
   }
 
+  /** Release the sprite atlas. See `World.dispose`. */
+  dispose(): void {
+    this.atlas.canvas.width = 1;
+    this.atlas.canvas.height = 1;
+  }
+
   /** Send every animal back out to pasture. */
   scatter(): void {
     for (const a of this.animals) {

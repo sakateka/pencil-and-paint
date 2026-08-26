@@ -99,11 +99,15 @@ async function boot(): Promise<void> {
     perf.pardonWarmUp();
   }
 
+  /** Cleared on `pagehide`, after which nothing may touch a canvas. */
+  let running = true;
+
   function resize(): void {
     renderer.resize(innerWidth, innerHeight, perf.scale, game.field);
   }
 
   addEventListener('resize', () => {
+    if (!running) return; // the canvases may already have been handed back
     resize();
     renderer.render(game.scene);
   });
@@ -132,8 +136,24 @@ async function boot(): Promise<void> {
     rngEndState: () => rng.seed,
   });
 
+  /*
+   * Give the canvases back before the page goes.
+   *
+   * `pagehide` rather than `unload`, which mobile browsers may never fire. On a
+   * reload the new document can start building while the old one is still
+   * resident, and two worlds of canvas at once is more than a phone will grant
+   * — it works on the first load and shows a white screen on the second.
+   */
+  addEventListener('pagehide', () => {
+    running = false;
+    renderer.dispose(game.field);
+    game.herd.dispose();
+    world.dispose();
+  });
+
   let last = performance.now();
   function frame(now: number): void {
+    if (!running) return;
     const dt = Math.min(MAX_STEP, (now - last) / 1000);
     last = now;
 
