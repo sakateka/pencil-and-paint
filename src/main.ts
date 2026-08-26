@@ -1,4 +1,5 @@
 import { exposeForTests } from './debug';
+import { installDebugPanel } from './debugPanel';
 import { WALK_CYCLE } from './entities/player';
 import { Game } from './game';
 import { tickBoil } from './media/ink';
@@ -74,6 +75,19 @@ function boot(): void {
   });
   resize();
   ui.setProgress(0, game.pots.length, game.litRadius);
+
+  installDebugPanel(game, {
+    togglePerf: () => {
+      showPerf = !showPerf;
+    },
+    isPerfOn: () => showPerf,
+    restart: () => {
+      game.restart();
+      ui.reset();
+      ui.setProgress(0, game.pots.length, game.litRadius);
+      game.running = true;
+    },
+  });
 
   exposeForTests({
     game,

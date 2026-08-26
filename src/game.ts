@@ -49,6 +49,12 @@ export class Game {
   found = 0;
   won = false;
 
+  /**
+   * Debug: force the colour to cover everything without ending the game.
+   * Driven by the local-only panel; untouched in normal play.
+   */
+  floodColour = false;
+
   private radiusBoost = 0;
   private wonAt = 0;
   private startedAt = 0;
@@ -105,6 +111,7 @@ export class Game {
 
   /** The radius the mask actually uses, including the ending's flood. */
   get maskRadius(): number {
+    if (this.floodColour) return FLOOD_RADIUS;
     if (!this.won) return this.litRadius;
     const t = clamp((this.elapsed - this.wonAt) / FLOOD_SECONDS, 0, 1);
     return lerp(this.litRadius, FLOOD_RADIUS, t);
@@ -182,6 +189,36 @@ export class Game {
         w.facing = w.vy < 0 ? 'up' : 'down';
       }
     }
+  }
+
+  /** Debug: find every remaining pot at once, as if you had walked to them. */
+  collectAll(): void {
+    for (const pot of this.pots) {
+      if (pot.found) continue;
+      pot.found = true;
+      this.found++;
+      this.radiusBoost += RADIUS_PER_POT;
+      this.walker.brush = pot.hue;
+      this.particles.burst(pot.x, pot.y, pot.hue, 8);
+    }
+    // One notification rather than fourteen, so the HUD lands in the right
+    // state without fourteen chimes on top of each other.
+    this.events.onPotFound(this.found, this.pots.length, this.walker.brush);
+    if (!this.won) {
+      this.won = true;
+      this.wonAt = this.elapsed;
+      this.events.onComplete(Math.round(this.elapsed - this.startedAt));
+    }
+  }
+
+  /** Debug: put the walker somewhere without walking there. */
+  teleport(x: number, y: number): void {
+    this.walker.x = x;
+    this.walker.y = y;
+    this.walker.vx = 0;
+    this.walker.vy = 0;
+    this.camera.snapTo(x, y);
+    this.field.clearTrail();
   }
 
   private collectPots(): void {
