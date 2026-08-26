@@ -55,6 +55,16 @@ export class ColorField {
     this.surface = createSurface(1, 1);
   }
 
+  /**
+   * The mask is only ever painted inside the dirty rectangle, so it is
+   * allocated at that size rather than at the size of the window.
+   *
+   * This matters more than it looks. A full-viewport scratch surface is around
+   * five megabytes, and Firefox spends real time shuttling canvas buffers about
+   * — a profile from a machine reporting slow frames had two thirds of its
+   * busiest thread in raw memcpy and buffer mapping. Allocating what is used
+   * cuts that surface to a fraction.
+   */
   resize(width: number, height: number): void {
     this.surface.canvas.width = Math.max(1, Math.round(width));
     this.surface.canvas.height = Math.max(1, Math.round(height));
@@ -136,9 +146,10 @@ export class ColorField {
     const { ctx } = this.surface;
     const d = this.dirty;
 
+    // Painted at a local origin: the surface holds only the dirty rectangle.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(d.x * scale, d.y * scale, d.width * scale + 2, d.height * scale + 2);
-    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.clearRect(0, 0, d.width * scale + 2, d.height * scale + 2);
+    ctx.setTransform(scale, 0, 0, scale, -d.x * scale, -d.y * scale);
     ctx.save();
     ctx.beginPath();
     ctx.rect(d.x, d.y, d.width, d.height);

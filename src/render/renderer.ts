@@ -9,6 +9,15 @@ import type { World } from '../world/world';
 import type { Camera } from './camera';
 import type { ColorField } from './colorField';
 
+/**
+ * The widest the colour blob and its trail can be, in CSS pixels.
+ *
+ * The base radius plus every paint pot, plus the pulse and the trail's reach.
+ * Once the ending floods the screen the renderer takes the `flooded` path and
+ * does not use these surfaces at all.
+ */
+const MAX_BLOB_SPAN = 1100;
+
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
   readonly world: World;
@@ -90,9 +99,12 @@ export class Renderer {
   }
 
   constructor(private readonly canvas: HTMLCanvasElement) {
-    // Deliberately not `alpha: false`: an opaque canvas clears to black, and a
-    // resize clears the canvas, which shows up as a black flash.
-    this.ctx = context2d(canvas);
+    // Opaque. The compositor can then copy rather than blend a full-screen
+    // layer every frame. This was transparent for a while because a resize
+    // clears the canvas and an opaque one clears to black, which flashed — but
+    // the render scale is fixed now, so resizes only happen when the window
+    // does, and those redraw immediately.
+    this.ctx = context2d(canvas, { alpha: false });
     this.temp = createSurface(1, 1);
   }
 
@@ -100,11 +112,16 @@ export class Renderer {
     this.width = width;
     this.height = height;
     this.scale = scale;
-    for (const c of [this.canvas, this.temp.canvas]) {
-      c.width = Math.max(1, Math.round(width * scale));
-      c.height = Math.max(1, Math.round(height * scale));
-    }
-    field.resize(width * scale, height * scale);
+    this.canvas.width = Math.max(1, Math.round(width * scale));
+    this.canvas.height = Math.max(1, Math.round(height * scale));
+
+    // The scratch surfaces only ever hold the dirty rectangle, so they are
+    // allocated to that rather than to the window.
+    const scratchW = Math.min(width, MAX_BLOB_SPAN) * scale;
+    const scratchH = Math.min(height, MAX_BLOB_SPAN) * scale;
+    this.temp.canvas.width = Math.max(1, Math.round(scratchW));
+    this.temp.canvas.height = Math.max(1, Math.round(scratchH));
+    field.resize(scratchW, scratchH);
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
   }
@@ -120,8 +137,8 @@ export class Renderer {
     const radius = scene.maskRadius * camera.zoom;
     const flooded = radius > Math.hypot(this.width, this.height) * 0.85;
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    // No clear: the world blit below covers every pixel of the viewport, and on
+    // an opaque canvas a full-screen clear is a full-screen write for nothing.
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
     this.bakesThisFrame = 0;
@@ -209,8 +226,9 @@ export class Renderer {
 
     const t = temp.ctx;
     t.setTransform(1, 0, 0, 1, 0, 0);
-    t.clearRect(dirty.x * scale, dirty.y * scale, dirty.width * scale + 2, dirty.height * scale + 2);
-    t.setTransform(scale, 0, 0, scale, 0, 0);
+    t.clearRect(0, 0, dirty.width * scale + 2, dirty.height * scale + 2);
+    // Local origin: the scratch surface holds only the dirty rectangle.
+    t.setTransform(scale, 0, 0, scale, -dirty.x * scale, -dirty.y * scale);
     t.save();
     t.beginPath();
     t.rect(dirty.x, dirty.y, dirty.width, dirty.height);
@@ -236,7 +254,7 @@ export class Renderer {
     t.setTransform(1, 0, 0, 1, 0, 0);
     t.save();
     t.beginPath();
-    t.rect(dirty.x * scale, dirty.y * scale, dirty.width * scale, dirty.height * scale);
+    t.rect(0, 0, dirty.width * scale, dirty.height * scale);
     t.clip();
     t.globalCompositeOperation = 'destination-in';
     t.drawImage(field.surface.canvas, 0, 0);
@@ -246,8 +264,8 @@ export class Renderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(
       temp.canvas,
-      dirty.x * scale,
-      dirty.y * scale,
+      0,
+      0,
       dirty.width * scale,
       dirty.height * scale,
       dirty.x * scale,
