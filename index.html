@@ -50,11 +50,17 @@
   #ghlink:focus-visible { outline:2px solid rgba(60,55,45,.6); outline-offset:3px; }
   @media (max-width:520px) { #ghlink span { display:none; } }
 
+  /* No backdrop-filter here. It is a full-screen element sitting over an
+     animating canvas: the compositor would re-blur the whole canvas every
+     frame, and canvas draws stall while the texture is synchronised to be
+     sampled. A 1.5px blur is not worth that. */
   .overlay {
     position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-    background:rgba(233,227,213,.72); backdrop-filter:blur(1.5px);
-    text-align:center; transition:opacity .6s ease;
+    background:rgba(233,227,213,.72);
+    text-align:center;
+    transition:opacity .6s ease, visibility 0s linear 0s;
   }
+  .overlay.hidden { transition:opacity .6s ease, visibility 0s linear .6s; }
   .overlay .card {
     background:rgba(248,244,234,.95);
     border:2px solid rgba(60,55,45,.6);
@@ -77,13 +83,16 @@
     color:#332f28;
   }
   button:active { transform:translate(2px,3px); box-shadow:none; }
-  .hidden { opacity:0; pointer-events:none; }
+  /* visibility:hidden takes it out of painting altogether — opacity:0 alone
+     leaves a full-screen layer the compositor still has to deal with */
+  .hidden { opacity:0; pointer-events:none; visibility:hidden; }
 
   /* the finish is a quiet note in the corner, not a wall across the screen */
   #done {
     right:14px; bottom:14px; max-width:290px; text-align:center;
-    transition:opacity .8s ease;
+    transition:opacity .8s ease, visibility 0s linear 0s;
   }
+  #done.hidden { transition:opacity .8s ease, visibility 0s linear .8s; }
   #done .done-title { font-size:22px; margin-bottom:4px; }
   #done .done-sub   { font-size:14px; line-height:1.5; opacity:.75; }
   #done button { font-size:16px; padding:7px 16px; margin-top:12px; }
@@ -2573,12 +2582,13 @@ function fadeIntro() {
   if (!el.classList.contains('hidden')) {
     el.classList.add('hidden');
     if (startTime === 0) startTime = elapsed;
+    // Whichever way play begins — the button or just walking off — give the
+    // first couple of seconds a pass before judging the machine's speed.
+    costFrames = slowFrames = 0;
+    settleAt = elapsed + 2;
   }
 }
-document.getElementById('startBtn').addEventListener('click', () => {
-  started = true; fadeIntro();
-  costFrames = slowFrames = 0; settleAt = elapsed + 2;   // don't judge the warm-up
-});
+document.getElementById('startBtn').addEventListener('click', () => { started = true; fadeIntro(); });
 document.getElementById('againBtn').addEventListener('click', () => { restart(); started = true; });
 
 buildWorld();
