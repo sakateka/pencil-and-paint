@@ -19,9 +19,17 @@ async function boot(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('missing #game canvas');
 
-  // The grain tile is generated, so hand it to CSS as an image once.
+  /*
+   * Encoding the grain to a data URL is a canvas readback plus a PNG encode.
+   * Small, and instant on a desktop — but it sits before first paint, so if a
+   * phone is slow at it the whole page is held back and the title card simply
+   * does not appear. Timed, because a bake of 33ms behind a twenty second wait
+   * means the cost is somewhere other than where I was looking.
+   */
+  const grainStarted = performance.now();
   const grain = document.querySelector<HTMLElement>('#grain');
   if (grain) grain.style.backgroundImage = `url(${GRAIN.toDataURL()})`;
+  const grainMs = performance.now() - grainStarted;
 
   /*
    * Take the button before the world is built, not after.
@@ -57,7 +65,19 @@ async function boot(): Promise<void> {
     startButton.textContent = startLabel;
   }
   // Read this off the device: it says which phase of the bake was slow.
-  if (stamp) stamp.textContent = `${BUILD_ID}\n${world.bakeSummary}`;
+  if (stamp) {
+    const nav = performance.getEntriesByType('navigation')[0] as
+      | PerformanceNavigationTiming
+      | undefined;
+    const paint = performance
+      .getEntriesByType('paint')
+      .find((e) => e.name === 'first-contentful-paint');
+    const ms = (v: number | undefined) => (v === undefined ? '?' : v.toFixed(0));
+    stamp.textContent =
+      `${BUILD_ID}\n${world.bakeSummary}\n` +
+      `grain ${grainMs.toFixed(0)}ms · script ${ms(nav && nav.domContentLoadedEventStart - nav.responseEnd)}` +
+      ` · net ${ms(nav?.responseEnd)} · paint ${ms(paint?.startTime)} · ready ${performance.now().toFixed(0)}`;
+  }
   const renderer = new Renderer(canvas);
   const perf = new Performance();
   let showPerf = false;
