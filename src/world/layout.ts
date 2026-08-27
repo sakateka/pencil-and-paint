@@ -1,3 +1,4 @@
+import { makeEasel } from './easel';
 import { HAMMOCK_SPAN, makeHammock } from './hammock';
 import { lerp, TAU } from '../core/math';
 import { rng, rnd, rr } from '../core/rng';
@@ -32,6 +33,9 @@ export const SPAWN = { x: 1300, y: 1330 } as const;
 
 /** Where the hammock is slung. Somewhere to lie down, away from everything. */
 export const HAMMOCK = { x: 1780, y: 1700 } as const;
+
+/** The easel, standing beside it, clear of both of the hammock's trees. */
+export const EASEL = { x: 1902, y: 1782 } as const;
 
 export interface AnimalSpawn {
   kind: AnimalKind;
@@ -313,6 +317,10 @@ export function buildLayout(): Layout {
   scenery.push(makeTree(HAMMOCK.x + HAMMOCK_SPAN / 2, HAMMOCK.y, 1.25));
   scenery.push(makeHammock(HAMMOCK.x, HAMMOCK.y));
   sites.reserve(HAMMOCK.x, HAMMOCK.y, HAMMOCK_SPAN * 0.8);
+
+  // And the easel it was left beside, facing the same valley it is a picture of.
+  scenery.push(makeEasel(EASEL.x, EASEL.y));
+  sites.reserve(EASEL.x, EASEL.y, 44);
   sites.reserve(2585, 590, 90);
   sites.reserve(1960, 620, 80);
   sites.reserve(1655, 1205, 60);

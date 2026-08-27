@@ -24,12 +24,16 @@ export async function run(url) {
         anchors: game.world.colliders.filter(
           (c) => c.kind === 'circle' && Math.hypot(c.x - 1780, c.y - 1700) < 120,
         ).length,
+        easel: game.world.colliders.filter(
+          (c) => c.kind === 'circle' && Math.hypot(c.x - 1902, c.y - 1782) < 20,
+        ).length,
       };
     });
 
     suite.equal(where.far, null, 'nothing on offer out in the field');
     suite.ok(!where.won, 'and the valley is unfinished');
     suite.atLeast(where.anchors, 2, 'the hammock is slung between two solid things');
+    suite.equal(where.easel, 1, 'and somebody left an easel standing beside it');
 
     // Walk up to it with the pots still scattered.
     const offered = await game.evaluate((pencil) => {
