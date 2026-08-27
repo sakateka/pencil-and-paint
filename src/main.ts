@@ -389,8 +389,27 @@ function chime(index: number): void {
   }
 }
 
-/** The chest resonance itself. Everything else is shaping on top of this. */
-const PURR_FUNDAMENTAL = 28;
+/**
+ * The chest resonance itself. Everything else is shaping on top of this.
+ *
+ * Real cats purr somewhere between 20 and 35 times a second, so this is free to
+ * move within that range — and where it sits decides what a small speaker can
+ * do with it. Every harmonic moves with it, so nudging the pitch up carries the
+ * whole sound towards the range a phone can reproduce without touching the
+ * harmonic ratios, which are what the voice actually is.
+ *
+ * Measured energy, by band:
+ *
+ *              100-300Hz   300-800Hz
+ *     28Hz       0.0129      0.0016
+ *     34Hz       0.0161      0.0029     <- here
+ *     40Hz       0.0190      0.0045
+ *
+ * 34 is the cautious end of that: still squarely a cat, three semitones up, and
+ * nearly twice the energy where a telephone lives. Put it back to 28 and the
+ * voice is exactly the one tuned by ear on headphones.
+ */
+const PURR_FUNDAMENTAL = 34;
 
 /** Loudest the purr ever gets. It is meant to be close and quiet, not loud. */
 const PURR_PEAK = 0.09;
