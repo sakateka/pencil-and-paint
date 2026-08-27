@@ -26,6 +26,7 @@ export class Ui {
   private readonly time = element('wintime');
   private readonly action = element<HTMLButtonElement>('action');
   private readonly actionLabel = element('actionLabel');
+  private readonly leave = element<HTMLButtonElement>('leave');
 
   private doneTimer: number | undefined;
   private noteTimer: number | undefined;
@@ -35,14 +36,24 @@ export class Ui {
 
   /** Last prompt shown, so the per-frame call touches the DOM only on change. */
   private prompt: string | null = null;
+  private leaving = false;
 
-  constructor(handlers: { onStart(): void; onRestart(): void; onAction(): void }) {
+  constructor(handlers: {
+    onStart(): void;
+    onRestart(): void;
+    onAction(): void;
+    onLeave(): void;
+  }) {
     element('startBtn').addEventListener('click', handlers.onStart);
     element('againBtn').addEventListener('click', handlers.onRestart);
     this.action.addEventListener('click', () => {
       handlers.onAction();
       // Otherwise the button keeps focus and the next space bar presses it again.
       this.action.blur();
+    });
+    this.leave.addEventListener('click', () => {
+      handlers.onLeave();
+      this.leave.blur();
     });
   }
 
@@ -62,6 +73,19 @@ export class Ui {
     }
     this.actionLabel.textContent = label;
     this.action.classList.remove('hidden');
+  }
+
+  /**
+   * The way out of whatever you are in the middle of.
+   *
+   * On a keyboard this is only a reminder that Q exists. On a phone there is no
+   * Q, and since you cannot walk while fishing, this button is the only way off
+   * the riverbank — so it is not decoration there, it is the exit.
+   */
+  setLeave(showing: boolean): void {
+    if (showing === this.leaving) return;
+    this.leaving = showing;
+    this.leave.classList.toggle('hidden', !showing);
   }
 
   /** A line that says itself and then gives the hint back. */

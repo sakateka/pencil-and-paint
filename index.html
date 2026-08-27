@@ -46,18 +46,30 @@
      is something to do, and doubles as the tap target on a phone — there is no
      E to press there, so the key chip is hidden and the whole thing is a
      button. */
-  #action {
-    bottom:58px; left:50%; transform:translateX(-50%);
+  /* A row, so a second choice can sit beside the first without either of them
+     having to know where the other is. */
+  #actions {
+    position:fixed; bottom:58px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:10px; z-index:5;
+  }
+  #action, #leave {
+    position:static; transform:none;
     display:flex; align-items:center; gap:9px;
     font-family:inherit; font-size:15px; margin:0; padding:8px 14px;
     background:rgba(246,241,229,.92); color:#332f28; cursor:pointer;
+    /* Two of these sit side by side on a phone; wrapped labels turn a row of
+       buttons into a wall of text. */
+    white-space:nowrap;
     transition:opacity .2s ease, visibility 0s linear 0s;
   }
-  #action.hidden { transition:opacity .2s ease, visibility 0s linear .2s; }
-  #action .key { padding:2px 8px; font-size:13px; box-shadow:1px 2px 0 rgba(60,55,45,.2); }
-  #action:active { transform:translateX(-50%) translateY(2px); box-shadow:1px 2px 0 rgba(60,55,45,.18); }
-  #action:focus-visible { outline:2px solid rgba(60,55,45,.6); outline-offset:3px; }
-  @media (hover:none) { #action .key { display:none; } }
+  #action.hidden, #leave.hidden { transition:opacity .2s ease, visibility 0s linear .2s; }
+  #action .key, #leave .key { padding:2px 8px; font-size:13px; box-shadow:1px 2px 0 rgba(60,55,45,.2); }
+  #action:active, #leave:active { transform:translateY(2px); box-shadow:1px 2px 0 rgba(60,55,45,.18); }
+  #action:focus-visible, #leave:focus-visible { outline:2px solid rgba(60,55,45,.6); outline-offset:3px; }
+  #leave { background:rgba(246,241,229,.78); font-size:14px; }
+  /* No Q to press on a phone, so the chip goes and the button is the whole
+     affordance — which is the only way off the riverbank there. */
+  @media (hover:none) { #action .key, #leave .key { display:none; } }
 
   /* the corner controls: source link and the diagnostics toggle */
   #corner {
@@ -165,9 +177,14 @@
 
 <div id="hint" class="panel">the world is only coloured where you stand — go and find the rest</div>
 
-<button id="action" class="panel hidden" type="button">
-  <span class="key">E</span><span id="actionLabel">pet the cat</span>
-</button>
+<div id="actions">
+  <button id="action" class="panel hidden" type="button">
+    <span class="key">E</span><span id="actionLabel">pet the cat</span>
+  </button>
+  <button id="leave" class="panel hidden" type="button">
+    <span class="key">Q</span><span>pack up</span>
+  </button>
+</div>
 
 <div id="corner">
 <a id="ghlink" class="panel"

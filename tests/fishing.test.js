@@ -168,6 +168,64 @@ export async function run(url) {
     suite.equal(missed.label, 'it got away', 'and it says so');
     suite.equal(missed.caught, 1, 'with nothing added to the tally');
 
+    /*
+     * You are sitting down, so you do not walk.
+     *
+     * Pushed hard in every direction for a second: the walker must not have
+     * shifted, and must not still be drifting when the input stops.
+     */
+    const rooted = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const from = { x: game.walker.x, y: game.walker.y };
+      for (let i = 0; i < 60; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 1, y: -1 }) });
+      }
+      return {
+        fishing: game.fishing.active,
+        moved: +Math.hypot(game.walker.x - from.x, game.walker.y - from.y).toFixed(2),
+        speed: +Math.hypot(game.walker.vx, game.walker.vy).toFixed(2),
+      };
+    });
+
+    suite.ok(rooted.fishing, 'still fishing after a second of shoving');
+    suite.equal(rooted.moved, 0, 'and the walker has not moved an inch');
+    suite.equal(rooted.speed, 0, 'nor is drifting');
+
+    /*
+     * Q is the way out — and on a phone, the button beside the prompt is, since
+     * there is no Q there and no walking away either.
+     */
+    await game.page.waitForSelector('#leave:not(.hidden)', { timeout: 5000 });
+    const walkedAgain = await game.evaluate((pencil) => {
+      dispatchEvent(new KeyboardEvent('keydown', { key: 'й', code: 'KeyQ', bubbles: true }));
+      const { game } = pencil;
+      const from = { x: game.walker.x, y: game.walker.y };
+      for (let i = 0; i < 30; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 1, y: 0 }) });
+      }
+      return {
+        fishing: game.fishing.active,
+        moved: +Math.hypot(game.walker.x - from.x, game.walker.y - from.y).toFixed(1),
+      };
+    });
+
+    suite.ok(!walkedAgain.fishing, 'Q packs up the camp, on any keyboard layout');
+    suite.ok(walkedAgain.moved > 5, 'and you can walk again', `${walkedAgain.moved}px`);
+    await game.page.waitForSelector('#leave', { state: 'hidden', timeout: 5000 });
+    suite.ok(true, 'the way out goes away with the camp');
+
+    // Cast again, and put it down with the button this time.
+    await game.evaluate((pencil) => {
+      const pond = pencil.game.world.pond;
+      pencil.game.teleport(pond.x, pond.y + pond.ry + 22);
+    });
+    await game.page.waitForSelector('#action:not(.hidden)', { timeout: 5000 });
+    await game.page.click('#action');
+    await game.page.waitForSelector('#leave:not(.hidden)', { timeout: 5000 });
+    await game.page.click('#leave');
+    const tapped = await game.evaluate((pencil) => pencil.game.fishing.active);
+    suite.ok(!tapped, 'and the button does the same, for a phone');
+
     // Walk away: the camp packs itself up.
     const left = await game.evaluate((pencil) => {
       const { game } = pencil;

@@ -64,6 +64,9 @@ export interface Interaction {
  */
 const BANK_MARGIN = 1.3;
 
+/** Standing still, for when the walker is not the one deciding. */
+const ZERO = { x: 0, y: 0 } as const;
+
 export interface GameEvents {
   onPotFound(found: number, total: number, hue: string): void;
   onComplete(seconds: number): void;
@@ -244,7 +247,13 @@ export class Game {
     const w = this.walker;
     const screenX = this.camera.toScreenX(w.x);
     const screenY = this.camera.toScreenY(w.y);
-    const dir = input.direction(screenX, screenY);
+    /*
+     * You are sitting down. Someone fishing does not wander off mid-cast, and
+     * on a phone the drag that steers is also the drag you make reaching for
+     * the button — so the input is dropped rather than the walker pinned, and
+     * friction brings them to a stop as they settle.
+     */
+    const dir = this.fishing.active ? ZERO : input.direction(screenX, screenY);
     const pushing = dir.x !== 0 || dir.y !== 0;
 
     const responsiveness = Math.min(1, (pushing ? ACCELERATION : FRICTION) * dt);
@@ -323,6 +332,19 @@ export class Game {
   }
 
   /**
+   * Put down whatever you are doing. True if anything was put down.
+   *
+   * Fishing is the only thing you can be in the middle of, and while you are,
+   * you cannot walk — so this is the way off the riverbank rather than a
+   * convenience.
+   */
+  cancel(): boolean {
+    if (!this.fishing.active) return false;
+    this.fishing.packUp();
+    return true;
+  }
+
+  /**
    * Do whatever is within reach. True if anything happened.
    *
    * Petting an already-purring cat is not a mistake — it tops her back up, and
@@ -350,11 +372,25 @@ export class Game {
 
     if (this.atTheWater()) {
       this.fishing.start(this.walker.x, this.walker.y, this.world.pond);
+      this.faceTheWater();
       this.events.onFishingStart();
       return true;
     }
 
     return false;
+  }
+
+  /** Turn to look at the float, since the walker will not be turning again. */
+  private faceTheWater(): void {
+    const w = this.walker;
+    const dx = this.fishing.floatX - w.x;
+    const dy = this.fishing.floatY - w.y;
+    if (Math.abs(dx) > Math.abs(dy) * 0.7) {
+      w.facing = 'side';
+      w.face = dx < 0 ? -1 : 1;
+    } else {
+      w.facing = dy < 0 ? 'up' : 'down';
+    }
   }
 
   /** Debug: find every remaining pot at once, as if you had walked to them. */

@@ -12,6 +12,8 @@ export interface InputHandlers {
   onTogglePerf(): void;
   /** Reach out and do whatever is within arm's length. */
   onInteract(): void;
+  /** Put down whatever is currently being done. */
+  onCancel(): void;
 }
 
 /**
@@ -84,6 +86,7 @@ export class Input {
     if (key === 'f') this.handlers.onTogglePerf();
     // Held keys repeat, and a repeat is not a second stroke of the cat.
     if (key === 'e' && !e.repeat) this.handlers.onInteract();
+    if (key === 'q' && !e.repeat) this.handlers.onCancel();
     this.handlers.onEngage();
   };
 

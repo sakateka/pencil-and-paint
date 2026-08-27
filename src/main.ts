@@ -207,9 +207,15 @@ async function boot(): Promise<void> {
    */
   const interact = () => void game.interact();
 
+  /** Stand up and pack the camp away. Q, or the button beside the prompt. */
+  const cancel = () => {
+    if (game.cancel()) ui.note('you pack the camp away and stand up');
+  };
+
   const ui = new Ui({
     onStart: () => start(),
     onAction: () => interact(),
+    onLeave: () => cancel(),
     onRestart: () => {
       game.restart();
       ui.reset();
@@ -249,6 +255,7 @@ async function boot(): Promise<void> {
     },
     onTogglePerf: () => setPerf(!showPerf),
     onInteract: () => interact(),
+    onCancel: () => cancel(),
   });
 
   function start(): void {
@@ -323,6 +330,7 @@ async function boot(): Promise<void> {
     tickBoil(game.elapsed + dt);
     game.advance(dt, input);
     ui.setAction(game.interaction?.label ?? null);
+    ui.setLeave(game.fishing.active);
     // The purr follows the walker: it fades as you leave her and comes back if
     // you turn around while she is still going.
     setPurrLevel(game.purrLoudness);
