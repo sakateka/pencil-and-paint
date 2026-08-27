@@ -1,4 +1,5 @@
 import { clamp, TAU } from '../core/math';
+import type { Medium } from '../media/medium';
 import { EMPTY_SAG, drawHammockCloth, hammockPoint } from '../world/hammock';
 
 /**
@@ -46,16 +47,21 @@ export class Rest {
   /** How far into the hammock they are, 0 to 1, eased. Drives the sag. */
   settled = 0;
 
-  /** Where the hammock is, once we are in it. */
-  x = 0;
-  y = 0;
+  /**
+   * Where the hammock is. Known always, not only while somebody is in it —
+   * the cloth is drawn every frame whether or not anybody is lying in it.
+   */
+  readonly x: number;
+  readonly y: number;
 
   /** Whether the birds are out — which is to say, whether the valley is done. */
   birds = false;
 
   private readonly flock: Bird[] = [];
 
-  constructor() {
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
     for (let i = 0; i < BIRD_COUNT; i++) {
       // Fixed rather than random: the flock should look the same every time you
       // lie down, the way the birds in your own garden do.
@@ -72,12 +78,20 @@ export class Rest {
     }
   }
 
-  lieDown(x: number, y: number, birds: boolean): void {
+  lieDown(birds: boolean): void {
     this.resting = true;
     this.birds = birds;
-    this.x = x;
-    this.y = y;
     this.clock = 0;
+  }
+
+  /** How far the cloth is hanging: its own weight, plus whoever is in it. */
+  get sag(): number {
+    return EMPTY_SAG + LOADED_SAG * this.settled;
+  }
+
+  /** How far it has swung, which is more the moment somebody gets in. */
+  get swing(): number {
+    return Math.sin(this.clock * 1.15) * 2.6 * (0.35 + (1 - this.settled) * 0.9);
   }
 
   getUp(): void {
@@ -107,39 +121,51 @@ export class Rest {
 }
 
 /**
- * The occupied hammock, and whoever is in it.
+ * The hammock: the cloth, whoever is in it, and the near edge over their legs.
  *
- * Drawn in colour only and over the top of the baked empty one, exactly like
- * the fishing camp: this belongs to the walker rather than to the valley.
+ * All of it drawn with the live things, in whichever medium, so that it is
+ * masked by the light like everything else. The first version drew the sleeper
+ * and the near edge in the pass that comes after the mask — the one the walker
+ * is drawn in, which is always in colour — and from across the field you could
+ * see a full-colour person lying in a graphite valley.
  */
-export function drawRest(ctx: CanvasRenderingContext2D, rest: Rest): void {
-  if (!rest.visible) return;
+export function drawHammock(ctx: CanvasRenderingContext2D, rest: Rest, medium: Medium): void {
   const { x, y } = rest;
-
-  // A hammock swings, slowly, and less as it settles.
-  const swing = Math.sin(rest.clock * 1.15) * 2.6 * (0.35 + (1 - rest.settled) * 0.9);
-  const sag = EMPTY_SAG + LOADED_SAG * rest.settled;
+  const sag = rest.sag;
 
   ctx.save();
-  ctx.translate(swing, 0);
+  ctx.translate(rest.swing, 0);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  drawHammockCloth(ctx, x, y, sag, 'color');
-  if (rest.settled > 0.05) drawSleeper(ctx, x, y, sag, rest);
+  drawHammockCloth(ctx, x, y, sag, medium);
+  // Only while somebody is actually in it: the cloth lifts gently once they
+  // get out, but a person fading away in mid-air is a ghost, not a movement.
+  if (medium === 'color' && rest.resting) drawSleeper(ctx, x, y, sag, rest);
 
   // The cloth's near edge again, over the legs, so they are *in* it.
-  ctx.strokeStyle = '#cbbb98';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  for (let i = 0; i <= 20; i++) {
-    const p = hammockPoint(x, y, i / 20, sag);
-    if (i === 0) ctx.moveTo(p.x, p.y + 12);
-    else ctx.lineTo(p.x, p.y + 12);
+  if (medium === 'color') {
+    ctx.strokeStyle = '#cbbb98';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let i = 0; i <= 20; i++) {
+      const p = hammockPoint(x, y, i / 20, sag);
+      if (i === 0) ctx.moveTo(p.x, p.y + 12);
+      else ctx.lineTo(p.x, p.y + 12);
+    }
+    ctx.stroke();
   }
-  ctx.stroke();
   ctx.restore();
+}
 
+/**
+ * The birds, which are neither the valley's nor the hammock's.
+ *
+ * Drawn after the mask rather than through it: they only come out once every
+ * pot is found, by which time the colour has flooded everything anyway.
+ */
+export function drawBirds(ctx: CanvasRenderingContext2D, rest: Rest): void {
+  if (!rest.resting) return;
   for (const bird of rest.present) drawBird(ctx, rest, bird);
 }
 

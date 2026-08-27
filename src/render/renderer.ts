@@ -1,7 +1,7 @@
 import { context2d, createSurface, isolate, type Surface } from '../core/canvas';
 import type { Bounds } from '../core/geom';
 import { drawCamp, type Fishing } from '../entities/fishing';
-import { drawRest, type Rest } from '../entities/rest';
+import { drawBirds, drawHammock, type Rest } from '../entities/rest';
 import { drawWalker, type Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import type { Particles } from '../entities/particles';
@@ -180,10 +180,12 @@ export class Renderer {
       drawCamp(ctx, scene.fishing, walker.x, walker.y, walker.face);
       /*
        * In the hammock, the walker *is* the drawing in the hammock — the
-       * standing figure would otherwise be planted beside it looking on.
+       * standing figure would otherwise be planted beside it looking on. Keyed
+       * on `resting` rather than on the cloth still settling, or they stay
+       * invisible for the second the hammock takes to lift.
        */
-      if (scene.rest.visible) drawRest(ctx, scene.rest);
-      else drawWalker(ctx, walker, scene.elapsed);
+      if (!scene.rest.resting) drawWalker(ctx, walker, scene.elapsed);
+      drawBirds(ctx, scene.rest);
       scene.particles.draw(ctx, walker.x, walker.y, scene.litRadius, flooded);
       this.time('occluders', () => this.drawOccluders(ctx, scene));
     });
@@ -235,6 +237,13 @@ export class Renderer {
       medium,
       (x, y) => camera.canSee(x, y, 90) && !hidden(x, y, 60),
     );
+
+    // The cloth sags under whoever is in it, so it cannot be baked — see the
+    // note in `world/hammock.ts`.
+    const { rest } = scene;
+    if (camera.canSee(rest.x, rest.y, 130) && !hidden(rest.x, rest.y, 90)) {
+      drawHammock(ctx, rest, medium);
+    }
   }
 
   /**

@@ -106,7 +106,7 @@ export class Game {
   readonly particles = new Particles();
   readonly herd: Herd;
   readonly fishing = new Fishing();
-  readonly rest = new Rest();
+  readonly rest = new Rest(HAMMOCK.x, HAMMOCK.y);
 
   /**
    * The one cat, held onto rather than looked up.
@@ -417,7 +417,7 @@ export class Game {
        * The pots gate the birds, not the hammock. Lying down is allowed from
        * the first minute; an unfinished valley is simply a quiet one.
        */
-      this.rest.lieDown(HAMMOCK.x, HAMMOCK.y, this.won);
+      this.rest.lieDown(this.won);
       this.events.onRestStart(this.won);
       return true;
     }
