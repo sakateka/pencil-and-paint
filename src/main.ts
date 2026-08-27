@@ -489,13 +489,24 @@ export function buildPurr(ctx: BaseAudioContext, destination: AudioNode, now: nu
    * times a second is below the pitch the ear will hear as a note, so what it
    * hears instead is each individual pulse — and how rough that roll sounds
    * depends entirely on how sharp the pulses are. Three harmonics gave a smooth
-   * hum. The tail up to the sixth sharpens it into a roll without making it any
-   * louder, since the wave is normalised.
+   * hum; nine give it a roll, and cost nothing in level, since the wave is
+   * normalised.
+   *
+   * These nine numbers were found by ear and they are easy to overshoot. As a
+   * rough measure of roughness — the rms distance the waveform travels sample
+   * to sample, against its own size, where a bare sine would score 0.011:
+   *
+   *     0.017  three harmonics and a bit: warm, not quite a roll
+   *     0.020  these
+   *     0.033  a long harmonic tail: too rough
+   *     0.050  the same with a resonance at 430Hz: sounds like a bottle
+   *
+   * Everything above about 0.025 stopped sounding like a cat.
    */
   chest.setPeriodicWave(
     ctx.createPeriodicWave(
-      new Float32Array(7),
-      new Float32Array([0, 1, 0.45, 0.24, 0.13, 0.075, 0.04]),
+      new Float32Array(10),
+      new Float32Array([0, 1, 0.45, 0.26, 0.17, 0.12, 0.09, 0.068, 0.05, 0.038]),
     ),
   );
   chest.frequency.value = PURR_FUNDAMENTAL;
@@ -548,7 +559,7 @@ export function buildPurr(ctx: BaseAudioContext, destination: AudioNode, now: nu
     // Dull and distant at the residual, open at the peak. The cutoff has to
     // clear the upper harmonics at the top of a swell or the roll is filtered
     // straight back off again, which is what 330 was doing.
-    brightness[i] = 105 + 355 * ((shape[i] - PURR_RESIDUAL) / (1 - PURR_RESIDUAL));
+    brightness[i] = 105 + 415 * ((shape[i] - PURR_RESIDUAL) / (1 - PURR_RESIDUAL));
   }
   swell.gain.setValueAtTime(0, now);
   swell.gain.setValueCurveAtTime(level, now, PURR_SECONDS);
