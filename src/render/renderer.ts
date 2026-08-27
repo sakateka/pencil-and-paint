@@ -1,5 +1,6 @@
 import { context2d, createSurface, isolate, type Surface } from '../core/canvas';
 import type { Bounds } from '../core/geom';
+import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawWalker, type Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import type { Particles } from '../entities/particles';
@@ -25,6 +26,7 @@ export interface Scene {
   readonly field: ColorField;
   readonly walker: Walker;
   readonly herd: Herd;
+  readonly fishing: Fishing;
   readonly pots: readonly Pot[];
   readonly particles: Particles;
   /** Colour radius in world units, before the ending's flood. */
@@ -168,6 +170,12 @@ export class Renderer {
 
     isolate(ctx, () => {
       camera.applyTransform(ctx);
+      /*
+       * The camp belongs to the walker rather than to the world: it is pitched
+       * where they stand and packs up when they leave, so it is drawn here with
+       * them, in colour only, and never baked into a layer.
+       */
+      drawCamp(ctx, scene.fishing, walker.x, walker.y, walker.face);
       drawWalker(ctx, walker, scene.elapsed);
       scene.particles.draw(ctx, walker.x, walker.y, scene.litRadius, flooded);
       this.time('occluders', () => this.drawOccluders(ctx, scene));

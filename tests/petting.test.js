@@ -403,7 +403,10 @@ export async function run(url) {
       return game.interaction;
     });
     suite.equal(left, null, 'the prompt goes away when you do');
-    await game.page.waitForSelector('#action.hidden', { timeout: 5000 });
+    // `state: 'hidden'` rather than matching `.hidden` and waiting for it to be
+    // visible, which is a contradiction that only ever passed because the class
+    // delays its visibility transition by 200ms and Playwright caught the fade.
+    await game.page.waitForSelector('#action', { state: 'hidden', timeout: 5000 });
     suite.ok(true, 'and so does the button on screen');
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));

@@ -8,8 +8,9 @@ import { run as rendering } from './rendering.test.js';
 import { run as devpanel } from './devpanel.test.js';
 import { run as startup } from './startup.test.js';
 import { run as petting } from './petting.test.js';
+import { run as fishing } from './fishing.test.js';
 
-const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting];
+const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing];
 
 /**
  * Runs every suite against the production build, served over HTTP the way a

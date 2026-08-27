@@ -27,9 +27,23 @@ export interface Tuft {
 
 export type Path = Point[];
 
+/**
+ * The blue part, inside the marshy rim.
+ *
+ * The pond's own ellipse is its bank — the reeds and the wet ground — and the
+ * water sits well inside it. Anything that has to land *on the water* rather
+ * than merely near the pond has to ask for this, which is why it is a function
+ * both the drawing and the rest of the game go through: put a float in the
+ * pond's ellipse and it lands in the reeds.
+ */
+export function waterArea(pond: Ellipse): Ellipse {
+  return { x: pond.x + 6, y: pond.y + 4, rx: pond.rx * 0.74, ry: pond.ry * 0.7 };
+}
+
 export function makePond(x: number, y: number, rx: number, ry: number): Scenery & { area: Ellipse } {
   const outer = ellipsePoly(x, y, rx, ry, 30, 0.055);
-  const inner = ellipsePoly(x + 6, y + 4, rx * 0.74, ry * 0.7, 26, 0.06);
+  const water = waterArea({ x, y, rx, ry });
+  const inner = ellipsePoly(water.x, water.y, water.rx, water.ry, 26, 0.06);
 
   const pads: { x: number; y: number; r: number; flower: boolean }[] = [];
   for (let i = 0; i < 7; i++) {

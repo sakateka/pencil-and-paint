@@ -1,5 +1,6 @@
 import { clamp, lerp } from './core/math';
 import { PURR_SECONDS, type Animal } from './entities/animals';
+import { Fishing } from './entities/fishing';
 import { Herd } from './entities/herd';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
@@ -40,16 +41,28 @@ const PET_RADIUS = 52;
  * HUD should not have to learn about each of them separately.
  */
 export interface Interaction {
-  readonly kind: 'pet';
+  readonly kind: 'pet' | 'fish';
   /** What the prompt on screen says. */
   readonly label: string;
 }
+
+/**
+ * How far past the water's edge you can stand and still reach it.
+ *
+ * In units of the pond's own radii, since the pond is an ellipse and a fixed
+ * distance would be a wider margin at the ends than along the sides.
+ */
+const BANK_MARGIN = 1.3;
 
 export interface GameEvents {
   onPotFound(found: number, total: number, hue: string): void;
   onComplete(seconds: number): void;
   /** The cat has been stroked; `first` on the first time this playthrough. */
   onPet(first: boolean): void;
+  /** Camp has been pitched at the water's edge. */
+  onFishingStart(): void;
+  /** A fish has been landed; `total` counts them this playthrough. */
+  onCatch(total: number): void;
 }
 
 /**
@@ -64,6 +77,7 @@ export class Game {
   readonly field = new ColorField();
   readonly particles = new Particles();
   readonly herd: Herd;
+  readonly fishing = new Fishing();
 
   pots: Pot[] = [];
   found = 0;
@@ -107,6 +121,8 @@ export class Game {
     this.startedAt = this.elapsed;
     this.particles.clear();
     this.field.clearTrail();
+    this.fishing.packUp();
+    this.fishing.caught = 0;
     this.herd.scatter();
     this.pots = scatterPots(
       POT_COUNT,
@@ -193,6 +209,7 @@ export class Game {
       this.litRadius,
       this.speed,
     );
+    this.fishing.update(dt, this.walker.x, this.walker.y);
     this.camera.follow(this.walker.x, this.walker.y, dt);
   }
 
@@ -240,12 +257,28 @@ export class Game {
     return null;
   }
 
+  /**
+   * Is the walker at the water's edge, with the valley finished?
+   *
+   * The gate is the whole point of it: fishing is not a thing to do instead of
+   * finding the pots, it is what there is to do once you have.
+   */
+  private atTheWater(): boolean {
+    if (!this.won) return false;
+    const pond = this.world.pond;
+    const dx = (this.walker.x - pond.x) / pond.rx;
+    const dy = (this.walker.y - pond.y) / pond.ry;
+    return Math.hypot(dx, dy) < BANK_MARGIN;
+  }
+
   /** What is within reach from here, for the prompt on screen. */
   get interaction(): Interaction | null {
     if (!this.running) return null;
     const cat = this.catInReach();
-    if (!cat) return null;
-    return { kind: 'pet', label: cat.purr > 0 ? 'she is purring' : 'pet the cat' };
+    if (cat) return { kind: 'pet', label: cat.purr > 0 ? 'she is purring' : 'pet the cat' };
+    if (this.fishing.active) return { kind: 'fish', label: this.fishing.label };
+    if (this.atTheWater()) return { kind: 'fish', label: this.fishing.label };
+    return null;
   }
 
   /**
@@ -256,15 +289,31 @@ export class Game {
    */
   interact(): boolean {
     if (!this.running) return false;
-    const cat = this.catInReach();
-    if (!cat) return false;
 
-    const first = this.pets === 0;
-    this.pets++;
-    cat.purr = PURR_SECONDS;
-    this.particles.heartburst(cat.x, cat.y);
-    this.events.onPet(first);
-    return true;
+    const cat = this.catInReach();
+    if (cat) {
+      const first = this.pets === 0;
+      this.pets++;
+      cat.purr = PURR_SECONDS;
+      this.particles.heartburst(cat.x, cat.y);
+      this.events.onPet(first);
+      return true;
+    }
+
+    if (this.fishing.active) {
+      if (!this.fishing.strike()) return false;
+      this.particles.burst(this.fishing.floatX, this.fishing.floatY, '#cfeeff', 12);
+      this.events.onCatch(this.fishing.caught);
+      return true;
+    }
+
+    if (this.atTheWater()) {
+      this.fishing.start(this.walker.x, this.walker.y, this.world.pond);
+      this.events.onFishingStart();
+      return true;
+    }
+
+    return false;
   }
 
   /** Debug: find every remaining pot at once, as if you had walked to them. */
@@ -325,6 +374,7 @@ export class Game {
       field: this.field,
       walker: this.walker,
       herd: this.herd,
+      fishing: this.fishing,
       pots: this.pots,
       particles: this.particles,
       litRadius: this.litRadius,

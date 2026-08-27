@@ -227,6 +227,12 @@ async function boot(): Promise<void> {
     onPet: (first) => {
       if (first) ui.note('she does not open her eyes — but she knows you are there');
     },
+    onFishingStart: () => ui.note('the fire catches. there is nowhere else to be'),
+    onCatch: (total) => {
+      // Up the same scale the pots used, so the valley keeps one voice.
+      chime(total - 1);
+      if (total === 1) ui.note('a small one. you put it back');
+    },
   });
 
   const input = new Input(canvas, {
