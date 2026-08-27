@@ -14,6 +14,26 @@ export interface InputHandlers {
   onInteract(): void;
 }
 
+/**
+ * Which key this is, regardless of what is printed on it.
+ *
+ * `e.key` is the character the current layout produces. On a Cyrillic keyboard
+ * the key where E sits reports `у`, so `key === 'e'` is false and the game
+ * simply ignores it — and the same goes for W, A, S and D, which is most of
+ * how you move. `e.code` is the physical key, which is what a game wants: the
+ * one under your finger, wherever the layout thinks it is.
+ *
+ * Falls back to `e.key` for anything without a code, and for layouts where the
+ * code is unhelpful.
+ */
+function physicalKey(e: KeyboardEvent): string {
+  const code = e.code ?? '';
+  if (code.startsWith('Key')) return code.slice(3).toLowerCase();
+  if (code.startsWith('Arrow')) return code.toLowerCase();
+  if (code === 'Space') return ' ';
+  return e.key.toLowerCase();
+}
+
 const MOVEMENT_KEYS = new Set([
   'w',
   'a',
@@ -57,7 +77,7 @@ export class Input {
     // Ctrl+Shift+D and friends belong to the browser. Without this, a devtools
     // shortcut also sets the walker off, which makes for confusing reports.
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const key = e.key.toLowerCase();
+    const key = physicalKey(e);
     this.keys.add(key);
     if (MOVEMENT_KEYS.has(key)) e.preventDefault();
     if (key === 'r') this.handlers.onRestart();
@@ -68,7 +88,9 @@ export class Input {
   };
 
   private onKeyUp = (e: KeyboardEvent): void => {
-    this.keys.delete(e.key.toLowerCase());
+    // Must match `onKeyDown` exactly, or a key goes down and never comes up
+    // and the walker keeps going by itself.
+    this.keys.delete(physicalKey(e));
   };
 
   private onBlur = (): void => {
