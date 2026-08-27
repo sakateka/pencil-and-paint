@@ -58,13 +58,13 @@ export async function run(url) {
       const during = { purr: cat.purr, label: game.interaction?.label };
       pencil.renderOnce();
 
-      // Five seconds in she is on the second murrr, and still going.
-      for (let i = 0; i < 240; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      // Three seconds in she is on the second murrr, and still going.
+      for (let i = 0; i < 120; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       const midway = cat.purr;
 
-      // Nine, and she has finished. Between those two the purr must end: any
+      // Six, and she has finished. Between those two the purr must end: any
       // longer and it outstays the stroke, which is what eleven seconds did.
-      for (let i = 0; i < 240; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      for (let i = 0; i < 180; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       return {
         took,
         pets: game.pets,
@@ -80,15 +80,15 @@ export async function run(url) {
     suite.ok(stroked.took, 'she can be petted from here');
     suite.equal(stroked.pets, 1, 'the stroke is counted');
     suite.ok(
-      stroked.started >= 6 && stroked.started <= 8,
+      stroked.started >= 4 && stroked.started <= 6,
       'which sets her purring, for three murrrs and no more',
       `${stroked.started}s`,
     );
     suite.ok(stroked.during.purr > 0, 'still purring a second later', `${stroked.during.purr}`);
     suite.ok(stroked.during.purr < stroked.started, 'but running down');
     suite.equal(stroked.during.label, 'she is purring', 'and the prompt says so');
-    suite.ok(stroked.midway > 0, 'five seconds in she is still going', `${stroked.midway}`);
-    suite.equal(stroked.after, 0, 'nine seconds on, she has settled again');
+    suite.ok(stroked.midway > 0, 'three seconds in she is still going', `${stroked.midway}`);
+    suite.equal(stroked.after, 0, 'six seconds on, she has settled again');
     suite.equal(stroked.moved, 0, 'she never gets up');
     suite.equal(stroked.state, 'graze', 'and never starts wandering');
 
@@ -116,16 +116,16 @@ export async function run(url) {
       return {
         peaks,
         biggestJump: +biggestJump.toFixed(4),
-        gaps: [at(2.35), at(5.05)],
+        gaps: [at(1.575), at(3.375)],
         start: at(0),
-        ended: at(7.9),
+        ended: at(5.2),
       };
     });
 
     suite.equal(shape.peaks.length, 3, 'three murrrs', shape.peaks.join(', '));
     suite.ok(
-      // Two seconds of murrr and seven tenths of quiet: 2.7s peak to peak.
-      shape.peaks.every((t, i) => Math.abs(t - (1 + i * 2.7)) < 0.2),
+      // 1.35s of murrr and 0.45s of quiet: 1.8s peak to peak.
+      shape.peaks.every((t, i) => Math.abs(t - (0.675 + i * 1.8)) < 0.15),
       'evenly spaced, murrr then rest then murrr',
       shape.peaks.join(', '),
     );
@@ -253,9 +253,9 @@ export async function run(url) {
       };
 
       const asleep = sample(0);
-      // 6.4 left of 7.4 is one second in: the peak of the first murrr, where
-      // she is purring hardest and would bounce hardest if anything did.
-      const purring = sample(6.4);
+      // 4.28 left of 4.95 is 0.675s in: the peak of the first murrr, where she
+      // is purring hardest and would bounce hardest if anything did.
+      const purring = sample(4.28);
       const span = (a) => +(Math.max(...a) - Math.min(...a)).toFixed(2);
       return {
         seen: !asleep.some(Number.isNaN) && !purring.some(Number.isNaN),

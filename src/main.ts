@@ -385,8 +385,8 @@ function chime(index: number): void {
  * Two things make it a cat rather than an oscillator. The first is the chop —
  * a low rumble whose loudness wobbles about twenty-five times a second, which
  * is roughly the rate a real purr runs at. The second is the phrasing: it is
- * not one long note but three swells of a couple of seconds each, quiet in
- * between, every one rising and falling on a raised cosine so it has no edges.
+ * not one long note but three brisk swells, quiet in between, every one rising
+ * and falling on a raised cosine so it has no edges.
  *
  * The chop lives on its own gain node, in series with the phrasing rather than
  * added to it. Wired the other way — the wobble summed into the same parameter
