@@ -190,8 +190,14 @@ async function boot(): Promise<void> {
   statsButton?.addEventListener('click', () => setPerf(!showPerf));
 
 
+  /** Reach out and touch whatever is here — the E key, or the on-screen prompt. */
+  const interact = () => {
+    if (game.interact()) purr();
+  };
+
   const ui = new Ui({
     onStart: () => start(),
+    onAction: () => interact(),
     onRestart: () => {
       game.restart();
       ui.reset();
@@ -207,6 +213,9 @@ async function boot(): Promise<void> {
       chime(found - 1);
     },
     onComplete: (seconds) => ui.announceCompletion(seconds),
+    onPet: (first) => {
+      if (first) ui.note('she does not open her eyes — but she knows you are there');
+    },
   });
 
   const input = new Input(canvas, {
@@ -217,6 +226,7 @@ async function boot(): Promise<void> {
       ui.setProgress(0, game.pots.length, game.litRadius);
     },
     onTogglePerf: () => setPerf(!showPerf),
+    onInteract: () => interact(),
   });
 
   function start(): void {
@@ -287,6 +297,7 @@ async function boot(): Promise<void> {
 
     tickBoil(game.elapsed + dt);
     game.advance(dt, input);
+    ui.setAction(game.interaction?.label ?? null);
 
     const drawStart = performance.now();
     renderer.render(game.scene);
@@ -351,6 +362,48 @@ function chime(index: number): void {
     }
   } catch {
     // Audio is a nicety; a browser that refuses it should not stop the game.
+  }
+}
+
+/**
+ * A purr: a low rumble, chopped at about twenty-five times a second.
+ *
+ * That chopping is the whole trick. A steady tone at this pitch is a hum; it
+ * is the amplitude wobbling at roughly a cat's purr rate that makes the ear
+ * hear an animal rather than an oscillator.
+ */
+function purr(): void {
+  try {
+    audio ??= new AudioContext();
+    const now = audio.currentTime;
+    const osc = audio.createOscillator();
+    const rumble = audio.createOscillator();
+    const depth = audio.createGain();
+    const envelope = audio.createGain();
+    const muffle = audio.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.value = 58;
+    muffle.type = 'lowpass';
+    muffle.frequency.value = 280;
+
+    rumble.type = 'sine';
+    rumble.frequency.value = 25;
+    depth.gain.value = 0.055;
+    rumble.connect(depth).connect(envelope.gain);
+
+    envelope.gain.setValueAtTime(0.0001, now);
+    envelope.gain.linearRampToValueAtTime(0.07, now + 0.25);
+    envelope.gain.setValueAtTime(0.07, now + 1.5);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, now + 2.6);
+
+    osc.connect(muffle).connect(envelope).connect(audio.destination);
+    osc.start(now);
+    rumble.start(now);
+    osc.stop(now + 2.7);
+    rumble.stop(now + 2.7);
+  } catch {
+    // As above.
   }
 }
 

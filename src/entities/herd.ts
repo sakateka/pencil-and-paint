@@ -84,6 +84,7 @@ export class Herd {
       a.headDown = 1;
       a.moving = false;
       a.frozen = false;
+      a.purr = 0;
     }
   }
 
@@ -95,7 +96,12 @@ export class Herd {
 
       a.frozen = false;
       a.clock += dt;
-      if (a.kind === 'cat') continue; // committed to the nap
+      if (a.kind === 'cat') {
+        // Committed to the nap. The only thing that changes is how pleased she
+        // is about it, which `Game.pet` tops back up.
+        a.purr = Math.max(0, a.purr - dt);
+        continue;
+      }
 
       this.step(a, dt, ctx);
       ctx.resolveCollisions(a, 11 * a.scale);

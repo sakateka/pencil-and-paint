@@ -1,4 +1,5 @@
 import { clamp, lerp } from './core/math';
+import { PURR_SECONDS, type Animal } from './entities/animals';
 import { Herd } from './entities/herd';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
@@ -27,9 +28,28 @@ const FLOOD_SECONDS = 3.2;
 const ACCELERATION = 12;
 const FRICTION = 11;
 
+/** How close you must stand before the cat is within arm's reach. */
+const PET_RADIUS = 52;
+
+/**
+ * Something the walker can reach out and do from where they are standing.
+ *
+ * One kind so far. It is a small named thing rather than a boolean because the
+ * next one — fishing at the pond, which only opens once every pot is in — is
+ * the same question asked at a different place behind a different gate, and the
+ * HUD should not have to learn about each of them separately.
+ */
+export interface Interaction {
+  readonly kind: 'pet';
+  /** What the prompt on screen says. */
+  readonly label: string;
+}
+
 export interface GameEvents {
   onPotFound(found: number, total: number, hue: string): void;
   onComplete(seconds: number): void;
+  /** The cat has been stroked; `first` on the first time this playthrough. */
+  onPet(first: boolean): void;
 }
 
 /**
@@ -48,6 +68,9 @@ export class Game {
   pots: Pot[] = [];
   found = 0;
   won = false;
+
+  /** How many times the cat has been stroked this playthrough. */
+  pets = 0;
 
   /**
    * Debug: force the colour to cover everything without ending the game.
@@ -77,6 +100,7 @@ export class Game {
   restart(): void {
     resetWalker(this.walker);
     this.found = 0;
+    this.pets = 0;
     this.radiusBoost = 0;
     this.won = false;
     this.wonAt = 0;
@@ -203,6 +227,44 @@ export class Game {
         w.facing = w.vy < 0 ? 'up' : 'down';
       }
     }
+  }
+
+  /** The cat, if the walker is standing close enough to reach her. */
+  private catInReach(): Animal | null {
+    for (const a of this.herd.animals) {
+      if (a.kind !== 'cat') continue;
+      // The same shoulder-height offset the pots use, so "close enough" means
+      // the same thing whether you are picking something up or leaning down.
+      if (Math.hypot(a.x - this.walker.x, a.y - this.walker.y - 6) < PET_RADIUS) return a;
+    }
+    return null;
+  }
+
+  /** What is within reach from here, for the prompt on screen. */
+  get interaction(): Interaction | null {
+    if (!this.running) return null;
+    const cat = this.catInReach();
+    if (!cat) return null;
+    return { kind: 'pet', label: cat.purr > 0 ? 'she is purring' : 'pet the cat' };
+  }
+
+  /**
+   * Do whatever is within reach. True if anything happened.
+   *
+   * Petting an already-purring cat is not a mistake — it tops her back up, and
+   * she gets another heart out of it.
+   */
+  interact(): boolean {
+    if (!this.running) return false;
+    const cat = this.catInReach();
+    if (!cat) return false;
+
+    const first = this.pets === 0;
+    this.pets++;
+    cat.purr = PURR_SECONDS;
+    this.particles.heartburst(cat.x, cat.y);
+    this.events.onPet(first);
+    return true;
   }
 
   /** Debug: find every remaining pot at once, as if you had walked to them. */

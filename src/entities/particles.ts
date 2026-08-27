@@ -21,6 +21,17 @@ export interface Particle {
 
 const MOTE_COLOURS = ['#fff6c9', '#ffd9a0', '#cfeeff', '#ffd4e6'] as const;
 
+const HEART_COLOURS = ['#e0708a', '#ea8fa4', '#d95f7c'] as const;
+
+/** One little heart, centred on `x, y`, `s` across. */
+function heartPath(ctx: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x, y + s);
+  ctx.bezierCurveTo(x - s * 1.7, y - s * 0.35, x - s * 0.72, y - s * 1.5, x, y - s * 0.45);
+  ctx.bezierCurveTo(x + s * 0.72, y - s * 1.5, x + s * 1.7, y - s * 0.35, x, y + s);
+  ctx.closePath();
+}
+
 /**
  * Compact in place. `arr = arr.filter(...)` throws away a fresh array every
  * frame for each of these lists — small, but it is per-frame garbage.
@@ -36,10 +47,31 @@ function sweep<T>(arr: T[], alive: (item: T) => boolean): void {
 export class Particles {
   private readonly splashes: Particle[] = [];
   private readonly motes: Particle[] = [];
+  /** Rises from the cat when she is stroked. Nothing else makes these. */
+  private readonly hearts: Particle[] = [];
 
   clear(): void {
     this.splashes.length = 0;
     this.motes.length = 0;
+    this.hearts.length = 0;
+  }
+
+  /** Someone has been petted. */
+  heartburst(x: number, y: number, count = 3): void {
+    for (let i = 0; i < count; i++) {
+      this.hearts.push({
+        x: x + rr(-8, 8),
+        // Above her back rather than inside it — she is drawn from y-16 up.
+        y: y - 22,
+        vx: rr(-9, 9),
+        vy: rr(-34, -20),
+        life: rr(1.1, 1.8),
+        maxLife: 1.8,
+        radius: rr(2.4, 4),
+        colour: HEART_COLOURS[Math.floor(Math.random() * HEART_COLOURS.length)],
+        gravity: 0,
+      });
+    }
   }
 
   /** A pot has been found. */
@@ -97,6 +129,15 @@ export class Particles {
       m.vx += Math.sin(elapsed * 1.3 + m.y * 0.01) * 6 * dt;
     }
     sweep(this.motes, (m) => m.life > 0);
+
+    for (const h of this.hearts) {
+      h.life -= dt;
+      // Wobbles as it climbs, and slows to a stop rather than sailing off.
+      h.x += (h.vx + Math.sin(elapsed * 3 + h.maxLife * h.radius) * 9) * dt;
+      h.y += h.vy * dt;
+      h.vy *= 1 - 0.9 * dt;
+    }
+    sweep(this.hearts, (h) => h.life > 0);
   }
 
   /** Motes fade out towards the edge of the light; splashes do not. */
@@ -123,6 +164,15 @@ export class Particles {
       ctx.fillStyle = p.colour;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.radius, 0, TAU);
+      ctx.fill();
+    }
+    // Hearts swell as they appear and fade as they go, so the burst has a shape
+    // rather than three dots switching on.
+    for (const h of this.hearts) {
+      const left = clamp(h.life / h.maxLife, 0, 1);
+      ctx.globalAlpha = Math.min(1, left * 2.4) * 0.9;
+      ctx.fillStyle = h.colour;
+      heartPath(ctx, h.x, h.y, h.radius * (0.6 + 0.4 * Math.min(1, (1 - left) * 5)));
       ctx.fill();
     }
     ctx.globalAlpha = 1;

@@ -24,12 +24,55 @@ export class Ui {
   private readonly intro = element('intro');
   private readonly done = element('done');
   private readonly time = element('wintime');
+  private readonly action = element<HTMLButtonElement>('action');
+  private readonly actionLabel = element('actionLabel');
 
   private doneTimer: number | undefined;
+  private noteTimer: number | undefined;
 
-  constructor(handlers: { onStart(): void; onRestart(): void }) {
+  /** What the hint said before a passing note took it over. */
+  private hintText = HINT_DEFAULT;
+
+  /** Last prompt shown, so the per-frame call touches the DOM only on change. */
+  private prompt: string | null = null;
+
+  constructor(handlers: { onStart(): void; onRestart(): void; onAction(): void }) {
     element('startBtn').addEventListener('click', handlers.onStart);
     element('againBtn').addEventListener('click', handlers.onRestart);
+    this.action.addEventListener('click', () => {
+      handlers.onAction();
+      // Otherwise the button keeps focus and the next space bar presses it again.
+      this.action.blur();
+    });
+  }
+
+  /**
+   * The prompt for whatever is within reach, or nothing.
+   *
+   * Called every frame, hence the guard: setting textContent and rewriting the
+   * class list sixty times a second is a style recalculation the browser does
+   * not need to do to keep saying the same three words.
+   */
+  setAction(label: string | null): void {
+    if (label === this.prompt) return;
+    this.prompt = label;
+    if (label === null) {
+      this.action.classList.add('hidden');
+      return;
+    }
+    this.actionLabel.textContent = label;
+    this.action.classList.remove('hidden');
+  }
+
+  /** A line that says itself and then gives the hint back. */
+  note(text: string, ms = 4600): void {
+    if (this.noteTimer === undefined) this.hintText = this.hint.textContent ?? HINT_DEFAULT;
+    clearTimeout(this.noteTimer);
+    this.hint.textContent = text;
+    this.noteTimer = setTimeout(() => {
+      this.hint.textContent = this.hintText;
+      this.noteTimer = undefined;
+    }, ms);
   }
 
   /** True the first time, so the caller knows play has actually begun. */
@@ -52,10 +95,19 @@ export class Ui {
    */
   setPotHint(found: number, total: number): void {
     const left = total - found;
-    if (left === 0) this.hint.textContent = 'the whole page is awake';
-    else if (left === 1) this.hint.textContent = 'one last pot still in graphite';
-    else if (found === 1) this.hint.textContent = 'the colour reaches a little further now';
-    else this.hint.textContent = `${left} pots still in graphite`;
+    if (left === 0) this.setHint('the whole page is awake');
+    else if (left === 1) this.setHint('one last pot still in graphite');
+    else if (found === 1) this.setHint('the colour reaches a little further now');
+    else this.setHint(`${left} pots still in graphite`);
+  }
+
+  /**
+   * Behind a passing note, the hint is written down rather than shown — so a
+   * pot found while the note is up is not swallowed when the note clears.
+   */
+  private setHint(text: string): void {
+    this.hintText = text;
+    if (this.noteTimer === undefined) this.hint.textContent = text;
   }
 
   /**
@@ -70,7 +122,10 @@ export class Ui {
 
   reset(): void {
     clearTimeout(this.doneTimer);
+    clearTimeout(this.noteTimer);
+    this.noteTimer = undefined;
     this.done.classList.add('hidden');
+    this.hintText = HINT_DEFAULT;
     this.hint.textContent = HINT_DEFAULT;
   }
 }

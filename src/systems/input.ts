@@ -10,6 +10,8 @@ export interface InputHandlers {
   onEngage(): void;
   onRestart(): void;
   onTogglePerf(): void;
+  /** Reach out and do whatever is within arm's length. */
+  onInteract(): void;
 }
 
 const MOVEMENT_KEYS = new Set([
@@ -60,6 +62,8 @@ export class Input {
     if (MOVEMENT_KEYS.has(key)) e.preventDefault();
     if (key === 'r') this.handlers.onRestart();
     if (key === 'f') this.handlers.onTogglePerf();
+    // Held keys repeat, and a repeat is not a second stroke of the cat.
+    if (key === 'e' && !e.repeat) this.handlers.onInteract();
     this.handlers.onEngage();
   };
 

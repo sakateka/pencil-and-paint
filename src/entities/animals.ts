@@ -1,5 +1,5 @@
 import { roundRectPath } from '../core/geom';
-import { TAU } from '../core/math';
+import { clamp, TAU } from '../core/math';
 import { rnd, rr } from '../core/rng';
 import { ink, inkArc, inkArcs, inkLine, inkLines, inkPoly, jitter } from '../media/ink';
 import type { Medium } from '../media/medium';
@@ -55,6 +55,12 @@ export interface Animal {
   /** Whether the colour has reached it. */
   awake: boolean;
 
+  /**
+   * Seconds of purring left. Only the cat ever has any: she is the one thing
+   * in the valley you can reach out and touch, and this is how she answers.
+   */
+  purr: number;
+
   /** Its reserved slot in the herd's sprite atlas. */
   slot: number;
 
@@ -90,6 +96,9 @@ const SHEEP_FLUFF: readonly (readonly [number, number, number])[] = [
   [2, -11, 7.5],
   [9, -9, 5.5],
 ];
+
+/** How long one stroke keeps her going. */
+export const PURR_SECONDS = 3.4;
 
 const SPEEDS: Record<AnimalKind, number> = {
   chicken: 38,
@@ -127,6 +136,7 @@ export function makeAnimal(
     headDown: 1,
     clock: rnd() * 20,
     awake: false,
+    purr: 0,
     slot: 0,
     frozen: false,
   };
@@ -334,13 +344,33 @@ function drawChicken(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t
   ctx.restore();
 }
 
+/**
+ * The cat asleep by the cottage door — the one creature here that answers back.
+ *
+ * Everything else runs away from you. She does not run, and she does not wake
+ * up either: a stroke sets `purr` counting down, and for those few seconds she
+ * breathes deeper and quicker, the tail comes unwound and sways, the ears turn,
+ * and the shut eyes fold into the crescents a contented cat makes. Then it ebbs
+ * away and she is a drawing of a sleeping cat again.
+ */
 function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
-  const breath = 1 + Math.sin(t * 1.5 + a.phase) * 0.035;
+  // Smoothstepped so the purr arrives and leaves gently instead of snapping on.
+  const p = clamp(a.purr / PURR_SECONDS, 0, 1);
+  const joy = p * p * (3 - 2 * p);
+  const breath = 1 + Math.sin(t * (1.5 + joy * 3.6) + a.phase) * (0.035 + joy * 0.045);
+  const flick = joy * Math.sin(t * 6.2 + a.phase) * 4.5;
+  const ear = joy * Math.sin(t * 4.6 + a.phase * 2) * 1.3;
+  const squint = joy * 0.85;
+  const eyeR = 2 + squint;
+
   movingShadow(ctx, a.x, a.y + 1, 15 * a.scale, 4.5 * a.scale, medium, a.phase * 20);
   ctx.save();
   ctx.translate(a.x, a.y);
   ctx.scale(a.face * a.scale, a.scale * breath);
   const k = a.phase * 410;
+  // The tail's tip, wrapped round the front and swinging while she purrs.
+  const tipX = 6 + flick * 1.4;
+  const tipY = -1.5 + flick * 0.5;
 
   if (medium === 'color') {
     ctx.fillStyle = '#c9834b';
@@ -349,7 +379,7 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
     ctx.strokeStyle = '#c9834b'; ctx.lineWidth = 4.6; ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(9, -6);
-    ctx.quadraticCurveTo(16, -2, 6, -1.5);
+    ctx.quadraticCurveTo(16, -2 - flick * 0.6, tipX, tipY);
     ctx.stroke();
     ctx.fillStyle = '#b06f3c';
     for (const s of [-6, 0, 6]) {                                        // tabby stripes
@@ -357,11 +387,16 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
     }
     ctx.fillStyle = '#c9834b';
     ctx.beginPath(); ctx.arc(-11, -10, 6.2, 0, TAU); ctx.fill();               // head
-    ctx.beginPath(); ctx.moveTo(-15, -14); ctx.lineTo(-16, -19); ctx.lineTo(-11, -15.5); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-8, -15); ctx.lineTo(-6, -19.5); ctx.lineTo(-5, -13.5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-15, -14); ctx.lineTo(-16 - ear, -19 - ear); ctx.lineTo(-11, -15.5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-8, -15); ctx.lineTo(-6 + ear, -19.5 - ear); ctx.lineTo(-5, -13.5); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = '#6b4a2c'; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.arc(-13, -9.5, 2, 0.15, Math.PI - 0.15); ctx.stroke();  // shut eye
-    ctx.beginPath(); ctx.arc(-8.5, -9.5, 1.7, 0.15, Math.PI - 0.15); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-13, -9.5 - squint, eyeR, 0.15, Math.PI - 0.15); ctx.stroke();  // shut eye
+    ctx.beginPath(); ctx.arc(-8.5, -9.5 - squint, eyeR * 0.85, 0.15, Math.PI - 0.15); ctx.stroke();
+    if (joy > 0.04) {
+      ctx.globalAlpha = joy;
+      ctx.beginPath(); ctx.arc(-12.4, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();  // the small smile
+      ctx.beginPath(); ctx.arc(-9.6, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();
+    }
   } else {
     ink(ctx, 0.5, 1.15);
     ctx.beginPath();
@@ -370,17 +405,22 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
     ink(ctx, 0.45, 1.05);
     ctx.beginPath();
     ctx.moveTo(9, -6);
-    ctx.quadraticCurveTo(16, -2, 6, -1.5);
+    ctx.quadraticCurveTo(16, -2 - flick * 0.6, tipX, tipY);
     ctx.stroke();
     inkArc(ctx, -11, -10, 6.2, k + 10);
     ink(ctx, 0.4, 0.95);
-    inkPoly(ctx, [[-15, -14], [-16, -19], [-11, -15.5]], k + 16, true);
-    inkPoly(ctx, [[-8, -15], [-6, -19.5], [-5, -13.5]], k + 24, true);
+    inkPoly(ctx, [[-15, -14], [-16 - ear, -19 - ear], [-11, -15.5]], k + 16, true);
+    inkPoly(ctx, [[-8, -15], [-6 + ear, -19.5 - ear], [-5, -13.5]], k + 24, true);
     ink(ctx, 0.28, 0.8);
     for (const s of [-6, 0, 6]) inkLine(ctx, s - 1, -13, s + 1, -9, k + 30 + s);
     ink(ctx, 0.5, 1);
-    ctx.beginPath(); ctx.arc(-13, -9.5, 2, 0.15, Math.PI - 0.15); ctx.stroke();
-    ctx.beginPath(); ctx.arc(-8.5, -9.5, 1.7, 0.15, Math.PI - 0.15); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-13, -9.5 - squint, eyeR, 0.15, Math.PI - 0.15); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-8.5, -9.5 - squint, eyeR * 0.85, 0.15, Math.PI - 0.15); ctx.stroke();
+    if (joy > 0.04) {
+      ink(ctx, 0.42 * joy, 0.8);
+      ctx.beginPath(); ctx.arc(-12.4, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(-9.6, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();
+    }
   }
   ctx.restore();
 }
