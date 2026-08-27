@@ -106,6 +106,18 @@
   #stats:active { transform:rotate(0deg) translate(1px,2px); box-shadow:none; }
   #stats[aria-pressed="true"] { background:#f7c14b; opacity:1; }
 
+  /* The language picker. A real <select>, so it uses whatever list the device
+     already knows how to show — which on a phone is a proper native one. */
+  #lang {
+    position:static; margin:0; padding:7px 9px;
+    font-family:inherit; font-size:14px; color:#332f28; cursor:pointer;
+    appearance:none; -webkit-appearance:none;
+    transform:rotate(-1deg); opacity:.8;
+    transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease;
+  }
+  #lang:hover { opacity:1; transform:rotate(0deg) translateY(-1px); box-shadow:3px 5px 0 rgba(60,55,45,.22); }
+  #lang:focus-visible { outline:2px solid rgba(60,55,45,.6); outline-offset:3px; }
+
   /* No backdrop-filter here. It is a full-screen element sitting over an
      animating canvas: the compositor would re-blur the whole canvas every
      frame, and canvas draws stall while the texture is synchronised to be
@@ -182,19 +194,19 @@
 <div id="vignette"></div>
 
 <div id="hud" class="panel">
-  <div><b><span id="found">0</span> / <span id="total">0</span></b> paint pots</div>
-  <div class="sub">colour reaches <span id="reach">0</span> steps</div>
+  <div><b><span id="found">0</span> / <span id="total">0</span></b> <span data-i18n="hud.pots">paint pots</span></div>
+  <div class="sub" id="reachLine" data-i18n="hud.reach">colour reaches 0 steps</div>
   <div id="meterWrap"><div id="meter"></div></div>
 </div>
 
-<div id="hint" class="panel">the world is only coloured where you stand — go and find the rest</div>
+<div id="hint" class="panel" data-i18n="hint.default">the world is only coloured where you stand — go and find the rest</div>
 
 <div id="actions">
   <button id="action" class="panel hidden" type="button">
     <span class="key">E</span><span id="actionLabel">pet the cat</span>
   </button>
   <button id="leave" class="panel hidden" type="button">
-    <span class="key">Q</span><span>pack up</span>
+    <span class="key">Q</span><span data-i18n="prompt.packUp">pack up</span>
   </button>
 </div>
 
@@ -213,8 +225,9 @@
              0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286
              0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
   </svg>
-  <span>source</span>
+  <span data-i18n="corner.source">source</span>
 </a>
+<select id="lang" class="panel" aria-label="Language"></select>
 <button id="stats" class="panel" type="button" aria-pressed="false"
         title="Show performance diagnostics (F)" aria-label="Show performance diagnostics">
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -226,28 +239,25 @@
 <div id="intro" class="overlay">
   <div class="card">
     <h1>Pencil &amp; Paint</h1>
-    <p>Someone left the world half-finished, in graphite.<br>Only what is near you remembers its colours.</p>
+    <p><span data-i18n="intro.tagline1">Someone left the world half-finished, in graphite.</span><br><span data-i18n="intro.tagline2">Only what is near you remembers its colours.</span></p>
     <div class="keys">
-      <span class="key">W A S D</span><span class="key">↑ ← ↓ →</span><span class="key">drag to walk</span>
+      <span class="key">W A S D</span><span class="key">↑ ← ↓ →</span><span class="key" data-i18n="intro.drag">drag to walk</span>
     </div>
-    <p style="font-size:15px;opacity:.7;margin-top:12px">Gather the spilled paint pots to widen the colour.</p>
-    <button id="startBtn">Start walking</button>
+    <p style="font-size:15px;opacity:.7;margin-top:12px" data-i18n="intro.gather">Gather the spilled paint pots to widen the colour.</p>
+    <button id="startBtn" data-i18n="intro.start">Start walking</button>
     <div id="build" class="build"></div>
   </div>
 </div>
 
 <div id="creel" class="panel hidden">
-  <div class="creel-title">you packed up</div>
+  <div class="creel-title" data-i18n="creel.title">you packed up</div>
   <div id="creelList" class="creel-list"></div>
 </div>
 
 <div id="done" class="panel hidden">
-  <div class="done-title">The world remembers.</div>
-  <div class="done-sub">
-    Every pot found in <span id="wintime">—</span>. Stay as long as you like —
-    the colour is yours now.
-  </div>
-  <button id="againBtn">Start a new world</button>
+  <div class="done-title" data-i18n="done.title">The world remembers.</div>
+  <div class="done-sub" id="doneSub">Every pot found in —.</div>
+  <button id="againBtn" data-i18n="done.again">Start a new world</button>
 </div>
 
 <script type="module" src="/src/main.ts"></script>

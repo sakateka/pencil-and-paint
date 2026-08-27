@@ -41,7 +41,7 @@ export async function run(url) {
 
     suite.ok(near.awake, 'standing beside her, the colour has reached her');
     suite.equal(near.prompt?.kind, 'pet', 'the prompt offers itself');
-    suite.equal(near.prompt?.label, 'pet the cat', 'and says what it is');
+    suite.equal(near.prompt?.say, 'prompt.pet', 'and says what it is');
     suite.equal(near.purr, 0, 'she is not purring yet');
     suite.equal(near.pets, 0, 'and has not been petted');
 
@@ -55,7 +55,7 @@ export async function run(url) {
 
       // A second of her enjoying it.
       for (let i = 0; i < 60; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
-      const during = { purr: cat.purr, label: game.interaction?.label };
+      const during = { purr: cat.purr, say: game.interaction?.say };
       pencil.renderOnce();
 
       // Three seconds in she is on the second murrr, and still going.
@@ -88,7 +88,7 @@ export async function run(url) {
     );
     suite.ok(stroked.during.purr > 0, 'still purring a second later', `${stroked.during.purr}`);
     suite.ok(stroked.during.purr < stroked.started, 'but running down');
-    suite.equal(stroked.during.label, 'she is purring', 'and the prompt says so');
+    suite.equal(stroked.during.say, 'prompt.purring', 'and the prompt says so');
     suite.ok(stroked.midway > 0, 'three seconds in she is still going', `${stroked.midway}`);
     suite.equal(stroked.after, 0, 'six seconds on, she has settled again');
     suite.equal(stroked.moved, 0, 'she never gets up');

@@ -7,35 +7,49 @@
  * reader.
  */
 
+import { list, setLanguage, t, translateDom, type Lang } from './i18n';
+
 function element<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`missing element: #${id}`);
   return el as T;
 }
 
-const HINT_DEFAULT = 'the world is only coloured where you stand — go and find the rest';
+
 
 export class Ui {
   private readonly found = element('found');
   private readonly total = element('total');
-  private readonly reach = element('reach');
   private readonly meter = element('meter');
   private readonly hint = element('hint');
   private readonly intro = element('intro');
   private readonly done = element('done');
-  private readonly time = element('wintime');
   private readonly action = element<HTMLButtonElement>('action');
   private readonly actionLabel = element('actionLabel');
   private readonly leave = element<HTMLButtonElement>('leave');
   private readonly creel = element('creel');
   private readonly creelList = element('creelList');
+  private readonly reachLine = element('reachLine');
+  private readonly doneSub = element('doneSub');
+  private readonly picker = element<HTMLSelectElement>('lang');
 
   private doneTimer: number | undefined;
   private noteTimer: number | undefined;
   private creelTimer: number | undefined;
 
-  /** What the hint said before a passing note took it over. */
-  private hintText = HINT_DEFAULT;
+  /**
+   * What the hint says, as a key and its numbers rather than as a sentence.
+   *
+   * Kept this way so that changing language re-says whatever is on screen. A
+   * stored English sentence cannot be translated after the fact.
+   */
+  private hintKey = 'hint.default';
+  private hintParams: Record<string, number> = {};
+
+  /** The last progress figures, for re-saying them in another language. */
+  private progress = { found: 0, total: 0, reach: 0 };
+  private wonSeconds: number | null = null;
+  private landed: { kind: string; count: number }[] = [];
 
   /** Last prompt shown, so the per-frame call touches the DOM only on change. */
   private prompt: string | null = null;
@@ -58,6 +72,36 @@ export class Ui {
       handlers.onLeave();
       this.leave.blur();
     });
+
+    // The picker's options are filled by `translateDom` before any of this
+    // exists; all that is left is to listen to it.
+    this.picker.addEventListener('change', () => {
+      setLanguage(this.picker.value as Lang);
+      this.retranslate();
+      this.picker.blur();
+    });
+
+    // The language was chosen and the card translated before the world was
+    // built; this only catches up the parts that did not exist yet.
+    this.retranslate();
+  }
+
+  /**
+   * Say everything again in the current language.
+   *
+   * Everything on screen is re-derived from what it means rather than patched,
+   * which is why the counters and the hint are kept as numbers and keys: a
+   * sentence already written cannot be translated.
+   */
+  retranslate(): void {
+    translateDom();
+    this.setProgress(this.progress.found, this.progress.total, this.progress.reach);
+    if (this.noteTimer === undefined) this.hint.textContent = t(this.hintKey, this.hintParams);
+    if (this.wonSeconds !== null) this.sayCompletion(this.wonSeconds);
+    if (!this.creel.classList.contains('hidden')) this.sayCreel();
+    // The prompt is re-said by the frame loop within a frame, so it needs no
+    // help here — but the label it is showing is stale until then.
+    this.prompt = null;
   }
 
   /**
@@ -67,14 +111,14 @@ export class Ui {
    * class list sixty times a second is a style recalculation the browser does
    * not need to do to keep saying the same three words.
    */
-  setAction(label: string | null): void {
-    if (label === this.prompt) return;
-    this.prompt = label;
-    if (label === null) {
+  setAction(key: string | null): void {
+    if (key === this.prompt) return;
+    this.prompt = key;
+    if (key === null) {
       this.action.classList.add('hidden');
       return;
     }
-    this.actionLabel.textContent = label;
+    this.actionLabel.textContent = t(key);
     this.action.classList.remove('hidden');
   }
 
@@ -97,20 +141,26 @@ export class Ui {
    * Sits for a while and then goes, like the note does — nothing here should
    * need dismissing. An empty run says so rather than showing an empty box.
    */
-  showCreel(summary: string): void {
-    this.creelList.textContent = summary === '' ? 'nothing but weed, this time' : summary;
+  showCreel(landed: { kind: string; count: number }[]): void {
+    this.landed = landed;
+    this.sayCreel();
     this.creel.classList.remove('hidden');
     clearTimeout(this.creelTimer);
     this.creelTimer = setTimeout(() => this.creel.classList.add('hidden'), 9000);
   }
 
+  /** The ledger as a sentence: plural forms and list joining, per language. */
+  private sayCreel(): void {
+    const parts = this.landed.map(({ kind, count }) => t(`creel.${kind}`, { n: count }));
+    this.creelList.textContent = parts.length === 0 ? t('creel.empty') : list(parts);
+  }
+
   /** A line that says itself and then gives the hint back. */
-  note(text: string, ms = 4600): void {
-    if (this.noteTimer === undefined) this.hintText = this.hint.textContent ?? HINT_DEFAULT;
+  note(key: string, ms = 4600): void {
     clearTimeout(this.noteTimer);
-    this.hint.textContent = text;
+    this.hint.textContent = t(key);
     this.noteTimer = setTimeout(() => {
-      this.hint.textContent = this.hintText;
+      this.hint.textContent = t(this.hintKey, this.hintParams);
       this.noteTimer = undefined;
     }, ms);
   }
@@ -123,9 +173,10 @@ export class Ui {
   }
 
   setProgress(found: number, total: number, reach: number): void {
+    this.progress = { found, total, reach };
     this.found.textContent = String(found);
     this.total.textContent = String(total);
-    this.reach.textContent = String(Math.round(reach));
+    this.reachLine.textContent = t('hud.reach', { n: Math.round(reach) });
     this.meter.style.width = `${(found / total) * 100}%`;
   }
 
@@ -135,19 +186,20 @@ export class Ui {
    */
   setPotHint(found: number, total: number): void {
     const left = total - found;
-    if (left === 0) this.setHint('the whole page is awake');
-    else if (left === 1) this.setHint('one last pot still in graphite');
-    else if (found === 1) this.setHint('the colour reaches a little further now');
-    else this.setHint(`${left} pots still in graphite`);
+    if (left === 0) this.setHint('hint.awake');
+    else if (left === 1) this.setHint('hint.lastPot');
+    else if (found === 1) this.setHint('hint.further');
+    else this.setHint('hint.potsLeft', { n: left });
   }
 
   /**
    * Behind a passing note, the hint is written down rather than shown — so a
    * pot found while the note is up is not swallowed when the note clears.
    */
-  private setHint(text: string): void {
-    this.hintText = text;
-    if (this.noteTimer === undefined) this.hint.textContent = text;
+  private setHint(key: string, params: Record<string, number> = {}): void {
+    this.hintKey = key;
+    this.hintParams = params;
+    if (this.noteTimer === undefined) this.hint.textContent = t(key, params);
   }
 
   /**
@@ -155,9 +207,15 @@ export class Ui {
    * wander it; this is only a note in the corner, for whenever you want it.
    */
   announceCompletion(seconds: number, afterMs = 3400): void {
-    this.time.textContent = `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+    this.wonSeconds = seconds;
+    this.sayCompletion(seconds);
     clearTimeout(this.doneTimer);
     this.doneTimer = setTimeout(() => this.done.classList.remove('hidden'), afterMs);
+  }
+
+  private sayCompletion(seconds: number): void {
+    const time = `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+    this.doneSub.textContent = t('done.sub', { time });
   }
 
   reset(): void {
@@ -167,7 +225,8 @@ export class Ui {
     this.creel.classList.add('hidden');
     this.noteTimer = undefined;
     this.done.classList.add('hidden');
-    this.hintText = HINT_DEFAULT;
-    this.hint.textContent = HINT_DEFAULT;
+    this.wonSeconds = null;
+    this.landed = [];
+    this.setHint('hint.default');
   }
 }

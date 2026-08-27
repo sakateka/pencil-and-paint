@@ -1,6 +1,17 @@
 import { BUILD_ID } from './buildInfo';
 import { rng } from './core/rng';
 import { exposeForTests } from './debug';
+import {
+  detectLanguage,
+  KEYS,
+  LANGUAGES,
+  list,
+  missingKeys,
+  setLanguage,
+  t,
+  translateDom,
+  type Lang,
+} from './i18n';
 import { installDebugPanel } from './debugPanel';
 import {
   MURR_COUNT,
@@ -81,6 +92,16 @@ async function boot(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('missing #game canvas');
 
+  /*
+   * Language first, before anything is shown.
+   *
+   * The title card is on screen for the whole bake, so translating it in the
+   * Ui — which is not built until the valley is — left it in English for the
+   * one part of the session where somebody is definitely reading it.
+   */
+  setLanguage(detectLanguage());
+  translateDom();
+
   const stamp = document.querySelector<HTMLElement>('#build');
   if (stamp) stamp.textContent = BUILD_ID;
 
@@ -92,7 +113,7 @@ async function boot(): Promise<void> {
   const tappedAtWall = Date.now();
   if (startButton) {
     startButton.setAttribute('aria-busy', 'true');
-    startButton.textContent = 'drawing the valley…';
+    startButton.textContent = t('intro.building', { n: 0 });
   }
   // Let the label paint before the bake takes the thread.
   await yieldToBrowser();
@@ -109,7 +130,7 @@ async function boot(): Promise<void> {
 
   const world = await World.generate((fraction) => {
     if (!startButton) return;
-    startButton.textContent = `drawing the valley… ${Math.round(fraction * 100)}%`;
+    startButton.textContent = t('intro.building', { n: Math.round(fraction * 100) });
   });
 
   if (startButton) {
@@ -234,14 +255,14 @@ async function boot(): Promise<void> {
       // tap or keypress that caused it, so the browser allows the motor to run.
       purr();
       buzzPurr();
-      if (first) ui.note('she does not open her eyes — but she knows you are there');
+      if (first) ui.note('note.firstPet');
     },
-    onFishingStart: () => ui.note('the fire catches. there is nowhere else to be'),
-    onFishingEnd: (summary) => ui.showCreel(summary),
+    onFishingStart: () => ui.note('note.fire'),
+    onFishingEnd: (landed) => ui.showCreel(landed),
     onCatch: (total) => {
       // Up the same scale the pots used, so the valley keeps one voice.
       chime(total - 1);
-      if (total === 1) ui.note('a small one. you put it back');
+      if (total === 1) ui.note('note.firstFish');
     },
   });
 
@@ -303,6 +324,17 @@ async function boot(): Promise<void> {
     purrStrength,
     buildPurr,
     purrsPlayed: () => purrsPlayed,
+    i18n: {
+      keys: () => KEYS,
+      languages: () => Object.keys(LANGUAGES),
+      missing: (lang) => missingKeys(lang as Lang),
+      setLanguage: (lang) => {
+        setLanguage(lang as Lang);
+        ui.retranslate();
+      },
+      say: (key, params) => t(key, params),
+      list,
+    },
   });
 
   /*
@@ -328,7 +360,7 @@ async function boot(): Promise<void> {
 
     tickBoil(game.elapsed + dt);
     game.advance(dt, input);
-    ui.setAction(game.interaction?.label ?? null);
+    ui.setAction(game.interaction?.say ?? null);
     ui.setLeave(game.fishing.active);
     // The purr follows the walker: it fades as you leave her and comes back if
     // you turn around while she is still going.

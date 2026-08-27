@@ -1,6 +1,6 @@
 import { clamp, lerp } from './core/math';
 import { PURR_SECONDS, type Animal } from './entities/animals';
-import { Fishing } from './entities/fishing';
+import { Fishing, type CatchKind } from './entities/fishing';
 import { Herd } from './entities/herd';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
@@ -52,8 +52,13 @@ const PURR_EARSHOT = 200;
  */
 export interface Interaction {
   readonly kind: 'pet' | 'fish';
-  /** What the prompt on screen says. */
-  readonly label: string;
+  /**
+   * What to say, as a dictionary key rather than a phrase.
+   *
+   * The rules do not know what language anyone is reading in, and should not
+   * have to. Whoever puts this on screen looks it up.
+   */
+  readonly say: string;
 }
 
 /**
@@ -76,8 +81,8 @@ export interface GameEvents {
   onFishingStart(): void;
   /** A fish has been landed; `total` counts them this playthrough. */
   onCatch(total: number): void;
-  /** The camp has come down, however it came down. `summary` may be empty. */
-  onFishingEnd(summary: string): void;
+  /** The camp has come down, however it came down. The list may be empty. */
+  onFishingEnd(landed: { kind: CatchKind; count: number }[]): void;
 }
 
 /**
@@ -241,7 +246,7 @@ export class Game {
     // ends, the ledger is read out once and only once.
     const wasFishing = this.fishing.active;
     this.fishing.update(dt, this.walker.x, this.walker.y);
-    if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.summary);
+    if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.landed);
     this.camera.follow(this.walker.x, this.walker.y, dt);
   }
 
@@ -331,9 +336,9 @@ export class Game {
   get interaction(): Interaction | null {
     if (!this.running) return null;
     const cat = this.catInReach();
-    if (cat) return { kind: 'pet', label: cat.purr > 0 ? 'she is purring' : 'pet the cat' };
-    if (this.fishing.active) return { kind: 'fish', label: this.fishing.label };
-    if (this.atTheWater()) return { kind: 'fish', label: this.fishing.label };
+    if (cat) return { kind: 'pet', say: cat.purr > 0 ? 'prompt.purring' : 'prompt.pet' };
+    if (this.fishing.active) return { kind: 'fish', say: this.fishing.labelKey };
+    if (this.atTheWater()) return { kind: 'fish', say: this.fishing.labelKey };
     return null;
   }
 
@@ -347,7 +352,7 @@ export class Game {
   cancel(): boolean {
     if (!this.fishing.active) return false;
     this.fishing.packUp();
-    this.events.onFishingEnd(this.fishing.summary);
+    this.events.onFishingEnd(this.fishing.landed);
     return true;
   }
 

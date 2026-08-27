@@ -40,7 +40,7 @@ export async function run(url) {
 
     suite.ok(offered.won, 'every pot found');
     suite.equal(offered.prompt?.kind, 'fish', 'now the pond offers something');
-    suite.equal(offered.prompt?.label, 'fish here', 'and says what');
+    suite.equal(offered.prompt?.say, 'prompt.fish', 'and says what');
 
     // Away from the water it is still nothing, won or not.
     const inland = await game.evaluate((pencil) => {
@@ -77,7 +77,7 @@ export async function run(url) {
       return {
         started,
         phase: f.phase,
-        label: game.interaction?.label,
+        say: game.interaction?.say,
         floatOnWater: inside(water, f.floatX, f.floatY, -6),
         tentOnLand: !inside(pond, f.tentX, f.tentY, 0),
         fireOnLand: !inside(pond, f.fireX, f.fireY, 0),
@@ -87,7 +87,7 @@ export async function run(url) {
 
     suite.ok(camp.started, 'camp is pitched');
     suite.equal(camp.phase, 'waiting', 'and the line goes straight out');
-    suite.equal(camp.label, 'wait for it…', 'the prompt says to wait');
+    suite.equal(camp.say, 'prompt.wait', 'the prompt says to wait');
     suite.ok(camp.floatOnWater, 'the float lands on the blue water, not in the reeds');
     suite.ok(camp.tentOnLand, 'the tent is pitched on dry ground');
     suite.ok(camp.fireOnLand, 'and so is the fire');
@@ -127,7 +127,7 @@ export async function run(url) {
         game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         if (game.fishing.phase === 'bite') sawBite = true;
       }
-      return { sawBite, label: game.interaction?.label };
+      return { sawBite, say: game.interaction?.say };
     });
     // Again through the button: landing a fish must not purr a cat either.
     await game.page.click('#action');
@@ -137,7 +137,7 @@ export async function run(url) {
     });
 
     suite.ok(landed.sawBite, 'a bite comes if you wait');
-    suite.equal(landed.label, 'now!', 'and the prompt says so');
+    suite.equal(landed.say, 'prompt.now', 'and the prompt says so');
     suite.equal(after.caught, 1, 'answering it lands a fish, and it is counted');
     suite.equal(after.phase, 'caught', 'and shown for a moment');
 
@@ -221,14 +221,14 @@ export async function run(url) {
       for (let i = 0; i < 130; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       return {
         phase: game.fishing.phase,
-        label: game.interaction?.label,
+        say: game.interaction?.say,
         caught: game.fishing.caught,
         before,
       };
     });
 
     suite.equal(missed.phase, 'missed', 'ignore a bite and it gets away');
-    suite.equal(missed.label, 'it got away', 'and it says so');
+    suite.equal(missed.say, 'prompt.gotAway', 'and it says so');
     suite.equal(missed.caught, missed.before, 'with nothing added to the tally');
 
     /*
@@ -300,7 +300,13 @@ export async function run(url) {
       showing: !el.classList.contains('hidden'),
       text: el.querySelector('#creelList').textContent,
     }));
-    const expected = await game.evaluate((pencil) => pencil.game.fishing.summary);
+    const expected = await game.evaluate((pencil) =>
+      pencil.i18n.list(
+        pencil.game.fishing.landed.map(({ kind, count }) =>
+          pencil.i18n.say(`creel.${kind}`, { n: count }),
+        ),
+      ),
+    );
     suite.ok(creel.showing, 'packing up shows what you caught');
     suite.equal(creel.text, expected, 'and it says the same as the ledger', creel.text);
     suite.ok(creel.text.length > 0, 'which is not empty after a good run');
@@ -326,7 +332,7 @@ export async function run(url) {
         }
         game.particles.clear();
         pencil.renderOnce();
-        inked.push(f.label);
+        inked.push(f.labelKey);
       }
       game.fishing.caught = keep.caught;
       game.fishing.tally = keep.tally;
@@ -376,35 +382,6 @@ export async function run(url) {
       7,
       'nothing in the pond is unreachable',
       Object.keys(odds.counts).join(', '),
-    );
-
-    // The ledger, read out as a line.
-    const wording = await game.evaluate((pencil) => {
-      const f = pencil.game.fishing;
-      const keep = { ...f.tally };
-      const say = (t) => {
-        for (const k of Object.keys(f.tally)) f.tally[k] = t[k] ?? 0;
-        return f.summary;
-      };
-      const said = {
-        none: say({}),
-        one: say({ roach: 1 }),
-        several: say({ roach: 3 }),
-        mixed: say({ roach: 3, carp: 1, boot: 2 }),
-        everything: say({ roach: 2, crucian: 1, carp: 1, catfish: 1, boot: 1, shoe: 1, treasure: 1 }),
-      };
-      f.tally = keep; // this was a measurement, not an afternoon's fishing
-      return said;
-    });
-
-    suite.equal(wording.none, '', 'an empty run says nothing');
-    suite.equal(wording.one, 'a roach', 'one of a thing is named, not counted');
-    suite.equal(wording.several, '3 roach', 'several are counted');
-    suite.equal(wording.mixed, '3 roach, a carp and 2 old boots', 'and the list reads properly');
-    suite.ok(
-      wording.everything.endsWith('and something gold'),
-      'with the gold thing saved for last',
-      wording.everything,
     );
 
     // Walk away: the camp packs itself up.

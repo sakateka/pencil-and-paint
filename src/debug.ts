@@ -56,6 +56,21 @@ export interface DebugHandle {
    * key for.
    */
   purrsPlayed(): number;
+  /**
+   * The dictionary, for the translation tests.
+   *
+   * A missing key is invisible in play — it falls back to English and reads as
+   * a slightly odd translation rather than as a fault — so the only way to know
+   * every language is complete is to ask.
+   */
+  i18n: {
+    keys(): string[];
+    languages(): string[];
+    missing(lang: string): string[];
+    setLanguage(lang: string): void;
+    say(key: string, params?: Record<string, string | number>): string;
+    list(parts: string[]): string;
+  };
 }
 
 declare global {

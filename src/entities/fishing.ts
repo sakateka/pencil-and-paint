@@ -30,11 +30,6 @@ interface CatchSpec {
   readonly kind: CatchKind;
   /** Relative likelihood; these are out of a hundred. */
   readonly weight: number;
-  /** What the prompt says the moment it comes up. */
-  readonly said: string;
-  /** How it is listed afterwards, alone and in company. */
-  readonly one: string;
-  readonly many: string;
 }
 
 /**
@@ -47,13 +42,13 @@ interface CatchSpec {
  * happens.
  */
 const CATCHES: readonly CatchSpec[] = [
-  { kind: 'roach', weight: 32, said: 'a roach!', one: 'a roach', many: 'roach' },
-  { kind: 'crucian', weight: 25, said: 'a crucian carp!', one: 'a crucian carp', many: 'crucian carp' },
-  { kind: 'carp', weight: 18, said: 'a carp!', one: 'a carp', many: 'carp' },
-  { kind: 'catfish', weight: 13, said: 'a catfish!', one: 'a catfish', many: 'catfish' },
-  { kind: 'boot', weight: 6, said: 'an old boot', one: 'an old boot', many: 'old boots' },
-  { kind: 'shoe', weight: 5, said: "somebody's shoe", one: 'a lost shoe', many: 'lost shoes' },
-  { kind: 'treasure', weight: 1, said: 'something gold…', one: 'something gold', many: 'gold things' },
+  { kind: 'roach', weight: 32 },
+  { kind: 'crucian', weight: 25 },
+  { kind: 'carp', weight: 18 },
+  { kind: 'catfish', weight: 13 },
+  { kind: 'boot', weight: 6 },
+  { kind: 'shoe', weight: 5 },
+  { kind: 'treasure', weight: 1 },
 ];
 
 const TOTAL_WEIGHT = CATCHES.reduce((sum, c) => sum + c.weight, 0);
@@ -68,19 +63,12 @@ function pickCatch(): CatchSpec {
   return CATCHES[0];
 }
 
-const SPEC = Object.fromEntries(CATCHES.map((c) => [c.kind, c])) as Record<CatchKind, CatchSpec>;
-
 /** An empty ledger. */
 function emptyTally(): Record<CatchKind, number> {
   return Object.fromEntries(CATCHES.map((c) => [c.kind, 0])) as Record<CatchKind, number>;
 }
 
-/** "3 roach, a carp and an old boot" — the list, read out properly. */
-function readOut(parts: string[]): string {
-  if (parts.length === 0) return '';
-  if (parts.length === 1) return parts[0];
-  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-}
+
 
 /** How far you can wander before the camp packs itself up. */
 const LEAVE_RADIUS = 130;
@@ -159,19 +147,19 @@ export class Fishing {
     return clamp(1 - this.timer / RESULT_SECONDS, 0, 1);
   }
 
-  /** What the prompt on screen says. */
-  get label(): string {
+  /** Which phrase the prompt should show, as a dictionary key. */
+  get labelKey(): string {
     switch (this.phase) {
       case 'waiting':
-        return 'wait for it…';
+        return 'prompt.wait';
       case 'bite':
-        return 'now!';
+        return 'prompt.now';
       case 'caught':
-        return SPEC[this.hooked].said;
+        return `said.${this.hooked}`;
       case 'missed':
-        return 'it got away';
+        return 'prompt.gotAway';
       case 'off':
-        return 'fish here';
+        return 'prompt.fish';
     }
   }
 
@@ -276,16 +264,18 @@ export class Fishing {
   }
 
   /**
-   * What the pond gave up, as a line to read.
+   * What came up, in the order the table lists it — so the fish come before
+   * the rubbish and the gold thing is last, which is where you want it.
    *
-   * In the order they appear in the table, so the fish come before the rubbish
-   * and the gold thing is last — which is where you want it.
+   * Kinds and counts only. Turning those into a sentence needs to know the
+   * language, the plural rules and how that language joins a list, none of
+   * which belongs down here with the pond.
    */
-  get summary(): string {
-    const parts = CATCHES.filter((c) => this.tally[c.kind] > 0).map((c) =>
-      this.tally[c.kind] === 1 ? c.one : `${this.tally[c.kind]} ${c.many}`,
-    );
-    return readOut(parts);
+  get landed(): { kind: CatchKind; count: number }[] {
+    return CATCHES.filter((c) => this.tally[c.kind] > 0).map((c) => ({
+      kind: c.kind,
+      count: this.tally[c.kind],
+    }));
   }
 
   /** Everything back to nothing, for a new playthrough. */
