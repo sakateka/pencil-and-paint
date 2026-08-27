@@ -91,43 +91,98 @@ export function makeHaystack(x: number, y: number, s: number): Scenery {
   };
 }
 
+/**
+ * A round bale lying in the field, seen the same three-quarter way as
+ * everything else here.
+ *
+ * It used to be a flat disc with rings drawn on it. That is what a bale looks
+ * like from directly overhead, and from ground level it looked like something
+ * a cow had left behind. So it is a barrel now: a body lying on its side, the
+ * near end turned towards us with the roll's rings on it, and two bands wrapped
+ * round the middle to say which way it is pointing.
+ */
 export function makeHayBale(x: number, y: number, s: number): Scenery {
   const r = 21 * s;
-  const side = ellipsePoly(x, y - r * 0.92, r, r * 0.92, 20, 0.035);
-  const cx = x;
-  const cy = y - r * 0.92;
+  /** Half the bale's diameter, which is also how tall it stands. */
+  const ry = r * 0.82;
+  /** Half its length, along the ground. */
+  const half = r * 1.05;
+  /** The end face, foreshortened — it is a circle turned nearly edge-on. */
+  const er = r * 0.36;
+  const midY = y - ry;
+  const nearX = x + half - er;
+  const farX = x - half + er;
+
+  /*
+   * The silhouette: the far cap's outer half, then the near cap's outer half.
+   * Closing the path joins them along the top and the bottom, which gives the
+   * flat-sided barrel a straight-edged cylinder actually has.
+   */
+  const body: Poly = [];
+  const SEGMENTS = 11;
+  const wobble = rnd() * TAU;
+  for (let i = 0; i <= SEGMENTS; i++) {
+    const a = -Math.PI / 2 - (i / SEGMENTS) * Math.PI;
+    const k = 1 + Math.sin(a * 3 + wobble) * 0.03;
+    body.push([farX + Math.cos(a) * er * k, midY + Math.sin(a) * ry * k]);
+  }
+  for (let i = 0; i <= SEGMENTS; i++) {
+    const a = Math.PI / 2 - (i / SEGMENTS) * Math.PI;
+    const k = 1 + Math.sin(a * 3 - wobble) * 0.03;
+    body.push([nearX + Math.cos(a) * er * k, midY + Math.sin(a) * ry * k]);
+  }
+  const face = ellipsePoly(nearX, midY, er, ry, 18, 0.03);
 
   return {
     y,
     colliders: [circleCollider(x, y - r * 0.6, r * 0.95)],
     draw(ctx, medium) {
-      groundShadow(ctx, x, y + 1, r * 1.25, r * 0.42, medium);
-      paint(ctx, side, '#dcba66', medium, { angle: -1.2, edge: STRAW_EDGE, darkScale: 1.3 });
+      groundShadow(ctx, x, y + 1, half * 1.15, ry * 0.36, medium);
+      paint(ctx, body, '#d8b45f', medium, { angle: -1.2, edge: STRAW_EDGE, darkScale: 1.3 });
 
-      // the spiral that says "rolled"
       isolate(ctx, () => {
-        tracePoly(ctx, side);
+        tracePoly(ctx, body);
         ctx.clip();
+        strawTexture(ctx, (nearX + farX) / 2, midY, half * 0.85, ry * 0.8, medium, 20);
+
+        // The wrapping, curving round the barrel the way the straw is coiled.
+        ctx.lineCap = 'round';
         if (medium === 'color') {
-          ctx.strokeStyle = 'rgba(150,110,45,.55)';
-          ctx.lineWidth = 1.6;
-          for (let k = 1; k <= 3; k++) {
-            ctx.beginPath();
-            ctx.ellipse(cx, cy, r * 0.26 * k, r * 0.24 * k, 0.2, 0, TAU);
-            ctx.stroke();
-          }
+          ctx.strokeStyle = 'rgba(150,110,45,.45)';
+          ctx.lineWidth = 1.5;
         } else {
           ctx.strokeStyle = PENCIL;
+          ctx.globalAlpha = 0.28;
           ctx.lineWidth = 0.9;
-          ctx.globalAlpha = 0.3;
-          for (let k = 1; k <= 3; k++) {
-            ctx.beginPath();
-            ctx.ellipse(cx + rr(-1, 1), cy + rr(-1, 1), r * 0.26 * k, r * 0.24 * k, 0.2, 0, TAU);
-            ctx.stroke();
-          }
+        }
+        for (const along of [0.34, 0.66]) {
+          const bx = nearX + (farX - nearX) * along + (medium === 'color' ? 0 : rr(-1, 1));
+          ctx.beginPath();
+          ctx.ellipse(bx, midY, er, ry * 0.96, 0, -Math.PI / 2, Math.PI / 2);
+          ctx.stroke();
         }
       });
-      strawTexture(ctx, cx, cy, r * 0.8, r * 0.7, medium, 18);
+
+      // The end face last, so it stays crisp on top of the body.
+      paint(ctx, face, '#ecd48d', medium, { angle: -0.4, edge: STRAW_EDGE, darkScale: 0.75 });
+      isolate(ctx, () => {
+        tracePoly(ctx, face);
+        ctx.clip();
+        if (medium === 'color') {
+          ctx.strokeStyle = 'rgba(150,110,45,.5)';
+          ctx.lineWidth = 1.4;
+        } else {
+          ctx.strokeStyle = PENCIL;
+          ctx.globalAlpha = 0.3;
+          ctx.lineWidth = 0.85;
+        }
+        for (let k = 1; k <= 3; k++) {
+          const jx = medium === 'color' ? 0 : rr(-0.8, 0.8);
+          ctx.beginPath();
+          ctx.ellipse(nearX + jx, midY, er * 0.27 * k, ry * 0.27 * k, 0, 0, TAU);
+          ctx.stroke();
+        }
+      });
     },
   };
 }
