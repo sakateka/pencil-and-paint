@@ -61,6 +61,8 @@ const en: Dictionary = {
   'note.firstPet': 'she does not open her eyes — but she knows you are there',
   'note.fire': 'the fire catches. there is nowhere else to be',
   'note.firstFish': 'a small one. you put it back',
+  'note.restQuiet': 'the valley is quiet. it is not finished being drawn',
+  'note.restBirds': 'somewhere above you, the birds have started up again',
 
   'prompt.pet': 'pet the cat',
   'prompt.purring': 'she is purring',
@@ -69,6 +71,7 @@ const en: Dictionary = {
   'prompt.now': 'now!',
   'prompt.gotAway': 'it got away',
   'prompt.packUp': 'pack up',
+  'prompt.rest': 'lie in the hammock',
 
   'said.roach': 'a roach!',
   'said.crucian': 'a crucian carp!',
@@ -122,6 +125,8 @@ const es: Dictionary = {
   'note.firstPet': 'no abre los ojos — pero sabe que estás ahí',
   'note.fire': 'prende el fuego. no hay otro sitio donde estar',
   'note.firstFish': 'pequeño. lo devuelves al agua',
+  'note.restQuiet': 'el valle está callado. aún no lo terminan de dibujar',
+  'note.restBirds': 'en algún lugar sobre ti, los pájaros han vuelto a empezar',
 
   'prompt.pet': 'acariciar a la gata',
   'prompt.purring': 'está ronroneando',
@@ -130,6 +135,7 @@ const es: Dictionary = {
   'prompt.now': '¡ahora!',
   'prompt.gotAway': 'se escapó',
   'prompt.packUp': 'recoger',
+  'prompt.rest': 'tumbarse en la hamaca',
 
   'said.roach': '¡una bermejuela!',
   'said.crucian': '¡un carpín!',
@@ -183,6 +189,8 @@ const pt: Dictionary = {
   'note.firstPet': 'não abre os olhos — mas sabe que estás ali',
   'note.fire': 'a fogueira pega. não há outro sítio onde estar',
   'note.firstFish': 'pequeno. voltas a pô-lo na água',
+  'note.restQuiet': 'o vale está calado. ainda não o acabaram de desenhar',
+  'note.restBirds': 'algures por cima de ti, os pássaros recomeçaram',
 
   'prompt.pet': 'fazer festas à gata',
   'prompt.purring': 'está a ronronar',
@@ -191,6 +199,7 @@ const pt: Dictionary = {
   'prompt.now': 'agora!',
   'prompt.gotAway': 'fugiu',
   'prompt.packUp': 'arrumar',
+  'prompt.rest': 'deitar na rede',
 
   'said.roach': 'um ruivaco!',
   'said.crucian': 'um pimpão!',
@@ -245,6 +254,8 @@ const ru: Dictionary = {
   'note.firstPet': 'она не открывает глаз — но знает, что ты рядом',
   'note.fire': 'костёр занялся. больше некуда идти',
   'note.firstFish': 'маленькая. ты отпускаешь её обратно',
+  'note.restQuiet': 'в долине тихо. её ещё не дорисовали',
+  'note.restBirds': 'где-то над тобой снова запели птицы',
 
   'prompt.pet': 'погладить кошку',
   'prompt.purring': 'она мурлычет',
@@ -253,6 +264,7 @@ const ru: Dictionary = {
   'prompt.now': 'тяни!',
   'prompt.gotAway': 'сорвалась',
   'prompt.packUp': 'собраться',
+  'prompt.rest': 'лечь в гамак',
 
   'said.roach': 'плотва!',
   'said.crucian': 'карась!',
@@ -311,6 +323,8 @@ const zh: Dictionary = {
   'note.firstPet': '她没有睁眼 — 但她知道你在',
   'note.fire': '火生起来了。再没有别处可去',
   'note.firstFish': '很小的一条。你把它放回水里',
+  'note.restQuiet': '山谷很安静。它还没被画完',
+  'note.restBirds': '在你头顶的某处，鸟又叫起来了',
 
   'prompt.pet': '摸摸猫',
   'prompt.purring': '她在呼噜',
@@ -319,6 +333,7 @@ const zh: Dictionary = {
   'prompt.now': '就是现在！',
   'prompt.gotAway': '跑掉了',
   'prompt.packUp': '收拾',
+  'prompt.rest': '躺进吊床',
 
   'said.roach': '一条稣鱼！',
   'said.crucian': '一条鲫鱼！',

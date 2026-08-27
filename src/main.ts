@@ -26,6 +26,7 @@ import { tickBoil } from './media/ink';
 import { yieldToBrowser } from './core/schedule';
 import { GRAIN } from './media/sprites';
 import { Renderer } from './render/renderer';
+import { birdsongStatus, startBirdsong, stopBirdsong, updateBirdsong } from './systems/birdsong';
 import { buzzPurr, hapticStatus } from './systems/haptics';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
@@ -259,6 +260,11 @@ async function boot(): Promise<void> {
     },
     onFishingStart: () => ui.note('note.fire'),
     onFishingEnd: (landed) => ui.showCreel(landed),
+    onRestStart: (birds) => {
+      ui.note(birds ? 'note.restBirds' : 'note.restQuiet');
+      if (birds) startBirdsong();
+    },
+    onRestEnd: () => stopBirdsong(),
     onCatch: (total) => {
       // Up the same scale the pots used, so the valley keeps one voice.
       chime(total - 1);
@@ -361,7 +367,8 @@ async function boot(): Promise<void> {
     tickBoil(game.elapsed + dt);
     game.advance(dt, input);
     ui.setAction(game.interaction?.say ?? null);
-    ui.setLeave(game.fishing.active);
+    ui.setLeave(game.fishing.active || game.rest.resting);
+    updateBirdsong(dt);
     // The purr follows the walker: it fades as you leave her and comes back if
     // you turn around while she is still going.
     setPurrLevel(game.purrLoudness);
@@ -378,6 +385,7 @@ async function boot(): Promise<void> {
         `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
         hapticStatus(),
+        birdsongStatus(),
         ...loadReport,
       ]);
     }

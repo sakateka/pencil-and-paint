@@ -1,6 +1,7 @@
 import { context2d, createSurface, isolate, type Surface } from '../core/canvas';
 import type { Bounds } from '../core/geom';
 import { drawCamp, type Fishing } from '../entities/fishing';
+import { drawRest, type Rest } from '../entities/rest';
 import { drawWalker, type Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import type { Particles } from '../entities/particles';
@@ -27,6 +28,7 @@ export interface Scene {
   readonly walker: Walker;
   readonly herd: Herd;
   readonly fishing: Fishing;
+  readonly rest: Rest;
   readonly pots: readonly Pot[];
   readonly particles: Particles;
   /** Colour radius in world units, before the ending's flood. */
@@ -176,7 +178,12 @@ export class Renderer {
        * them, in colour only, and never baked into a layer.
        */
       drawCamp(ctx, scene.fishing, walker.x, walker.y, walker.face);
-      drawWalker(ctx, walker, scene.elapsed);
+      /*
+       * In the hammock, the walker *is* the drawing in the hammock — the
+       * standing figure would otherwise be planted beside it looking on.
+       */
+      if (scene.rest.visible) drawRest(ctx, scene.rest);
+      else drawWalker(ctx, walker, scene.elapsed);
       scene.particles.draw(ctx, walker.x, walker.y, scene.litRadius, flooded);
       this.time('occluders', () => this.drawOccluders(ctx, scene));
     });

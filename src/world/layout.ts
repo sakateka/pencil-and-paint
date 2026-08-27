@@ -1,3 +1,4 @@
+import { HAMMOCK_SPAN, makeHammock } from './hammock';
 import { lerp, TAU } from '../core/math';
 import { rng, rnd, rr } from '../core/rng';
 import type { AnimalKind } from '../entities/animalKinds';
@@ -28,6 +29,9 @@ export const WORLD_HEIGHT = 2000;
 
 /** Where the walker starts, and where they return on restart. */
 export const SPAWN = { x: 1300, y: 1330 } as const;
+
+/** Where the hammock is slung. Somewhere to lie down, away from everything. */
+export const HAMMOCK = { x: 1780, y: 1700 } as const;
 
 export interface AnimalSpawn {
   kind: AnimalKind;
@@ -297,6 +301,18 @@ export function buildLayout(): Layout {
   scenery.push(makeTrough(2090, 985));
   scenery.push(makeWell(1655, 1205));
   scenery.push(makeBench(1425, 1255));
+
+  /*
+   * The hammock, in the quiet south-east where nothing else is.
+   *
+   * Its two trees are placed by hand rather than left to the scatter: a hammock
+   * needs something at both ends, and the scatter would happily give it one
+   * tree and a bush. The site is reserved wide so nothing grows through it.
+   */
+  scenery.push(makeTree(HAMMOCK.x - HAMMOCK_SPAN / 2, HAMMOCK.y, 1.35));
+  scenery.push(makeTree(HAMMOCK.x + HAMMOCK_SPAN / 2, HAMMOCK.y, 1.25));
+  scenery.push(makeHammock(HAMMOCK.x, HAMMOCK.y));
+  sites.reserve(HAMMOCK.x, HAMMOCK.y, HAMMOCK_SPAN * 0.8);
   sites.reserve(2585, 590, 90);
   sites.reserve(1960, 620, 80);
   sites.reserve(1655, 1205, 60);

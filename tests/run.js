@@ -10,8 +10,9 @@ import { run as startup } from './startup.test.js';
 import { run as petting } from './petting.test.js';
 import { run as fishing } from './fishing.test.js';
 import { run as i18n } from './i18n.test.js';
+import { run as hammock } from './hammock.test.js';
 
-const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, i18n];
+const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, i18n];
 
 /**
  * Runs every suite against the production build, served over HTTP the way a

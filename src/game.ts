@@ -1,6 +1,7 @@
 import { clamp, lerp } from './core/math';
 import { PURR_SECONDS, type Animal } from './entities/animals';
 import { Fishing, type CatchKind } from './entities/fishing';
+import { Rest } from './entities/rest';
 import { Herd } from './entities/herd';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
@@ -11,7 +12,7 @@ import type { Scene } from './render/renderer';
 import { isSpotClear, resolveCollisions, type WorldEdges } from './systems/collision';
 import type { Input } from './systems/input';
 import { POT_HUES } from './world/palette';
-import { SPAWN } from './world/layout';
+import { HAMMOCK, SPAWN } from './world/layout';
 import type { World } from './world/world';
 
 export const POT_COUNT = 14;
@@ -51,7 +52,7 @@ const PURR_EARSHOT = 200;
  * HUD should not have to learn about each of them separately.
  */
 export interface Interaction {
-  readonly kind: 'pet' | 'fish';
+  readonly kind: 'pet' | 'fish' | 'rest';
   /**
    * What to say, as a dictionary key rather than a phrase.
    *
@@ -69,6 +70,9 @@ export interface Interaction {
  */
 const BANK_MARGIN = 1.3;
 
+/** How close you must stand to the hammock to get into it. */
+const HAMMOCK_REACH = 78;
+
 /** Standing still, for when the walker is not the one deciding. */
 const ZERO = { x: 0, y: 0 } as const;
 
@@ -81,6 +85,10 @@ export interface GameEvents {
   onFishingStart(): void;
   /** A fish has been landed; `total` counts them this playthrough. */
   onCatch(total: number): void;
+  /** Somebody has got into the hammock. `birds` is false until the pots are in. */
+  onRestStart(birds: boolean): void;
+  /** And out of it again. */
+  onRestEnd(): void;
   /** The camp has come down, however it came down. The list may be empty. */
   onFishingEnd(landed: { kind: CatchKind; count: number }[]): void;
 }
@@ -98,6 +106,7 @@ export class Game {
   readonly particles = new Particles();
   readonly herd: Herd;
   readonly fishing = new Fishing();
+  readonly rest = new Rest();
 
   /**
    * The one cat, held onto rather than looked up.
@@ -152,6 +161,7 @@ export class Game {
     this.field.clearTrail();
     this.fishing.packUp();
     this.fishing.forget();
+    this.rest.getUp();
     this.herd.scatter();
     this.pots = scatterPots(
       POT_COUNT,
@@ -246,6 +256,7 @@ export class Game {
     // ends, the ledger is read out once and only once.
     const wasFishing = this.fishing.active;
     this.fishing.update(dt, this.walker.x, this.walker.y);
+    this.rest.update(dt);
     if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.landed);
     this.camera.follow(this.walker.x, this.walker.y, dt);
   }
@@ -264,7 +275,8 @@ export class Game {
      * the button — so the input is dropped rather than the walker pinned, and
      * friction brings them to a stop as they settle.
      */
-    const dir = this.fishing.active ? ZERO : input.direction(screenX, screenY);
+    // Fishing or lying down, you are not going anywhere until you get up.
+    const dir = this.fishing.active || this.rest.resting ? ZERO : input.direction(screenX, screenY);
     const pushing = dir.x !== 0 || dir.y !== 0;
 
     const responsiveness = Math.min(1, (pushing ? ACCELERATION : FRICTION) * dt);
@@ -337,8 +349,15 @@ export class Game {
     if (!this.running) return null;
     const cat = this.catInReach();
     if (cat) return { kind: 'pet', say: cat.purr > 0 ? 'prompt.purring' : 'prompt.pet' };
+    /*
+     * Nothing is offered while you are lying down. There is genuinely nothing
+     * to do, and a prompt saying so is an invitation to press a key that does
+     * nothing — the way out is the button beside it, which is enough.
+     */
+    if (this.rest.resting) return null;
     if (this.fishing.active) return { kind: 'fish', say: this.fishing.labelKey };
     if (this.atTheWater()) return { kind: 'fish', say: this.fishing.labelKey };
+    if (this.atTheHammock()) return { kind: 'rest', say: 'prompt.rest' };
     return null;
   }
 
@@ -350,10 +369,20 @@ export class Game {
    * convenience.
    */
   cancel(): boolean {
+    if (this.rest.resting) {
+      this.rest.getUp();
+      this.events.onRestEnd();
+      return true;
+    }
     if (!this.fishing.active) return false;
     this.fishing.packUp();
     this.events.onFishingEnd(this.fishing.landed);
     return true;
+  }
+
+  /** Is the walker close enough to the hammock to lie down in it? */
+  private atTheHammock(): boolean {
+    return Math.hypot(this.walker.x - HAMMOCK.x, this.walker.y - HAMMOCK.y) < HAMMOCK_REACH;
   }
 
   /**
@@ -379,6 +408,17 @@ export class Game {
       if (!this.fishing.strike()) return false;
       this.particles.burst(this.fishing.floatX, this.fishing.floatY, '#cfeeff', 12);
       this.events.onCatch(this.fishing.caught);
+      return true;
+    }
+
+    if (this.atTheHammock()) {
+      if (this.rest.resting) return false;
+      /*
+       * The pots gate the birds, not the hammock. Lying down is allowed from
+       * the first minute; an unfinished valley is simply a quiet one.
+       */
+      this.rest.lieDown(HAMMOCK.x, HAMMOCK.y, this.won);
+      this.events.onRestStart(this.won);
       return true;
     }
 
@@ -464,6 +504,7 @@ export class Game {
       walker: this.walker,
       herd: this.herd,
       fishing: this.fishing,
+      rest: this.rest,
       pots: this.pots,
       particles: this.particles,
       litRadius: this.litRadius,

@@ -32,6 +32,8 @@ where the colour is.
 
 Building, playing and testing: [BUILDING.md](BUILDING.md).
 
+One sound in it was recorded rather than synthesised: [CREDITS.md](CREDITS.md).
+
 ## License
 
 The source is available for study, modification, and sharing, but not for
