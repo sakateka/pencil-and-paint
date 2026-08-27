@@ -28,6 +28,7 @@ export class Ui {
   private readonly action = element<HTMLButtonElement>('action');
   private readonly actionLabel = element('actionLabel');
   private readonly leave = element<HTMLButtonElement>('leave');
+  private readonly leaveLabel = element('leaveLabel');
   private readonly creel = element('creel');
   private readonly creelList = element('creelList');
   private readonly reachLine = element('reachLine');
@@ -55,7 +56,7 @@ export class Ui {
 
   /** Last prompt shown, so the per-frame call touches the DOM only on change. */
   private prompt: string | null = null;
-  private leaving = false;
+  private leaving: string | null = null;
 
   constructor(handlers: {
     onStart(): void;
@@ -111,6 +112,9 @@ export class Ui {
     // The prompt is re-said by the frame loop within a frame, so it needs no
     // help here — but the label it is showing is stale until then.
     this.prompt = null;
+    const leaving = this.leaving;
+    this.leaving = null;
+    this.setLeave(leaving);
   }
 
   /**
@@ -138,10 +142,11 @@ export class Ui {
    * Q, and since you cannot walk while fishing, this button is the only way off
    * the riverbank — so it is not decoration there, it is the exit.
    */
-  setLeave(showing: boolean): void {
-    if (showing === this.leaving) return;
-    this.leaving = showing;
-    this.leave.classList.toggle('hidden', !showing);
+  setLeave(key: string | null): void {
+    if (key === this.leaving) return;
+    this.leaving = key;
+    this.leave.classList.toggle('hidden', key === null);
+    if (key) this.leaveLabel.textContent = t(key);
   }
 
   /**

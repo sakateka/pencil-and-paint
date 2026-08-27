@@ -12,8 +12,9 @@ import { run as fishing } from './fishing.test.js';
 import { run as i18n } from './i18n.test.js';
 import { run as hammock } from './hammock.test.js';
 import { run as studio } from './studio.test.js';
+import { run as treehouse } from './treehouse.test.js';
 
-const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, i18n];
+const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, i18n];
 
 /**
  * Runs every suite against the production build, served over HTTP the way a

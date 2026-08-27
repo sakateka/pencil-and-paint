@@ -2,6 +2,7 @@ import { clamp, lerp } from './core/math';
 import { PURR_SECONDS, type Animal } from './entities/animals';
 import { Fishing, type CatchKind } from './entities/fishing';
 import { Rest } from './entities/rest';
+import { Treehouse } from './entities/treehouse';
 import { Herd } from './entities/herd';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
@@ -12,7 +13,7 @@ import type { Scene } from './render/renderer';
 import { isSpotClear, resolveCollisions, type WorldEdges } from './systems/collision';
 import type { Input } from './systems/input';
 import { POT_HUES } from './world/palette';
-import { EASEL, HAMMOCK, SPAWN } from './world/layout';
+import { EASEL, HAMMOCK, SPAWN, TREEHOUSE } from './world/layout';
 import type { World } from './world/world';
 
 export const POT_COUNT = 14;
@@ -52,7 +53,7 @@ const PURR_EARSHOT = 200;
  * HUD should not have to learn about each of them separately.
  */
 export interface Interaction {
-  readonly kind: 'pet' | 'fish' | 'rest' | 'draw';
+  readonly kind: 'pet' | 'fish' | 'rest' | 'draw' | 'climb';
   /**
    * What to say, as a dictionary key rather than a phrase.
    *
@@ -76,6 +77,9 @@ const HAMMOCK_REACH = 78;
 /** And to the easel to pick up the brush. */
 const EASEL_REACH = 56;
 
+/** And to the foot of the treehouse to get a hand on the ladder. */
+const TREEHOUSE_REACH = 58;
+
 /** Standing still, for when the walker is not the one deciding. */
 const ZERO = { x: 0, y: 0 } as const;
 
@@ -94,6 +98,8 @@ export interface GameEvents {
   onRestEnd(): void;
   /** Somebody has stepped up to the easel. */
   onDraw(): void;
+  /** Somebody has gone up the ladder, or come back down. */
+  onClimb(inside: boolean): void;
   /** The camp has come down, however it came down. The list may be empty. */
   onFishingEnd(landed: { kind: CatchKind; count: number }[]): void;
 }
@@ -112,6 +118,7 @@ export class Game {
   readonly herd: Herd;
   readonly fishing = new Fishing();
   readonly rest = new Rest(HAMMOCK.x, HAMMOCK.y);
+  readonly treehouse = new Treehouse();
 
   /**
    * The one cat, held onto rather than looked up.
@@ -177,6 +184,7 @@ export class Game {
     this.fishing.packUp();
     this.fishing.forget();
     this.rest.getUp();
+    this.treehouse.climbOut();
     this.herd.scatter();
     this.pots = scatterPots(
       POT_COUNT,
@@ -272,6 +280,7 @@ export class Game {
     const wasFishing = this.fishing.active;
     this.fishing.update(dt, this.walker.x, this.walker.y);
     this.rest.update(dt, this.won);
+    this.treehouse.update(dt);
     if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.landed);
     this.camera.follow(this.walker.x, this.walker.y, dt);
   }
@@ -291,7 +300,10 @@ export class Game {
      * friction brings them to a stop as they settle.
      */
     // Fishing or lying down, you are not going anywhere until you get up.
-    const dir = this.fishing.active || this.rest.resting ? ZERO : input.direction(screenX, screenY);
+    const dir =
+      this.fishing.active || this.rest.resting || this.treehouse.inside
+        ? ZERO
+        : input.direction(screenX, screenY);
     const pushing = dir.x !== 0 || dir.y !== 0;
 
     const responsiveness = Math.min(1, (pushing ? ACCELERATION : FRICTION) * dt);
@@ -371,6 +383,19 @@ export class Game {
     return POT_HUES.filter((hue) => found.has(hue));
   }
 
+  /**
+   * The way out of whatever you are in the middle of, as a dictionary key.
+   *
+   * Null when there is nothing to get out of. Three different things can hold
+   * you still and "pack up" is only right for one of them.
+   */
+  get leaving(): string | null {
+    if (this.treehouse.inside) return 'prompt.climbDown';
+    if (this.rest.resting) return 'prompt.getUp';
+    if (this.fishing.active) return 'prompt.packUp';
+    return null;
+  }
+
   /** What is within reach from here, for the prompt on screen. */
   get interaction(): Interaction | null {
     if (!this.running) return null;
@@ -381,12 +406,13 @@ export class Game {
      * to do, and a prompt saying so is an invitation to press a key that does
      * nothing — the way out is the button beside it, which is enough.
      */
-    if (this.rest.resting) return null;
+    if (this.rest.resting || this.treehouse.inside) return null;
     if (this.fishing.active) return { kind: 'fish', say: this.fishing.labelKey };
     if (this.atTheWater()) return { kind: 'fish', say: this.fishing.labelKey };
     // The easel first: it stands close enough to the hammock that both are in
     // reach from one spot, and the brush is the more particular of the two.
     if (this.atTheEasel()) return { kind: 'draw', say: 'prompt.draw' };
+    if (this.atTheTreehouse()) return { kind: 'climb', say: 'prompt.climb' };
     if (this.atTheHammock()) return { kind: 'rest', say: 'prompt.rest' };
     return null;
   }
@@ -399,8 +425,14 @@ export class Game {
    * convenience.
    */
   cancel(): boolean {
+    if (this.treehouse.inside) {
+      this.treehouse.climbOut();
+      this.events.onClimb(false);
+      return true;
+    }
     if (this.rest.resting) {
       this.rest.getUp();
+    this.treehouse.climbOut();
       this.events.onRestEnd();
       return true;
     }
@@ -418,6 +450,13 @@ export class Game {
   /** Is the walker at the easel? */
   private atTheEasel(): boolean {
     return Math.hypot(this.walker.x - EASEL.x, this.walker.y - EASEL.y) < EASEL_REACH;
+  }
+
+  /** At the foot of the ladder? */
+  private atTheTreehouse(): boolean {
+    return (
+      Math.hypot(this.walker.x - TREEHOUSE.x, this.walker.y - TREEHOUSE.y) < TREEHOUSE_REACH
+    );
   }
 
   /**
@@ -448,6 +487,13 @@ export class Game {
 
     if (this.atTheEasel()) {
       this.events.onDraw();
+      return true;
+    }
+
+    if (this.atTheTreehouse()) {
+      if (this.treehouse.inside) return false;
+      this.treehouse.climbIn();
+      this.events.onClimb(true);
       return true;
     }
 
@@ -546,6 +592,7 @@ export class Game {
       fishing: this.fishing,
       rest: this.rest,
       easel: EASEL,
+      treehouse: this.treehouse,
       easelPicture: this.easelPicture,
       pots: this.pots,
       particles: this.particles,

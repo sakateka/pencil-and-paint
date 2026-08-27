@@ -1,4 +1,5 @@
 import { makeEasel } from './easel';
+import { makeTreehouse } from './treehouse';
 import { HAMMOCK_SPAN, makeHammock } from './hammock';
 import { lerp, TAU } from '../core/math';
 import { rng, rnd, rr } from '../core/rng';
@@ -36,6 +37,14 @@ export const HAMMOCK = { x: 1780, y: 1700 } as const;
 
 /** The easel, standing beside it, clear of both of the hammock's trees. */
 export const EASEL = { x: 1902, y: 1782 } as const;
+
+/**
+ * The treehouse, further out to the right.
+ *
+ * Past the hammock and past the easel, so that the far corner of the field has
+ * something at the end of it rather than more grass.
+ */
+export const TREEHOUSE = { x: 2180, y: 1712 } as const;
 
 export interface AnimalSpawn {
   kind: AnimalKind;
@@ -321,6 +330,9 @@ export function buildLayout(): Layout {
   // And the easel it was left beside, facing the same valley it is a picture of.
   scenery.push(makeEasel(EASEL.x, EASEL.y));
   sites.reserve(EASEL.x, EASEL.y, 44);
+
+  scenery.push(makeTreehouse(TREEHOUSE.x, TREEHOUSE.y));
+  sites.reserve(TREEHOUSE.x, TREEHOUSE.y, 96);
   sites.reserve(2585, 590, 90);
   sites.reserve(1960, 620, 80);
   sites.reserve(1655, 1205, 60);

@@ -264,6 +264,7 @@ async function boot(): Promise<void> {
     },
     onRestEnd: () => birdsong.stop(),
     onDraw: () => openStudio(),
+    onClimb: (inside) => ui.note(inside ? 'note.climbedIn' : 'note.climbedDown'),
     onCatch: (total) => {
       // Up the same scale the pots used, so the valley keeps one voice.
       chime(total - 1);
@@ -405,7 +406,7 @@ async function boot(): Promise<void> {
     tickBoil(game.elapsed + dt);
     game.advance(dt, input);
     ui.setAction(game.interaction?.say ?? null);
-    ui.setLeave(game.fishing.active || game.rest.resting);
+    ui.setLeave(game.leaving);
     /*
      * The purr follows the walker: it fades as you leave her, comes back if you
      * turn around while she is still going, and stops of its own accord once
