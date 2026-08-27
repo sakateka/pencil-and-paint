@@ -48,6 +48,9 @@ export class Sample {
        */
       audio.style.display = 'none';
       audio.dataset.sound = this.url.split('/').pop() ?? '';
+      // The level it is mixed at, where a test can see it without waiting out
+      // the fade to find out.
+      audio.dataset.level = String(this.volume);
       document.body.append(audio);
       audio.addEventListener('canplaythrough', () => {
         this.outcome = 'ready';

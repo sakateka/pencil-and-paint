@@ -520,10 +520,12 @@ const birdsong = new Sample(birdsongUrl, 0.42, 1.4);
  * pond actually sounds like is barely water at all: birds, insects, a breeze,
  * and the odd small movement.
  *
- * Mixed well under everything else. This plays for as long as somebody sits
- * with a rod, and ambience that you notice is ambience that is too loud.
+ * Mixed very low — a tenth, where the birds are four times that. This plays for
+ * as long as somebody sits with a rod, and ambience you notice is ambience that
+ * is too loud. It has been turned down twice; it should be the quietest thing
+ * in the valley, felt rather than listened to.
  */
-const pond = new Sample(pondUrl, 0.26, 2.6);
+const pond = new Sample(pondUrl, 0.1, 2.6);
 
 /**
  * How many purrs have been played.

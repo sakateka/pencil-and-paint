@@ -119,13 +119,20 @@ export async function run(url) {
      * browser has read the header, and reading it any earlier is a race that
      * loses about one run in three.
      */
+    /*
+     * Wait for both, because they are two different moments and each has
+     * caught me out on its own: `duration` is NaN until the header is parsed,
+     * and the resource-timing entry is not written until the whole request has
+     * finished. Waiting for either one alone loses about a run in three.
+     */
     await game.page.waitForFunction(
       () =>
         [...document.querySelectorAll('audio')].some(
           (a) => a.src.includes('pond') && a.readyState >= 1,
-        ),
+        ) &&
+        performance.getEntriesByType('resource').some((e) => e.name.includes('pond')),
       null,
-      { timeout: 15000 },
+      { timeout: 20000 },
     );
     const water = await game.evaluate(async () => {
       const audio = [...document.querySelectorAll('audio')].find((a) => a.src.includes('pond'));
@@ -152,6 +159,7 @@ export async function run(url) {
         loops: audio.loop,
         steadiness: +(Math.max(...levels) / Math.min(...levels)).toFixed(2),
         level: +(levels.reduce((a, b) => a + b, 0) / levels.length).toFixed(3),
+        mixedAt: Number(audio.dataset.level),
       };
     });
 
@@ -169,7 +177,12 @@ export async function run(url) {
      * Ambience you notice is ambience that is too loud. Measured against the
      * birdsong, which is itself a background sound.
      */
-    suite.ok(water.level < 0.09, 'and mixed well under everything else', `${water.level} rms`);
+    suite.ok(water.level < 0.09, 'and quiet in the file itself', `${water.level} rms`);
+    /*
+     * And quiet again in the mix. It is the furthest-back sound in the game:
+     * the birds sit at four times this, and the cat at five.
+     */
+    suite.ok(water.mixedAt <= 0.12, 'and turned right down in the mix', `${water.mixedAt}`);
 
     // Striking before the bite is not punished.
     const early2 = await game.evaluate((pencil) => {

@@ -166,13 +166,20 @@ export async function run(url) {
      * browser has read the header, and reading it any earlier is a race that
      * loses about one run in three.
      */
+    /*
+     * Wait for both, because they are two different moments and each has
+     * caught me out on its own: `duration` is NaN until the header is parsed,
+     * and the resource-timing entry is not written until the whole request has
+     * finished. Waiting for either one alone loses about a run in three.
+     */
     await game.page.waitForFunction(
       () =>
         [...document.querySelectorAll('audio')].some(
           (a) => a.src.includes('birdsong') && a.readyState >= 1,
-        ),
+        ) &&
+        performance.getEntriesByType('resource').some((e) => e.name.includes('birdsong')),
       null,
-      { timeout: 15000 },
+      { timeout: 20000 },
     );
     // Read before fetching anything here: the check below is itself a request,
     // and would otherwise be counted as a second download of the recording.
