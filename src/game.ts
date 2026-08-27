@@ -461,8 +461,15 @@ export class Game {
     return Math.hypot(this.walker.x - EASEL.x, this.walker.y - EASEL.y) < EASEL_REACH;
   }
 
-  /** At the foot of the ladder? */
+  /**
+   * At the foot of the ladder, with the valley finished?
+   *
+   * The same gate the pond has. The treehouse and the fishing are both things
+   * to do once there is nothing left to find — the hammock is the exception,
+   * and deliberately so, because stopping should never have to be earned.
+   */
   private atTheTreehouse(): boolean {
+    if (!this.won) return false;
     return (
       Math.hypot(this.walker.x - TREEHOUSE.x, this.walker.y - TREEHOUSE.y) < TREEHOUSE_REACH
     );

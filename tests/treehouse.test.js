@@ -36,14 +36,31 @@ export async function run(url) {
     suite.equal(there.solid, 1, 'the trunk is something you cannot walk through');
     suite.ok(there.fromHammock > 300, 'and it is a walk from the hammock', `${there.fromHammock}px`);
 
+    /*
+     * Shut until the valley is finished, the same as the pond. Both are things
+     * to do once there is nothing left to find; only the hammock is open from
+     * the start, because stopping should not have to be earned.
+     */
+    const early = await game.evaluate((pencil, at) => {
+      const { game } = pencil;
+      game.teleport(at.x, at.y + 40);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      return { won: game.won, prompt: game.interaction, climbed: game.interact() };
+    }, HOUSE);
+
+    suite.ok(!early.won, 'with the pots still out there');
+    suite.equal(early.prompt, null, 'the ladder offers nothing');
+    suite.ok(!early.climbed, 'and will not be climbed anyway');
+
     const below = await game.evaluate((pencil, at) => {
       const { game } = pencil;
+      game.collectAll();
       game.teleport(at.x, at.y + 40);
       game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       return { prompt: game.interaction, leaving: game.leaving };
     }, HOUSE);
 
-    suite.equal(below.prompt?.kind, 'climb', 'the ladder offers itself');
+    suite.equal(below.prompt?.kind, 'climb', 'once every pot is in, the ladder offers itself');
     suite.equal(below.prompt?.say, 'prompt.climb', 'and says so');
     suite.equal(below.leaving, null, 'with nothing to get out of yet');
 
@@ -106,18 +123,21 @@ export async function run(url) {
     suite.ok(!down.inside, 'Q brings you down');
     suite.ok(down.moved > 5, 'and you can walk again', `${down.moved}px`);
 
-    // A new world does not leave you up a tree.
+    // A new world does not leave you up a tree, and shuts the ladder again.
     const restarted = await game.evaluate((pencil, at) => {
       const { game } = pencil;
       game.teleport(at.x, at.y + 40);
       game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       game.interact();
       game.restart();
-      return { inside: game.treehouse.inside, leaving: game.leaving };
+      game.teleport(at.x, at.y + 40);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      return { inside: game.treehouse.inside, leaving: game.leaving, prompt: game.interaction };
     }, HOUSE);
 
     suite.ok(!restarted.inside, 'a new world puts you back on the ground');
     suite.equal(restarted.leaving, null, 'with nothing to climb down from');
+    suite.equal(restarted.prompt, null, 'and the ladder is shut again until the pots are in');
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
