@@ -395,6 +395,39 @@ export async function run(url) {
       `${bob.purring}px purring vs ${bob.asleep}px asleep`,
     );
 
+    /*
+     * A purr does not carry across a valley.
+     *
+     * The sound is scheduled all at once and then plays itself, so without
+     * this it kept rumbling in your ear from the far side of the world. Its
+     * level follows the walker instead, and once you are properly gone she
+     * settles rather than waiting to be heard again.
+     */
+    const earshot = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const cat = game.herd.animals.find((a) => a.kind === 'cat');
+      game.teleport(cat.x + 24, cat.y + 14);
+      game.interact();
+      const stand = (x, y) => {
+        game.teleport(x, y);
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        return +game.purrLoudness.toFixed(2);
+      };
+      const beside = stand(cat.x + 24, cat.y + 14);
+      const nearby = stand(cat.x + 120, cat.y);
+      const away = stand(cat.x + 260, cat.y);
+      return { beside, nearby, away, purr: cat.purr, silentAfter: game.purrLoudness };
+    });
+
+    suite.equal(earshot.beside, 1, 'beside her the purr is at full');
+    suite.ok(
+      earshot.nearby > 0 && earshot.nearby < 1,
+      'a few steps off it is quieter',
+      `${earshot.nearby}`,
+    );
+    suite.equal(earshot.away, 0, 'and out of earshot it is gone');
+    suite.equal(earshot.purr, 0, 'by which point she has settled');
+
     // Walk away and the offer withdraws.
     const left = await game.evaluate((pencil) => {
       const { game } = pencil;

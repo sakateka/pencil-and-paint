@@ -33,6 +33,16 @@ const FRICTION = 11;
 const PET_RADIUS = 52;
 
 /**
+ * How far a purr carries.
+ *
+ * A cat's purr is barely audible across a room, let alone a field. Walking off
+ * has to take the sound with you — otherwise she is still rumbling in your ear
+ * from the other side of the valley, which is the moment the whole thing stops
+ * being a cat and starts being a sound effect.
+ */
+const PURR_EARSHOT = 200;
+
+/**
  * Something the walker can reach out and do from where they are standing.
  *
  * One kind so far. It is a small named thing rather than a boolean because the
@@ -79,6 +89,14 @@ export class Game {
   readonly herd: Herd;
   readonly fishing = new Fishing();
 
+  /**
+   * The one cat, held onto rather than looked up.
+   *
+   * The herd re-sorts itself every frame for the painter's algorithm, so an
+   * index into it is worthless — but the object never moves house.
+   */
+  private readonly cat: Animal | null;
+
   pots: Pot[] = [];
   found = 0;
   won = false;
@@ -106,6 +124,7 @@ export class Game {
   ) {
     this.camera = new Camera(SPAWN.x, SPAWN.y, world.width, world.height);
     this.herd = new Herd(world.animalSpawns);
+    this.cat = this.herd.animals.find((a) => a.kind === 'cat') ?? null;
     this.edges = { minX: 26, minY: 70, maxX: world.width - 26, maxY: world.height - 26 };
     this.restart();
     this.camera.snapTo(this.walker.x, this.walker.y);
@@ -209,6 +228,10 @@ export class Game {
       this.litRadius,
       this.speed,
     );
+    // Out of earshot she settles, so there is nothing left to fade back in if
+    // you come running: the purr belongs to the moment you were there for.
+    if (this.cat && this.cat.purr > 0 && this.distanceToCat > PURR_EARSHOT) this.cat.purr = 0;
+
     this.fishing.update(dt, this.walker.x, this.walker.y);
     this.camera.follow(this.walker.x, this.walker.y, dt);
   }
@@ -246,15 +269,33 @@ export class Game {
     }
   }
 
+  /**
+   * How far the walker is from the cat.
+   *
+   * The same shoulder-height offset the pots use, so "close enough" means the
+   * same thing whether you are picking something up or leaning down.
+   */
+  private get distanceToCat(): number {
+    if (!this.cat) return Infinity;
+    return Math.hypot(this.cat.x - this.walker.x, this.cat.y - this.walker.y - 6);
+  }
+
   /** The cat, if the walker is standing close enough to reach her. */
   private catInReach(): Animal | null {
-    for (const a of this.herd.animals) {
-      if (a.kind !== 'cat') continue;
-      // The same shoulder-height offset the pots use, so "close enough" means
-      // the same thing whether you are picking something up or leaning down.
-      if (Math.hypot(a.x - this.walker.x, a.y - this.walker.y - 6) < PET_RADIUS) return a;
-    }
-    return null;
+    return this.distanceToCat < PET_RADIUS ? this.cat : null;
+  }
+
+  /**
+   * How loud her purr should be from here, 0 to 1.
+   *
+   * Full within arm's reach and gone by the edge of earshot, so walking away
+   * fades her out and walking back brings her in again — she is still purring
+   * either way, you just cannot hear her from over there.
+   */
+  get purrLoudness(): number {
+    if (!this.cat || this.cat.purr <= 0) return 0;
+    const fade = (PURR_EARSHOT - this.distanceToCat) / (PURR_EARSHOT - PET_RADIUS);
+    return clamp(fade, 0, 1);
   }
 
   /**

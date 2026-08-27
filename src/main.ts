@@ -317,6 +317,9 @@ async function boot(): Promise<void> {
     tickBoil(game.elapsed + dt);
     game.advance(dt, input);
     ui.setAction(game.interaction?.label ?? null);
+    // The purr follows the walker: it fades as you leave her and comes back if
+    // you turn around while she is still going.
+    setPurrLevel(game.purrLoudness);
 
     const drawStart = performance.now();
     renderer.render(game.scene);
@@ -600,6 +603,24 @@ export function buildPurr(ctx: BaseAudioContext, destination: AudioNode, now: nu
   return master;
 }
 
+/** The level the purr was last set to, so a still walker is not re-scheduling. */
+let purrLevel = 1;
+
+/**
+ * How loud she is from where you are standing.
+ *
+ * Called every frame while a purr is sounding. `setTargetAtTime` rather than a
+ * plain assignment: stepping a gain sixty times a second is sixty tiny
+ * discontinuities, which is audible as a crackle on exactly the kind of quiet
+ * low sound this is.
+ */
+function setPurrLevel(level: number): void {
+  if (!purring || !audio) return;
+  if (Math.abs(level - purrLevel) < 0.02) return;
+  purrLevel = level;
+  purring.gain.setTargetAtTime(level, audio.currentTime, 0.09);
+}
+
 /** Play one, replacing whichever is already sounding. */
 function purr(): void {
   try {
@@ -624,6 +645,7 @@ function purr(): void {
       old.gain.linearRampToValueAtTime(0, now + 0.18);
     }
     purring = buildPurr(audio, audio.destination, now);
+    purrLevel = 1;
   } catch {
     // As above.
   }
