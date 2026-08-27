@@ -115,8 +115,7 @@ export class Studio {
     this.buildNibs();
 
     element('studioClear').addEventListener('click', () => this.blank());
-    element('studioSave').addEventListener('click', () => this.keep());
-    element('studioClose').addEventListener('click', () => this.close(false));
+    element('studioClose').addEventListener('click', () => this.finish());
 
     this.canvas.addEventListener('pointerdown', this.onDown);
     this.canvas.addEventListener('pointermove', this.onMove);
@@ -219,7 +218,7 @@ export class Studio {
     const code = e.code ?? '';
     if (code === 'Escape' || code === 'KeyQ' || code === 'KeyE') {
       e.preventDefault();
-      this.close(false);
+      this.finish();
     }
   };
 
@@ -230,13 +229,25 @@ export class Studio {
   }
 
   /**
-   * Keep what is on the paper.
+   * Finish: keep whatever is on the paper, and put the brush down.
+   *
+   * One button rather than two. Somebody who has drawn something and is done
+   * with it wants both of those things, and a separate "keep" is a trap for
+   * anybody who presses the other one first — which was every way out of here
+   * except the one button, including the escape key.
+   */
+  private finish(): void {
+    this.close(this.keep());
+  }
+
+  /**
+   * Keep what is on the paper. True if there was anything to keep.
    *
    * PNG, because a drawing is flat colour and a few lines — exactly what PNG is
    * good at, and a photograph is exactly what it is not.
    */
-  private keep(): void {
-    if (!this.touched) return;
+  private keep(): boolean {
+    if (!this.touched) return false;
     const kept = keptDrawings();
     kept.push(this.canvas.toDataURL('image/png'));
     while (kept.length > KEEP) kept.shift();
@@ -248,7 +259,7 @@ export class Studio {
     }
     this.showGallery();
     this.touched = false;
-    this.onClose(true);
+    return true;
   }
 
   private showGallery(): void {

@@ -229,12 +229,27 @@
   #creel .creel-title { font-size:17px; margin-bottom:3px; }
   #creel .creel-list  { font-size:14px; line-height:1.5; opacity:.8; }
 
-  /* the finish is a quiet note in the corner, not a wall across the screen */
+  /* The finish is a quiet note in the corner, not a wall across the screen —
+     and after a moment it is not even that. It slides off to the right until
+     only a tab is left, because on a small phone the note is sitting on the
+     valley somebody just spent a while colouring in. */
   #done {
-    right:14px; bottom:14px; max-width:290px; text-align:center;
-    transition:opacity .8s ease, visibility 0s linear 0s;
+    right:14px; bottom:14px; max-width:min(78vw,300px); text-align:center;
+    display:flex; align-items:stretch; gap:8px; padding:0;
+    transition:opacity .8s ease, transform .38s ease, visibility 0s linear 0s;
   }
-  #done.hidden { transition:opacity .8s ease, visibility 0s linear .8s; }
+  #done.hidden { transition:opacity .8s ease, transform .38s ease, visibility 0s linear .8s; }
+  /* Only the tab stays on screen. `100%` here is the panel's own width, so this
+     works whatever the note ends up saying in whatever language. */
+  #done.tucked { transform:translateX(calc(100% - 34px)); }
+  #doneTab {
+    flex:0 0 34px; margin:0; padding:0; border:0; border-radius:10px 0 0 10px;
+    background:rgba(60,55,45,.07); color:rgba(51,47,40,.65); box-shadow:none;
+    font-size:17px; line-height:1; cursor:pointer;
+  }
+  #doneTab:hover { background:rgba(60,55,45,.18); }
+  #doneTab:focus-visible { outline:2px solid rgba(60,55,45,.6); outline-offset:-3px; }
+  #doneBody { padding:10px 14px 12px 0; }
   #done .done-title { font-size:22px; margin-bottom:4px; }
   #done .done-sub   { font-size:14px; line-height:1.5; opacity:.75; }
   #done button { font-size:16px; padding:7px 16px; margin-top:12px; }
@@ -295,8 +310,7 @@
   <div class="studio-row" id="nibs"></div>
   <div class="studio-row">
     <button type="button" class="text" id="studioClear" data-i18n="studio.clear">clear</button>
-    <button type="button" class="text primary" id="studioSave" data-i18n="studio.save">keep it</button>
-    <button type="button" class="text" id="studioClose" data-i18n="studio.close">done</button>
+    <button type="button" class="text primary" id="studioClose" data-i18n="studio.close">done</button>
   </div>
   <div id="gallery"></div>
   <div id="galleryEmpty" data-i18n="studio.empty">nothing kept yet</div>
@@ -321,9 +335,12 @@
 </div>
 
 <div id="done" class="panel hidden">
-  <div class="done-title" data-i18n="done.title">The world remembers.</div>
-  <div class="done-sub" id="doneSub">Every pot found in —.</div>
-  <button id="againBtn" data-i18n="done.again">Start a new world</button>
+  <button id="doneTab" type="button" aria-expanded="true"><span aria-hidden="true">›</span></button>
+  <div id="doneBody">
+    <div class="done-title" data-i18n="done.title">The world remembers.</div>
+    <div class="done-sub" id="doneSub">Every pot found in —.</div>
+    <button id="againBtn" data-i18n="done.again">Start a new world</button>
+  </div>
 </div>
 
 <script type="module" src="/src/main.ts"></script>

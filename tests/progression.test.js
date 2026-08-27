@@ -107,6 +107,62 @@ export async function run(url) {
     suite.ok(!restarted.won, 'restart clears the ending');
     suite.ok(!restarted.same, 'restart scatters the pots somewhere new');
 
+    /*
+     * The finishing note gets out of the way.
+     *
+     * On a small phone it sits on top of the valley somebody has just finished
+     * colouring in, so it says its piece and then slides off to the right,
+     * leaving a tab to pull it back by. Driven through the DOM because the
+     * whole point of it is what is on the screen.
+     */
+    await game.evaluate((pencil) => {
+      pencil.game.restart();
+      pencil.game.collectAll();
+    });
+    await game.page.waitForSelector('#done:not(.hidden)', { timeout: 15000 });
+    const shown = await game.page.$eval('#done', (el) => ({
+      tucked: el.classList.contains('tucked'),
+      right: Math.round(el.getBoundingClientRect().right),
+      width: Math.round(el.getBoundingClientRect().width),
+    }));
+    suite.ok(!shown.tucked, 'the note arrives where it can be read');
+
+    await game.page.waitForFunction(
+      () => document.getElementById('done').classList.contains('tucked'),
+      null,
+      { timeout: 15000 },
+    );
+    // The class flips before the slide finishes; measuring straight away reads
+    // the position it is leaving, not the one it is going to.
+    await game.page.waitForTimeout(600);
+    const away = await game.page.$eval('#done', (el) => {
+      const box = el.getBoundingClientRect();
+      return { onScreen: Math.round(innerWidth - box.left), width: Math.round(box.width) };
+    });
+    suite.ok(away.onScreen < 50, 'and then tucks itself away to a tab', `${away.onScreen}px showing`);
+    suite.ok(away.width > 100, 'without shrinking — it has only moved', `${away.width}px wide`);
+
+    // Tapping the tab brings it back, and the world can be restarted from it.
+    await game.page.click('#doneTab');
+    await game.page.waitForFunction(
+      () => !document.getElementById('done').classList.contains('tucked'),
+      null,
+      { timeout: 5000 },
+    );
+    await game.page.waitForTimeout(600);
+    const back = await game.page.$eval('#done', (el) =>
+      Math.round(innerWidth - el.getBoundingClientRect().left),
+    );
+    suite.ok(back > 100, 'tapping the tab pops the whole note out', `${back}px showing`);
+
+    await game.page.click('#againBtn');
+    const fresh = await game.evaluate((pencil) => ({
+      won: pencil.game.won,
+      found: pencil.game.found,
+    }));
+    suite.ok(!fresh.won, 'and the button in it still starts a new world');
+    suite.equal(fresh.found, 0, 'with the pots scattered again');
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();

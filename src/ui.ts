@@ -24,6 +24,7 @@ export class Ui {
   private readonly hint = element('hint');
   private readonly intro = element('intro');
   private readonly done = element('done');
+  private readonly doneTab = element<HTMLButtonElement>('doneTab');
   private readonly action = element<HTMLButtonElement>('action');
   private readonly actionLabel = element('actionLabel');
   private readonly leave = element<HTMLButtonElement>('leave');
@@ -34,6 +35,7 @@ export class Ui {
   private readonly picker = element<HTMLSelectElement>('lang');
 
   private doneTimer: number | undefined;
+  private tuckTimer: number | undefined;
   private noteTimer: number | undefined;
   private creelTimer: number | undefined;
 
@@ -73,6 +75,12 @@ export class Ui {
       this.leave.blur();
     });
 
+    this.doneTab.addEventListener('click', () => {
+      clearTimeout(this.tuckTimer); // once it is handled, it stays where it is put
+      this.tuck(!this.done.classList.contains('tucked'));
+      this.doneTab.blur();
+    });
+
     // The picker's options are filled by `translateDom` before any of this
     // exists; all that is left is to listen to it.
     this.picker.addEventListener('change', () => {
@@ -98,6 +106,7 @@ export class Ui {
     this.setProgress(this.progress.found, this.progress.total, this.progress.reach);
     if (this.noteTimer === undefined) this.hint.textContent = t(this.hintKey, this.hintParams);
     if (this.wonSeconds !== null) this.sayCompletion(this.wonSeconds);
+    this.tuck(this.done.classList.contains('tucked'));
     if (!this.creel.classList.contains('hidden')) this.sayCreel();
     // The prompt is re-said by the frame loop within a frame, so it needs no
     // help here — but the label it is showing is stale until then.
@@ -205,12 +214,30 @@ export class Ui {
   /**
    * No overlay, no interruption. The colour floods out and you are left to
    * wander it; this is only a note in the corner, for whenever you want it.
+   *
+   * And after a few seconds it is not even in the corner. It says its piece and
+   * then slides off to the right, leaving a tab — the ending is worth reading
+   * once, and a phone screen is not big enough to keep it and the valley both.
    */
-  announceCompletion(seconds: number, afterMs = 3400): void {
+  announceCompletion(seconds: number, afterMs = 3400, readMs = 7000): void {
     this.wonSeconds = seconds;
     this.sayCompletion(seconds);
     clearTimeout(this.doneTimer);
-    this.doneTimer = setTimeout(() => this.done.classList.remove('hidden'), afterMs);
+    clearTimeout(this.tuckTimer);
+    this.doneTimer = setTimeout(() => {
+      this.tuck(false);
+      this.done.classList.remove('hidden');
+      this.tuckTimer = setTimeout(() => this.tuck(true), readMs);
+    }, afterMs);
+  }
+
+  /** Slide the note away, or bring it back. */
+  private tuck(away: boolean): void {
+    this.done.classList.toggle('tucked', away);
+    this.doneTab.setAttribute('aria-expanded', String(!away));
+    this.doneTab.setAttribute('aria-label', t(away ? 'done.open' : 'done.tuck'));
+    const arrow = this.doneTab.firstElementChild;
+    if (arrow) arrow.textContent = away ? '‹' : '›';
   }
 
   private sayCompletion(seconds: number): void {
@@ -220,6 +247,7 @@ export class Ui {
 
   reset(): void {
     clearTimeout(this.doneTimer);
+    clearTimeout(this.tuckTimer);
     clearTimeout(this.noteTimer);
     clearTimeout(this.creelTimer);
     this.creel.classList.add('hidden');

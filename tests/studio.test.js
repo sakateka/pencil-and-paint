@@ -79,7 +79,7 @@ export async function run(url) {
       await game.page.mouse.move(box.x + 40 + i * 24, box.y + 40 + Math.sin(i) * 40);
     }
     await game.page.mouse.up();
-    await game.page.click('#studioSave');
+    await game.page.click('#studioClose');
 
     const kept = await game.page.evaluate(() => {
       const raw = localStorage.getItem('pencil:drawings');
@@ -119,8 +119,7 @@ export async function run(url) {
     suite.equal(onEasel.height, onEasel.paperHeight, 'at the size it was drawn');
     suite.ok(onEasel.paperWidth >= 720, 'and the paper is worth drawing on', `${onEasel.paperWidth}px`);
 
-    // Close it, and the walker gets their legs back.
-    await game.page.click('#studioClose');
+    // That one button both kept it and closed the board.
     await game.page.waitForSelector('#studio.hidden', { state: 'attached', timeout: 5000 });
     const walked = await game.evaluate((pencil) => {
       const { game } = pencil;
