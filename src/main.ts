@@ -197,7 +197,6 @@ async function boot(): Promise<void> {
   };
   statsButton?.addEventListener('click', () => setPerf(!showPerf));
 
-
   /** Reach out and touch whatever is here — the E key, or the on-screen prompt. */
   const interact = () => {
     if (!game.interact()) return;
@@ -384,37 +383,8 @@ function chime(index: number): void {
 /** The chest resonance itself. Everything else is shaping on top of this. */
 const PURR_FUNDAMENTAL = 28;
 
-/**
- * The purr's harmonic series, out past 600Hz.
- *
- * A cat purring is a pulse train, and a pulse train has a long harmonic tail.
- * That tail does two jobs. It is what makes the sound a roll rather than a hum
- * — at 28 times a second the ear does not hear a note, it hears each separate
- * pulse, and the sharper the pulse the rougher the roll. And it is the only
- * part of a purr a telephone can play.
- *
- * That second job is why it goes this far up. Measured on the previous version:
- * four fifths of the energy sat below 100Hz and one part in seventy above
- * 300Hz. A phone speaker is a few millimetres across and reproduces almost
- * nothing under about 300Hz, so the purr was perfect on headphones and silent
- * on a Pixel — while the pot chime, which lives at 261Hz and up, was audible
- * everywhere. The fundamental is still the body of the sound for anything with
- * a real speaker; the tail is what carries it on everything else.
- */
-const PURR_TAIL = (() => {
-  // The first six by hand: this is the warmth, and it was tuned by ear.
-  const warm = [0, 1, 0.45, 0.24, 0.13, 0.075, 0.05];
-  const amplitudes = new Float32Array(23);
-  amplitudes.set(warm);
-  // Then a slow decay rather than a cliff, which is what a pulse train has.
-  for (let k = warm.length; k < amplitudes.length; k++) {
-    amplitudes[k] = 0.05 * Math.pow(k / (warm.length - 1), -0.55);
-  }
-  return amplitudes;
-})();
-
 /** Loudest the purr ever gets. It is meant to be close and quiet, not loud. */
-const PURR_PEAK = 0.08;
+const PURR_PEAK = 0.09;
 
 /**
  * How much purr is left between the swells.
@@ -511,29 +481,28 @@ export function buildPurr(ctx: BaseAudioContext, destination: AudioNode, now: nu
   const until = now + PURR_SECONDS + 0.2;
 
   const chest = ctx.createOscillator();
-  // One oscillator for the whole series, so it drifts as a unit and stays
-  // locked in phase — separate oscillators beat against each other.
-  chest.setPeriodicWave(ctx.createPeriodicWave(new Float32Array(PURR_TAIL.length), PURR_TAIL));
+  /*
+   * One oscillator for the whole harmonic series, so it drifts as a unit and
+   * stays locked in phase — separate oscillators beat against each other.
+   *
+   * The upper harmonics are what make it *rrrr* rather than *mmmm*. Twenty-eight
+   * times a second is below the pitch the ear will hear as a note, so what it
+   * hears instead is each individual pulse — and how rough that roll sounds
+   * depends entirely on how sharp the pulses are. Three harmonics gave a smooth
+   * hum. The tail up to the sixth sharpens it into a roll without making it any
+   * louder, since the wave is normalised.
+   */
+  chest.setPeriodicWave(
+    ctx.createPeriodicWave(
+      new Float32Array(7),
+      new Float32Array([0, 1, 0.45, 0.24, 0.13, 0.075, 0.04]),
+    ),
+  );
   chest.frequency.value = PURR_FUNDAMENTAL;
 
   const body = ctx.createBiquadFilter();
   body.type = 'lowpass';
   body.Q.value = 0.7;
-
-  /*
-   * A resonance where a small speaker can hear it.
-   *
-   * Lifting the whole harmonic tail until a phone could play it made the purr
-   * broadly buzzy, which is not what a cat sounds like. A cat has a chest and a
-   * throat, and a body that size resonates somewhere — so the energy goes into
-   * one band rather than across the whole top end. It reads as body on a good
-   * speaker and it is most of what you hear on a bad one.
-   */
-  const resonance = ctx.createBiquadFilter();
-  resonance.type = 'peaking';
-  resonance.frequency.value = 430;
-  resonance.Q.value = 1.1;
-  resonance.gain.value = 10;
 
   const flutter = ctx.createGain();
   flutter.gain.value = 0.86;
@@ -576,10 +545,10 @@ export function buildPurr(ctx: BaseAudioContext, destination: AudioNode, now: nu
     // No click at either end: in over a moment, out over half a second.
     const fade = Math.min(1, t / 0.12, (PURR_SECONDS - t) / 0.5);
     level[i] = PURR_PEAK * shape[i] * fade;
-    // Dull and distant at the residual, open at the peak. The ceiling has to
-    // clear the harmonic tail or the tail is filtered straight back off again,
-    // which is what 330 — and then 460 — were doing.
-    brightness[i] = 190 + 640 * ((shape[i] - PURR_RESIDUAL) / (1 - PURR_RESIDUAL));
+    // Dull and distant at the residual, open at the peak. The cutoff has to
+    // clear the upper harmonics at the top of a swell or the roll is filtered
+    // straight back off again, which is what 330 was doing.
+    brightness[i] = 105 + 355 * ((shape[i] - PURR_RESIDUAL) / (1 - PURR_RESIDUAL));
   }
   swell.gain.setValueAtTime(0, now);
   swell.gain.setValueCurveAtTime(level, now, PURR_SECONDS);
@@ -602,7 +571,7 @@ export function buildPurr(ctx: BaseAudioContext, destination: AudioNode, now: nu
   breath.start(now);
   breath.stop(until);
 
-  chest.connect(body).connect(resonance).connect(flutter).connect(shimmer).connect(swell);
+  chest.connect(body).connect(flutter).connect(shimmer).connect(swell);
   swell.connect(master).connect(destination);
   chest.start(now);
   chest.stop(until);

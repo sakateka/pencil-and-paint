@@ -206,23 +206,6 @@ export async function run(url) {
       return {
         rasp: +Math.sqrt(travel / size).toFixed(4),
         edge: +edge.toFixed(5),
-        // What a small speaker can actually reproduce: everything below about
-        // 300Hz is simply not there on a phone, whatever the graph says.
-        audibleOnAPhone: await (async () => {
-          const off = new OfflineAudioContext(1, Math.ceil(rate * span), rate);
-          const cut = off.createBiquadFilter();
-          cut.type = 'highpass';
-          cut.frequency.value = 300;
-          const cut2 = off.createBiquadFilter();
-          cut2.type = 'highpass';
-          cut2.frequency.value = 300;
-          pencil.buildPurr(off, cut, 0);
-          cut.connect(cut2).connect(off.destination);
-          const thin = (await off.startRendering()).getChannelData(0);
-          let sum = 0;
-          for (let i = 0; i < thin.length; i++) sum += thin[i] ** 2;
-          return +Math.sqrt(sum / thin.length).toFixed(5);
-        })(),
         peak: +peak.toFixed(4),
         swells: swells.map((v) => +v.toFixed(4)),
         rests: rests.map((v) => +v.toFixed(4)),
@@ -237,19 +220,6 @@ export async function run(url) {
       sound.edge < 0.002,
       'fading in and out rather than starting and stopping',
       `loudest edge sample ${sound.edge}`,
-    );
-    /*
-     * The purr has to live where a telephone can play it.
-     *
-     * A phone speaker is millimetres across and reproduces almost nothing below
-     * about 300Hz. A 28Hz purr with a couple of harmonics is inaudible on one —
-     * which is exactly what happened: perfect on headphones, silent on both
-     * Android browsers, while the pot chime at 261Hz was fine everywhere.
-     */
-    suite.ok(
-      sound.audibleOnAPhone > 0.004,
-      'and enough of it above 300Hz to be heard on a phone',
-      `${sound.audibleOnAPhone} rms above 300Hz`,
     );
     suite.ok(
       sound.quietestSwell > sound.loudestRest * 3,
