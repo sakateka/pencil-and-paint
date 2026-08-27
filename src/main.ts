@@ -8,7 +8,7 @@ import { tickBoil } from './media/ink';
 import { yieldToBrowser } from './core/schedule';
 import { GRAIN } from './media/sprites';
 import { Renderer } from './render/renderer';
-import { buzzPurr } from './systems/haptics';
+import { buzzPurr, hapticStatus } from './systems/haptics';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
 import { Ui } from './ui';
@@ -315,6 +315,7 @@ async function boot(): Promise<void> {
         `world ${ms(s.worldBlit)}  live ${ms(s.live)}  mask ${ms(s.mask)}`,
         `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
+        hapticStatus(),
         ...loadReport,
       ]);
     }
