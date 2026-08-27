@@ -175,7 +175,27 @@ export async function run(url) {
 
       const swells = [0.58, 2.38, 4.18].map(loudness);
       const rests = [1.48, 3.28].map(loudness);
+
+      /*
+       * How rough the roll is, as a crude spectral centroid: how far the
+       * waveform travels from one sample to the next, against how big it is.
+       *
+       * This is what separates *rrrr* from *mmmm*. At 28Hz the ear does not
+       * hear a note, it hears each pulse, and how sharp those pulses are is
+       * the whole character of the sound. A pure sine at this pitch and rate
+       * would score 0.011; anything much above that is harmonics.
+       */
+      let travel = 0;
+      let size = 0;
+      const from = Math.round(0.43 * rate);
+      const to = Math.round(0.93 * rate);
+      for (let i = from; i < to; i++) {
+        travel += (data[i] - data[i - 1]) ** 2;
+        size += data[i] ** 2;
+      }
+
       return {
+        rasp: +Math.sqrt(travel / size).toFixed(4),
         peak: +peak.toFixed(4),
         biggestStep: +biggestStep.toFixed(4),
         swells: swells.map((v) => +v.toFixed(4)),
@@ -207,6 +227,11 @@ export async function run(url) {
       sound.loudestRest > sound.quietestSwell * 0.02,
       'and she never stops purring between them',
       `rest is ${(sound.loudestRest / sound.quietestSwell).toFixed(3)} of a swell`,
+    );
+    suite.ok(
+      sound.rasp > 0.014,
+      'it rolls rather than hums — a bare sine here would score 0.011',
+      `${sound.rasp}`,
     );
 
     // The on-screen prompt is the phone's only way in, so click the real thing.

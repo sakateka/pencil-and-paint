@@ -481,12 +481,21 @@ export function buildPurr(ctx: BaseAudioContext, destination: AudioNode, now: nu
   const until = now + PURR_SECONDS + 0.2;
 
   const chest = ctx.createOscillator();
-  // One oscillator for all three harmonics, so they drift together and stay
-  // locked in phase — three separate ones beat against each other.
+  /*
+   * One oscillator for the whole harmonic series, so it drifts as a unit and
+   * stays locked in phase — separate oscillators beat against each other.
+   *
+   * The upper harmonics are what make it *rrrr* rather than *mmmm*. Twenty-eight
+   * times a second is below the pitch the ear will hear as a note, so what it
+   * hears instead is each individual pulse — and how rough that roll sounds
+   * depends entirely on how sharp the pulses are. Three harmonics gave a smooth
+   * hum. The tail up to the sixth sharpens it into a roll without making it any
+   * louder, since the wave is normalised.
+   */
   chest.setPeriodicWave(
     ctx.createPeriodicWave(
-      new Float32Array([0, 0, 0, 0]),
-      new Float32Array([0, 1, 0.4, 0.14]),
+      new Float32Array(7),
+      new Float32Array([0, 1, 0.45, 0.24, 0.13, 0.075, 0.04]),
     ),
   );
   chest.frequency.value = PURR_FUNDAMENTAL;
@@ -536,9 +545,10 @@ export function buildPurr(ctx: BaseAudioContext, destination: AudioNode, now: nu
     // No click at either end: in over a moment, out over half a second.
     const fade = Math.min(1, t / 0.12, (PURR_SECONDS - t) / 0.5);
     level[i] = PURR_PEAK * shape[i] * fade;
-    // Dull and distant at the residual, open at the peak — the second
-    // harmonic and the trace of a third only really arrive at the top.
-    brightness[i] = 90 + 240 * ((shape[i] - PURR_RESIDUAL) / (1 - PURR_RESIDUAL));
+    // Dull and distant at the residual, open at the peak. The cutoff has to
+    // clear the upper harmonics at the top of a swell or the roll is filtered
+    // straight back off again, which is what 330 was doing.
+    brightness[i] = 105 + 355 * ((shape[i] - PURR_RESIDUAL) / (1 - PURR_RESIDUAL));
   }
   swell.gain.setValueAtTime(0, now);
   swell.gain.setValueCurveAtTime(level, now, PURR_SECONDS);
