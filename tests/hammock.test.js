@@ -138,11 +138,17 @@ export async function run(url) {
      * file that has to arrive. Check it is served, is the size it should be,
      * and is not on the critical path.
      */
-    // The fetch is in flight the moment somebody lies down; give it a beat.
+    /*
+     * Wait for the request itself, not for the element that makes it.
+     *
+     * The element exists the instant somebody lies down; the resource timing
+     * entry appears when the network is done with it. Waiting on the first and
+     * then reading the second is a race, and it lost about one run in three.
+     */
     await game.page.waitForFunction(
-      () => document.querySelector('audio') !== null,
+      () => performance.getEntriesByType('resource').some((e) => e.name.includes('birdsong')),
       null,
-      { timeout: 10000 },
+      { timeout: 15000 },
     );
     // Read before fetching anything here: the check below is itself a request,
     // and would otherwise be counted as a second download of the recording.

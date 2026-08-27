@@ -165,7 +165,14 @@ export function scatterPots(
     pots.push({
       x: best.x,
       y: best.y,
-      hue: hues[Math.floor(Math.random() * hues.length)],
+      /*
+       * One pot per colour, in order, rather than a colour drawn at random.
+       *
+       * Random gave duplicates and gaps, and now that the palette at the easel
+       * is what you have collected, a duplicate is a pot that hands you nothing
+       * you did not already have.
+       */
+      hue: hues[pots.length % hues.length],
       phase: Math.random() * TAU,
       found: false,
       awake: false,

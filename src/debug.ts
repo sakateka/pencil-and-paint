@@ -1,6 +1,7 @@
 import type { Game } from './game';
 import type { WALK_CYCLE } from './entities/player';
 import type { Renderer } from './render/renderer';
+import type { Input } from './systems/input';
 import type { Performance } from './systems/perf';
 
 /**
@@ -17,6 +18,14 @@ export interface DebugHandle {
   walkCycle: typeof WALK_CYCLE;
   renderer: Renderer;
   perf: Performance;
+  /**
+   * The real input, not a stub.
+   *
+   * Some things can only be shown with it: that the drawing board suspends the
+   * walker's keys, for instance, is invisible to a test that hands `advance` a
+   * direction of its own.
+   */
+  input: Input;
   /** Force a frame outside the rAF loop, for deterministic measurement. */
   renderOnce(): void;
   /**

@@ -30,6 +30,7 @@ import { birdsongStatus, startBirdsong, stopBirdsong, updateBirdsong } from './s
 import { buzzPurr, hapticStatus } from './systems/haptics';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
+import { latestDrawing, Studio } from './studio';
 import { Ui } from './ui';
 import { World } from './world/world';
 
@@ -265,12 +266,52 @@ async function boot(): Promise<void> {
       if (birds) startBirdsong();
     },
     onRestEnd: () => stopBirdsong(),
+    onDraw: () => openStudio(),
     onCatch: (total) => {
       // Up the same scale the pots used, so the valley keeps one voice.
       chime(total - 1);
       if (total === 1) ui.note('note.firstFish');
     },
   });
+
+  /**
+   * Put whatever was last kept onto the easel.
+   *
+   * Decoded once here and handed to the game, so the frame loop has an image to
+   * blit rather than a data URL to parse.
+   */
+  function refreshEasel(): void {
+    const data = latestDrawing();
+    if (!data) {
+      game.easelPicture = undefined;
+      return;
+    }
+    const image = new Image();
+    image.addEventListener('load', () => {
+      game.easelPicture = image;
+    });
+    image.src = data;
+  }
+
+  const studio = new Studio((kept) => {
+    if (kept) {
+      refreshEasel();
+      ui.note('note.drew');
+    }
+    // Give the walker back their keys once the board is closed. While it is
+    // open they are somebody standing at an easel, not somebody walking.
+    input.suspended = studio.open;
+  });
+
+  function openStudio(): void {
+    studio.show(game.collectedHues);
+    input.suspended = true;
+  }
+
+  // Whatever was kept last time is already on the easel when the world opens —
+  // it was only put there on closing the board before, so a reload left the
+  // easel showing the drawing somebody else abandoned.
+  refreshEasel();
 
   const input = new Input(canvas, {
     onEngage: () => start(),
@@ -323,6 +364,7 @@ async function boot(): Promise<void> {
     walkCycle: WALK_CYCLE,
     renderer,
     perf,
+    input,
     renderOnce: () => renderer.render(game.scene),
     rngEndState: () => rng.seed,
     longestBakeSliceMs: () => world.longestSliceMs,

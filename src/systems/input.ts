@@ -52,6 +52,15 @@ export class Input {
   private readonly keys = new Set<string>();
   private pointer: { x: number; y: number } | null = null;
 
+  /**
+   * Ignore everything, without tearing the listeners down.
+   *
+   * Set while the drawing board is open: the same keys mean different things
+   * there, and a walker who quietly strolls off while somebody is drawing is
+   * somewhere else entirely when they look up.
+   */
+  suspended = false;
+
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly handlers: InputHandlers,
@@ -79,6 +88,7 @@ export class Input {
     // Ctrl+Shift+D and friends belong to the browser. Without this, a devtools
     // shortcut also sets the walker off, which makes for confusing reports.
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (this.suspended) return;
     const key = physicalKey(e);
     this.keys.add(key);
     if (MOVEMENT_KEYS.has(key)) e.preventDefault();
@@ -102,6 +112,7 @@ export class Input {
   };
 
   private onPointerDown = (e: PointerEvent): void => {
+    if (this.suspended) return;
     this.pointer = { x: e.clientX, y: e.clientY };
     this.canvas.setPointerCapture(e.pointerId);
     this.handlers.onEngage();
@@ -122,6 +133,7 @@ export class Input {
    * finger rather than in an absolute direction.
    */
   direction(walkerScreenX: number, walkerScreenY: number): { x: number; y: number } {
+    if (this.suspended) return { x: 0, y: 0 };
     let x = 0;
     let y = 0;
     if (this.keys.has('a') || this.keys.has('arrowleft')) x -= 1;

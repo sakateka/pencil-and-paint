@@ -1,5 +1,6 @@
 import { clamp, TAU } from '../core/math';
 import type { Medium } from '../media/medium';
+import { BOARD_H, BOARD_W, EASEL_HEIGHT } from '../world/easel';
 import { EMPTY_SAG, drawHammockCloth, hammockPoint } from '../world/hammock';
 
 /**
@@ -271,5 +272,30 @@ function drawBird(ctx: CanvasRenderingContext2D, rest: Rest, bird: Bird): void {
   ctx.quadraticCurveTo(-s * 0.6, flap * s * 0.5, 0, 0);
   ctx.quadraticCurveTo(s * 0.6, flap * s * 0.5, s * 1.7, -flap * s * 0.75);
   ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Whatever was last drawn at the easel, standing on it.
+ *
+ * Live and colour-only, and so only visible once the light has reached it. In
+ * pencil it is the half-finished valley baked into the board — which is the
+ * right way round: from across the field the easel holds the drawing somebody
+ * abandoned, and up close it holds yours.
+ */
+export function drawEaselPicture(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement | undefined,
+  x: number,
+  y: number,
+): void {
+  if (!image?.complete || image.naturalWidth === 0) return;
+  const top = y - EASEL_HEIGHT;
+  ctx.save();
+  // Inside the board's frame, not over it.
+  ctx.drawImage(image, x - BOARD_W / 2 + 3, top + 3, BOARD_W - 6, BOARD_H - 6);
+  ctx.strokeStyle = 'rgba(60,55,45,.35)';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(x - BOARD_W / 2 + 3, top + 3, BOARD_W - 6, BOARD_H - 6);
   ctx.restore();
 }

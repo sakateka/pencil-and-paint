@@ -1,7 +1,7 @@
 import { context2d, createSurface, isolate, type Surface } from '../core/canvas';
 import type { Bounds } from '../core/geom';
 import { drawCamp, type Fishing } from '../entities/fishing';
-import { drawBirds, drawHammock, type Rest } from '../entities/rest';
+import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities/rest';
 import { drawWalker, type Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import type { Particles } from '../entities/particles';
@@ -29,6 +29,10 @@ export interface Scene {
   readonly herd: Herd;
   readonly fishing: Fishing;
   readonly rest: Rest;
+  /** The last thing drawn at the easel, if there is one. */
+  readonly easelPicture: HTMLImageElement | undefined;
+  /** Where the easel stands. */
+  readonly easel: { readonly x: number; readonly y: number };
   readonly pots: readonly Pot[];
   readonly particles: Particles;
   /** Colour radius in world units, before the ending's flood. */
@@ -243,6 +247,13 @@ export class Renderer {
     const { rest } = scene;
     if (camera.canSee(rest.x, rest.y, 130) && !hidden(rest.x, rest.y, 90)) {
       drawHammock(ctx, rest, medium);
+    }
+
+    // Yours, over the abandoned one baked into the board. Colour only: in
+    // pencil the easel keeps the drawing it came with.
+    const { easel } = scene;
+    if (medium === 'color' && camera.canSee(easel.x, easel.y, 80)) {
+      drawEaselPicture(ctx, scene.easelPicture, easel.x, easel.y);
     }
   }
 

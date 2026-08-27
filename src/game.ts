@@ -12,7 +12,7 @@ import type { Scene } from './render/renderer';
 import { isSpotClear, resolveCollisions, type WorldEdges } from './systems/collision';
 import type { Input } from './systems/input';
 import { POT_HUES } from './world/palette';
-import { HAMMOCK, SPAWN } from './world/layout';
+import { EASEL, HAMMOCK, SPAWN } from './world/layout';
 import type { World } from './world/world';
 
 export const POT_COUNT = 14;
@@ -52,7 +52,7 @@ const PURR_EARSHOT = 200;
  * HUD should not have to learn about each of them separately.
  */
 export interface Interaction {
-  readonly kind: 'pet' | 'fish' | 'rest';
+  readonly kind: 'pet' | 'fish' | 'rest' | 'draw';
   /**
    * What to say, as a dictionary key rather than a phrase.
    *
@@ -73,6 +73,9 @@ const BANK_MARGIN = 1.3;
 /** How close you must stand to the hammock to get into it. */
 const HAMMOCK_REACH = 78;
 
+/** And to the easel to pick up the brush. */
+const EASEL_REACH = 56;
+
 /** Standing still, for when the walker is not the one deciding. */
 const ZERO = { x: 0, y: 0 } as const;
 
@@ -89,6 +92,8 @@ export interface GameEvents {
   onRestStart(birds: boolean): void;
   /** And out of it again. */
   onRestEnd(): void;
+  /** Somebody has stepped up to the easel. */
+  onDraw(): void;
   /** The camp has come down, however it came down. The list may be empty. */
   onFishingEnd(landed: { kind: CatchKind; count: number }[]): void;
 }
@@ -122,6 +127,16 @@ export class Game {
 
   /** How many times the cat has been stroked this playthrough. */
   pets = 0;
+
+  /**
+   * The last thing drawn at the easel, decoded and ready to blit.
+   *
+   * Held here rather than looked up per frame: turning a data URL into an image
+   * is asynchronous, and doing it sixty times a second to draw a postage stamp
+   * would be absurd. `main` hands over a new one whenever the drawing board
+   * changes what is kept.
+   */
+  easelPicture: HTMLImageElement | undefined;
 
   /**
    * Debug: force the colour to cover everything without ending the game.
@@ -344,6 +359,18 @@ export class Game {
     return Math.hypot(dx, dy) < BANK_MARGIN;
   }
 
+  /**
+   * The colours you have actually found, in the order the palette lists them.
+   *
+   * This is what you can paint with at the easel. Starting with none of them is
+   * the point: the valley is in pencil until you go and find the paint, and so
+   * is anything you draw.
+   */
+  get collectedHues(): string[] {
+    const found = new Set(this.pots.filter((p) => p.found).map((p) => p.hue));
+    return POT_HUES.filter((hue) => found.has(hue));
+  }
+
   /** What is within reach from here, for the prompt on screen. */
   get interaction(): Interaction | null {
     if (!this.running) return null;
@@ -357,6 +384,9 @@ export class Game {
     if (this.rest.resting) return null;
     if (this.fishing.active) return { kind: 'fish', say: this.fishing.labelKey };
     if (this.atTheWater()) return { kind: 'fish', say: this.fishing.labelKey };
+    // The easel first: it stands close enough to the hammock that both are in
+    // reach from one spot, and the brush is the more particular of the two.
+    if (this.atTheEasel()) return { kind: 'draw', say: 'prompt.draw' };
     if (this.atTheHammock()) return { kind: 'rest', say: 'prompt.rest' };
     return null;
   }
@@ -385,6 +415,11 @@ export class Game {
     return Math.hypot(this.walker.x - HAMMOCK.x, this.walker.y - HAMMOCK.y) < HAMMOCK_REACH;
   }
 
+  /** Is the walker at the easel? */
+  private atTheEasel(): boolean {
+    return Math.hypot(this.walker.x - EASEL.x, this.walker.y - EASEL.y) < EASEL_REACH;
+  }
+
   /**
    * Do whatever is within reach. True if anything happened.
    *
@@ -408,6 +443,11 @@ export class Game {
       if (!this.fishing.strike()) return false;
       this.particles.burst(this.fishing.floatX, this.fishing.floatY, '#cfeeff', 12);
       this.events.onCatch(this.fishing.caught);
+      return true;
+    }
+
+    if (this.atTheEasel()) {
+      this.events.onDraw();
       return true;
     }
 
@@ -505,6 +545,8 @@ export class Game {
       herd: this.herd,
       fishing: this.fishing,
       rest: this.rest,
+      easel: EASEL,
+      easelPicture: this.easelPicture,
       pots: this.pots,
       particles: this.particles,
       litRadius: this.litRadius,

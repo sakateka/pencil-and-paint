@@ -20,11 +20,13 @@ import { circleCollider, type Scenery } from './types';
  */
 
 /** How tall it stands. About shoulder height on the walker. */
-const HEIGHT = 62;
+export const EASEL_HEIGHT = 62;
 
 /** The board on it. */
-const BOARD_W = 40;
-const BOARD_H = 32;
+export const BOARD_W = 40;
+export const BOARD_H = 32;
+
+const HEIGHT = EASEL_HEIGHT;
 
 /** The little picture, drawn twice: once in pencil, once part-coloured. */
 function picture(ctx: CanvasRenderingContext2D, x: number, top: number, medium: Medium): void {

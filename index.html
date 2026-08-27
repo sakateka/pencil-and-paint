@@ -118,6 +118,53 @@
   #lang:hover { opacity:1; transform:rotate(0deg) translateY(-1px); box-shadow:3px 5px 0 rgba(60,55,45,.22); }
   #lang:focus-visible { outline:2px solid rgba(60,55,45,.6); outline-offset:3px; }
 
+  /* The easel's drawing board: a full-screen overlay with its own canvas.
+     Sits above everything, including the corner controls. */
+  #studio {
+    position:fixed; inset:0; z-index:20;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; padding:14px;
+    background:rgba(233,227,213,.94);
+    transition:opacity .2s ease, visibility 0s linear 0s;
+  }
+  #studio.hidden { transition:opacity .2s ease, visibility 0s linear .2s; }
+  #studioTitle { font-size:20px; opacity:.8; }
+  /* The paper. Sized by script to keep its shape; `touch-action:none` so a
+     finger draws instead of scrolling the page. */
+  #paper {
+    background:#fdfaf2; border:2px solid rgba(60,55,45,.6); border-radius:8px;
+    box-shadow:3px 5px 0 rgba(60,55,45,.2); cursor:crosshair; touch-action:none;
+  }
+  .studio-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  .swatch {
+    width:30px; height:30px; padding:0; margin:0; border-radius:50%;
+    border:2px solid rgba(60,55,45,.45); box-shadow:1px 2px 0 rgba(60,55,45,.2);
+    cursor:pointer;
+  }
+  .swatch[aria-pressed="true"] { border-color:#332f28; transform:translateY(-3px); }
+  .nib { width:30px; height:30px; padding:0; margin:0; border-radius:50%;
+         background:rgba(246,241,229,.9); display:flex; align-items:center; justify-content:center; }
+  .nib span { display:block; border-radius:50%; background:#332f28; }
+  .nib[aria-pressed="true"] { background:#f7c14b; }
+  #studio .studio-row button.text { margin:0; font-size:15px; padding:7px 14px; background:rgba(246,241,229,.9); }
+  #studio .studio-row button.text.primary { background:#f7c14b; }
+  /* What has been kept. Scrolls sideways rather than growing the page. */
+  #gallery {
+    display:flex; gap:8px; overflow-x:auto; max-width:min(96vw,760px);
+    padding:4px 2px; min-height:52px; align-items:center;
+  }
+  #gallery .kept { position:relative; flex:0 0 auto; }
+  #gallery img {
+    height:46px; border:1.5px solid rgba(60,55,45,.5); border-radius:5px;
+    background:#fdfaf2; display:block; cursor:pointer;
+  }
+  #gallery .drop {
+    position:absolute; top:-6px; right:-6px; width:19px; height:19px; margin:0; padding:0;
+    border-radius:50%; font-size:12px; line-height:1; background:rgba(246,241,229,.95);
+    border:1.5px solid rgba(60,55,45,.5); box-shadow:none; cursor:pointer;
+  }
+  #galleryEmpty { font-size:14px; opacity:.55; }
+
   /* No backdrop-filter here. It is a full-screen element sitting over an
      animating canvas: the compositor would re-blur the whole canvas every
      frame, and canvas draws stall while the texture is synchronised to be
@@ -234,6 +281,20 @@
     <path d="M4 20h16v1.5H4z M5.5 11h3v8h-3z M10.5 6h3v13h-3z M15.5 13h3v6h-3z"/>
   </svg>
 </button>
+</div>
+
+<div id="studio" class="hidden">
+  <div id="studioTitle" data-i18n="studio.title">the easel</div>
+  <canvas id="paper" width="360" height="270"></canvas>
+  <div class="studio-row" id="palette"></div>
+  <div class="studio-row" id="nibs"></div>
+  <div class="studio-row">
+    <button type="button" class="text" id="studioClear" data-i18n="studio.clear">clear</button>
+    <button type="button" class="text primary" id="studioSave" data-i18n="studio.save">keep it</button>
+    <button type="button" class="text" id="studioClose" data-i18n="studio.close">done</button>
+  </div>
+  <div id="gallery"></div>
+  <div id="galleryEmpty" data-i18n="studio.empty">nothing kept yet</div>
 </div>
 
 <div id="intro" class="overlay">

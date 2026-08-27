@@ -18,6 +18,18 @@ export const BLOOMS: readonly Hex[] = [
 ];
 
 /** What is actually in the paint pots. */
+/**
+ * One colour per pot, and no two the same.
+ *
+ * There were seven of these for fourteen pots, which was fine while a pot was
+ * only a thing to find. It stopped being fine when the easel arrived: what you
+ * can draw with is what you have picked up, so a repeated colour is a pot that
+ * gives you nothing.
+ *
+ * Chosen to stay apart from each other at the size of a paint blob — four reds
+ * that need holding side by side to tell apart would be the same problem in a
+ * politer form.
+ */
 export const POT_HUES: readonly Hex[] = [
   '#e8563f',
   '#f7c14b',
@@ -26,6 +38,13 @@ export const POT_HUES: readonly Hex[] = [
   '#e07ab0',
   '#8e6fd0',
   '#ef8b4a',
+  '#2fa39a',
+  '#c0405f',
+  '#a9bf42',
+  '#8dd0f0',
+  '#a9713f',
+  '#5560b8',
+  '#5a6b70',
 ];
 
 export const BARK = '#7d5a3a';
