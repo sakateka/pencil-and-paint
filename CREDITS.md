@@ -6,9 +6,9 @@ pot chimes still are. Three sounds are recordings.
 
 ## Sound
 
-Three recordings, all from Wikimedia Commons, all **public domain** — no
-attribution required, no royalties, no conditions of any kind. Credited anyway,
-because each one is somebody's afternoon and somebody's microphone.
+Three recordings, all from Wikimedia Commons. Two are public domain. The third
+is CC BY, which is free to use and charges nothing — its one condition is the
+credit below, which was going to be here regardless.
 
 ### `src/assets/purr.mp3`
 
@@ -34,23 +34,27 @@ sounded like a cat.
 
 The water, while you are fishing.
 
-- Source: *Shallow small river with stony riverbed*, by **stephan**, via
-  [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Shallow_small_river_with_stony_riverbed.ogg)
-- Licence: **Public domain**
+- Source: *Nature sounds ambience in a Dordogne pond*, by **Glaneur de sons**,
+  2 May 2007, via
+  [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Nature_sounds_ambience_in_a_Dordogne_pond.ogg)
+- Licence: **[CC BY 3.0](https://creativecommons.org/licenses/by/3.0)** — free
+  for any use including commercial, no royalties; the one condition is this
+  credit.
 
-Changes made: mixed to mono, high-passed at 90 Hz to take out the handling
-rumble, low-passed at 9 kHz, brought up 8 dB to a fixed peak, and looped by
-crossfading its own tail back over its head.
+Changes made: mixed to mono, high-passed at 100 Hz to take out the handling
+rumble, low-passed at 8 kHz, brought *down* a couple of decibels so it sits
+under everything else, and looped by crossfading its tail back over its head.
+Fifty-four seconds, nearly all there was.
 
-It took two goes to get here. The first was a pebble beach, which turned out to
-be waves breaking on stones — busy, and the exact opposite of what sitting with
-a rod is supposed to feel like. The second was a lovely Dordogne pond, but under
-CC BY: free and royalty-free, though it did carry one condition. This one is
-water, holds the same level from end to end, and carries nothing at all.
+It took three goes. The first was a pebble beach, which turned out to be waves
+breaking on stones. The second was a shallow river, which turned out to sound
+exactly like rain — broadband hiss is broadband hiss, whatever the filename
+says, and the spectrum alone cannot tell them apart. What a calm pond actually
+sounds like is barely water: birds, insects, a breeze, the odd small movement.
 
-Sixteen seconds, where the others are three quarters of a minute. Length matters
-for the birds, where a repeated call gives the loop away; running water has no
-landmarks in it, so there is nothing to recognise coming round again.
+This is the only recording of that I could find under any free licence. If the
+credit line is unwelcome, the pebble beach and the river are both public domain
+and both wrong.
 
 ### `src/assets/birdsong.mp3`
 

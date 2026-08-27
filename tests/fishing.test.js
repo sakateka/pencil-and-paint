@@ -151,6 +151,7 @@ export async function run(url) {
         seconds: decoded.duration,
         loops: audio.loop,
         steadiness: +(Math.max(...levels) / Math.min(...levels)).toFixed(2),
+        level: +(levels.reduce((a, b) => a + b, 0) / levels.length).toFixed(3),
       };
     });
 
@@ -162,8 +163,13 @@ export async function run(url) {
      * repeated call gives the loop away; running water has no landmark in it,
      * so what matters here is that it holds one level and never surges.
      */
-    suite.atLeast(Math.round(water.seconds), 12, 'long enough to settle into');
+    suite.atLeast(Math.round(water.seconds), 40, 'long enough to settle into');
     suite.ok(water.steadiness < 1.6, 'and calm — no waves breaking', `${water.steadiness}x`);
+    /*
+     * Ambience you notice is ambience that is too loud. Measured against the
+     * birdsong, which is itself a background sound.
+     */
+    suite.ok(water.level < 0.09, 'and mixed well under everything else', `${water.level} rms`);
 
     // Striking before the bite is not punished.
     const early2 = await game.evaluate((pencil) => {

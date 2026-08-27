@@ -514,14 +514,16 @@ const birdsong = new Sample(birdsongUrl, 0.42, 1.4);
 /**
  * The water, while you are sitting by it.
  *
- * Running water, not a beach. The first go at this was a pebble shore, which
- * turned out to be waves breaking — busy, and the opposite of what somebody
- * sitting with a rod is after. This holds the same gentle level throughout.
+ * A still pond, and it took three goes to get there. A pebble beach turned out
+ * to be waves breaking. A shallow river turned out to sound exactly like rain —
+ * broadband hiss is broadband hiss, whatever the filename says. What a calm
+ * pond actually sounds like is barely water at all: birds, insects, a breeze,
+ * and the odd small movement.
  *
- * Short, where the birdsong is long, and for a reason: a repeated bird call
- * gives a loop away, and running water has no landmark in it to recognise.
+ * Mixed well under everything else. This plays for as long as somebody sits
+ * with a rod, and ambience that you notice is ambience that is too loud.
  */
-const pond = new Sample(pondUrl, 0.4, 2.6);
+const pond = new Sample(pondUrl, 0.26, 2.6);
 
 /**
  * How many purrs have been played.
