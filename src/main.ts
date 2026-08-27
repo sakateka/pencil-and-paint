@@ -508,8 +508,13 @@ function chime(index: number): void {
  */
 const purrSound = new Sample(purrUrl, 0.55, 0.9);
 
-/** And the birds, which were never anything but a recording. */
-const birdsong = new Sample(birdsongUrl, 0.42, 1.4);
+/**
+ * And the birds, which were never anything but a recording.
+ *
+ * Halved once already: from across a field, birdsong is something you notice
+ * rather than something you listen to.
+ */
+const birdsong = new Sample(birdsongUrl, 0.21, 1.4);
 
 /**
  * The water, while you are sitting by it.
@@ -520,12 +525,16 @@ const birdsong = new Sample(birdsongUrl, 0.42, 1.4);
  * pond actually sounds like is barely water at all: birds, insects, a breeze,
  * and the odd small movement.
  *
- * Mixed very low — a tenth, where the birds are four times that. This plays for
- * as long as somebody sits with a rod, and ambience you notice is ambience that
- * is too loud. It has been turned down twice; it should be the quietest thing
- * in the valley, felt rather than listened to.
+ * Mixed at a twentieth, where the birds are eight times that — and rolled off
+ * above 3.8kHz in the file itself, which is the other half of the job. A sound
+ * gets its presence as much from its top end as from its level: turning it down
+ * makes it quieter, taking the highs off makes it further away, and what this
+ * wants to be is further away.
+ *
+ * Turned down three times before it stopped being noticeable. It plays for as
+ * long as somebody sits with a rod, and ambience you notice is too loud.
  */
-const pond = new Sample(pondUrl, 0.1, 2.6);
+const pond = new Sample(pondUrl, 0.05, 2.6);
 
 /**
  * How many purrs have been played.

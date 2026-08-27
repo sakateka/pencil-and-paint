@@ -182,7 +182,8 @@ export async function run(url) {
      * And quiet again in the mix. It is the furthest-back sound in the game:
      * the birds sit at four times this, and the cat at five.
      */
-    suite.ok(water.mixedAt <= 0.12, 'and turned right down in the mix', `${water.mixedAt}`);
+    suite.ok(water.mixedAt <= 0.06, 'and turned right down in the mix', `${water.mixedAt}`);
+
 
     // Striking before the bite is not punished.
     const early2 = await game.evaluate((pencil) => {

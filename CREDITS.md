@@ -42,9 +42,14 @@ The water, while you are fishing.
   credit.
 
 Changes made: mixed to mono, high-passed at 100 Hz to take out the handling
-rumble, low-passed at 8 kHz, brought *down* a couple of decibels so it sits
-under everything else, and looped by crossfading its tail back over its head.
-Fifty-four seconds, nearly all there was.
+rumble, low-passed at 3.8 kHz, brought *down* a couple of decibels, and looped by
+crossfading its tail back over its head. Fifty-four seconds, nearly all there
+was.
+
+The low-pass is not for tidiness. A sound gets its presence as much from its top
+end as from its level, so taking the highs off is what makes it read as *further
+away* rather than merely quieter — and further away is what this wants to be. It
+is mixed at a twentieth, the quietest thing in the valley.
 
 It took three goes. The first was a pebble beach, which turned out to be waves
 breaking on stones. The second was a shallow river, which turned out to sound

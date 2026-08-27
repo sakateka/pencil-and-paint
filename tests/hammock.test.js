@@ -194,18 +194,21 @@ export async function run(url) {
     suite.ok(lazy[0] > 0, 'and only when it was wanted, not at load', `${lazy[0]}ms in`);
 
     const audio = await game.evaluate(async () => {
-      const src = [...document.querySelectorAll('audio')].map((a) => a.src);
-      const url = src[0];
-      if (!url) return { found: false };
-      const response = await fetch(url);
+      // By name, not by position: more than one recording can be loaded, and
+      // which one is first depends on what the player happened to do.
+      const element = [...document.querySelectorAll('audio')].find((a) =>
+        a.src.includes('birdsong'),
+      );
+      if (!element) return { found: false };
+      const response = await fetch(element.src);
       const bytes = (await response.arrayBuffer()).byteLength;
       return {
         found: true,
         ok: response.ok,
         type: response.headers.get('content-type'),
         bytes,
-        seconds: [...document.querySelectorAll('audio')].find((a) => a.src.includes('birdsong'))
-          ?.duration,
+        seconds: element.duration,
+        mixedAt: Number(element.dataset.level),
       };
     });
 
@@ -221,6 +224,8 @@ export async function run(url) {
       40,
       'and long enough that lying there does not become a loop',
     );
+    // Something you notice rather than something you listen to.
+    suite.ok(audio.mixedAt <= 0.25, 'and mixed to sit behind the valley', `${audio.mixedAt}`);
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
