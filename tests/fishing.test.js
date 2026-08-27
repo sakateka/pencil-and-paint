@@ -50,13 +50,25 @@ export async function run(url) {
     });
     suite.equal(inland, null, 'and only at the water, not anywhere in the valley');
 
-    // Pitch camp.
+    /*
+     * Pitch camp by pressing the button, not by calling into the game.
+     *
+     * This matters more than it looks. `game.interact()` skips the dispatch in
+     * main.ts that decides which sounds to play, and that dispatch is where the
+     * bug lived that purred a cat every time you cast a line. A test that calls
+     * the game directly cannot see it at all.
+     */
+    await game.evaluate((pencil) => {
+      const pond = pencil.game.world.pond;
+      pencil.game.teleport(pond.x, pond.y + pond.ry + 22);
+    });
+    await game.page.waitForSelector('#action:not(.hidden)', { timeout: 5000 });
+    await game.page.click('#action');
+
     const camp = await game.evaluate((pencil) => {
       const { game } = pencil;
       const pond = game.world.pond;
-      game.teleport(pond.x, pond.y + pond.ry + 22);
-      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
-      const started = game.interact();
+      const started = game.fishing.active;
       const f = game.fishing;
       const inside = (e, x, y, pad) =>
         ((x - e.x) / (e.rx + pad)) ** 2 + ((y - e.y) / (e.ry + pad)) ** 2 < 1;
@@ -82,6 +94,21 @@ export async function run(url) {
     suite.ok(camp.tentClear > 20 && camp.tentClear < 90, 'the tent is beside you, not on you',
       `${camp.tentClear}px`);
 
+    /*
+     * Fishing must not set the cat purring.
+     *
+     * The E key means "do whatever is here", and the sound used to be played by
+     * whatever asked — so casting a line at the pond purred a cat that was two
+     * hundred metres away by the cottage. Nothing but a count of the sound
+     * catches this: every other bit of state looks perfectly correct.
+     */
+    const quiet = await game.evaluate((pencil) => {
+      const cat = pencil.game.herd.animals.find((a) => a.kind === 'cat');
+      return { purrs: pencil.purrsPlayed(), catPurr: cat.purr };
+    });
+    suite.equal(quiet.purrs, 0, 'pitching camp and casting purrs no cats');
+    suite.equal(quiet.catPurr, 0, 'and leaves the one by the cottage asleep');
+
     // Striking before the bite is not punished.
     const early2 = await game.evaluate((pencil) => {
       const before = pencil.game.fishing.phase;
@@ -100,17 +127,22 @@ export async function run(url) {
         game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         if (game.fishing.phase === 'bite') sawBite = true;
       }
-      const label = game.interaction?.label;
-      const took = game.interact();
+      return { sawBite, label: game.interaction?.label };
+    });
+    // Again through the button: landing a fish must not purr a cat either.
+    await game.page.click('#action');
+    const after = await game.evaluate((pencil) => {
       pencil.renderOnce(); // the camp and a leaping fish must draw without complaint
-      return { sawBite, label, took, caught: game.fishing.caught, phase: game.fishing.phase };
+      return { caught: pencil.game.fishing.caught, phase: pencil.game.fishing.phase };
     });
 
     suite.ok(landed.sawBite, 'a bite comes if you wait');
     suite.equal(landed.label, 'now!', 'and the prompt says so');
-    suite.ok(landed.took, 'answering it lands a fish');
-    suite.equal(landed.caught, 1, 'which is counted');
-    suite.equal(landed.phase, 'caught', 'and shown for a moment');
+    suite.equal(after.caught, 1, 'answering it lands a fish, and it is counted');
+    suite.equal(after.phase, 'caught', 'and shown for a moment');
+
+    const stillQuiet = await game.evaluate((pencil) => pencil.purrsPlayed());
+    suite.equal(stillQuiet, 0, 'and landing one purrs no cats either');
 
     // It goes back out on its own.
     const again = await game.evaluate((pencil) => {

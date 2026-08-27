@@ -198,13 +198,14 @@ async function boot(): Promise<void> {
   statsButton?.addEventListener('click', () => setPerf(!showPerf));
 
   /** Reach out and touch whatever is here — the E key, or the on-screen prompt. */
-  const interact = () => {
-    if (!game.interact()) return;
-    purr();
-    // Both come from a tap or a keypress, so we are inside a user gesture and
-    // the browser will actually allow the motor to run.
-    buzzPurr();
-  };
+  /*
+   * Just do it. What it *was* is the game's business, not this function's.
+   *
+   * This used to play the purr whenever `interact` returned true, which is a
+   * different question from whether a cat was involved — so casting a line at
+   * the pond set a cat purring two hundred metres away.
+   */
+  const interact = () => void game.interact();
 
   const ui = new Ui({
     onStart: () => start(),
@@ -225,6 +226,10 @@ async function boot(): Promise<void> {
     },
     onComplete: (seconds) => ui.announceCompletion(seconds),
     onPet: (first) => {
+      // Here, where it is certainly a cat that was touched. Both are inside the
+      // tap or keypress that caused it, so the browser allows the motor to run.
+      purr();
+      buzzPurr();
       if (first) ui.note('she does not open her eyes — but she knows you are there');
     },
     onFishingStart: () => ui.note('the fire catches. there is nowhere else to be'),
@@ -291,6 +296,7 @@ async function boot(): Promise<void> {
     isPerfOn: () => showPerf,
     purrStrength,
     buildPurr,
+    purrsPlayed: () => purrsPlayed,
   });
 
   /*
@@ -486,6 +492,16 @@ function bodyNoise(ctx: BaseAudioContext): AudioBuffer {
 let purring: GainNode | undefined;
 
 /**
+ * How many purrs have been played.
+ *
+ * Only the test suite reads this, and it earns its place: a sound playing when
+ * it should not is invisible to every other kind of assertion. Casting a line
+ * at the pond once set the cat purring, and nothing but a count would have
+ * caught it.
+ */
+let purrsPlayed = 0;
+
+/**
  * A purr: *prrrrrrrr*.
  *
  * Not a voice — a cat purring is a chest vibrating, and it is built here as
@@ -665,6 +681,7 @@ function purr(): void {
     }
     purring = buildPurr(audio, audio.destination, now);
     purrLevel = 1;
+    purrsPlayed++;
   } catch {
     // As above.
   }

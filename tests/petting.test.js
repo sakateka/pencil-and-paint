@@ -78,6 +78,8 @@ export async function run(url) {
     });
 
     suite.ok(stroked.took, 'she can be petted from here');
+    const purrs = await game.evaluate((pencil) => pencil.purrsPlayed());
+    suite.equal(purrs, 1, 'and petting her does play a purr');
     suite.equal(stroked.pets, 1, 'the stroke is counted');
     suite.ok(
       stroked.started >= 4 && stroked.started <= 6,

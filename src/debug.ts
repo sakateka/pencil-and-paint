@@ -48,6 +48,14 @@ export interface DebugHandle {
    * way to assert that what she does is a purr and not nothing at all.
    */
   buildPurr(ctx: BaseAudioContext, destination: AudioNode, at: number): GainNode;
+  /**
+   * How many purrs have been played this session.
+   *
+   * A sound that plays when it should not is invisible to every other kind of
+   * assertion, and this game has more than one thing you can press the same
+   * key for.
+   */
+  purrsPlayed(): number;
 }
 
 declare global {
