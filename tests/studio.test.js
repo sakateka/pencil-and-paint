@@ -105,13 +105,19 @@ export async function run(url) {
     );
     const onEasel = await game.evaluate((pencil) => {
       pencil.renderOnce(); // the easel with a picture on it must draw cleanly
+      const paper = document.getElementById('paper');
       return {
         width: pencil.game.easelPicture?.naturalWidth ?? 0,
         height: pencil.game.easelPicture?.naturalHeight ?? 0,
+        // Read off the paper rather than written down here: the board has been
+        // resized once already and a hardcoded size only fails afterwards.
+        paperWidth: paper.width,
+        paperHeight: paper.height,
       };
     });
-    suite.equal(onEasel.width, 360, 'the easel is showing it');
-    suite.equal(onEasel.height, 270, 'at the size it was drawn');
+    suite.equal(onEasel.width, onEasel.paperWidth, 'the easel is showing it');
+    suite.equal(onEasel.height, onEasel.paperHeight, 'at the size it was drawn');
+    suite.ok(onEasel.paperWidth >= 720, 'and the paper is worth drawing on', `${onEasel.paperWidth}px`);
 
     // Close it, and the walker gets their legs back.
     await game.page.click('#studioClose');

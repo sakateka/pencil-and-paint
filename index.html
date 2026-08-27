@@ -134,6 +134,11 @@
   #paper {
     background:#fdfaf2; border:2px solid rgba(60,55,45,.6); border-radius:8px;
     box-shadow:3px 5px 0 rgba(60,55,45,.2); cursor:crosshair; touch-action:none;
+    /* Fill whatever is going: the width of the screen, or whatever height is
+       left once the toolbars and the gallery have had theirs — whichever runs
+       out first. The canvas keeps its own resolution behind this. */
+    width:min(94vw, 1040px, calc((100vh - 300px) * 4 / 3));
+    height:auto; aspect-ratio:4 / 3;
   }
   .studio-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
   .swatch {
@@ -285,7 +290,7 @@
 
 <div id="studio" class="hidden">
   <div id="studioTitle" data-i18n="studio.title">the easel</div>
-  <canvas id="paper" width="360" height="270"></canvas>
+  <canvas id="paper" width="800" height="600"></canvas>
   <div class="studio-row" id="palette"></div>
   <div class="studio-row" id="nibs"></div>
   <div class="studio-row">

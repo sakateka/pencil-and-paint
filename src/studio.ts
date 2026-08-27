@@ -12,9 +12,16 @@ import { t } from './i18n';
  * a postcard — enough to draw a house or a cat, and not enough to be a job.
  */
 
-/** The paper, in its own pixels. Everything is drawn and stored at this size. */
-const PAPER_W = 360;
-const PAPER_H = 270;
+/**
+ * The paper, in its own pixels. Everything is drawn and stored at this size.
+ *
+ * Bigger than the box it is shown in, and deliberately: the board stretches to
+ * fill whatever screen it is on, and on a desktop that is most of it. At the
+ * old 360 across, a full-screen board was a 360-pixel drawing blown up to a
+ * thousand, which looked exactly as soft as it sounds.
+ */
+const PAPER_W = 800;
+const PAPER_H = 600;
 
 const STORE = 'pencil:drawings';
 
@@ -38,7 +45,8 @@ const GRAPHITE = '#3a352e';
 
 /** The paper itself, which is what a rubber actually is. */
 const PAPER_INK = '#fdfaf2';
-const NIBS = [3, 7, 16] as const;
+/** Nibs, in paper pixels — so they look the same size whatever the screen. */
+const NIBS = [6, 14, 32] as const;
 
 function element<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -151,8 +159,10 @@ export class Studio {
       button.setAttribute('aria-pressed', String(size === this.nib));
       button.setAttribute('aria-label', t('studio.nib'));
       const dot = document.createElement('span');
-      dot.style.width = `${size + 2}px`;
-      dot.style.height = `${size + 2}px`;
+      // The swatch is a button, not the paper: show the nib to scale, not to size.
+      const shown = Math.max(4, Math.round(size / 2.2));
+      dot.style.width = `${shown}px`;
+      dot.style.height = `${shown}px`;
       button.append(dot);
       button.addEventListener('click', () => {
         this.nib = size;
