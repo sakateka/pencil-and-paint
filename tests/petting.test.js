@@ -157,11 +157,20 @@ export async function run(url) {
       const data = (await offline.startRendering()).getChannelData(0);
 
       let peak = 0;
-      let biggestStep = 0;
-      for (let i = 1; i < data.length; i++) {
-        peak = Math.max(peak, Math.abs(data[i]));
-        biggestStep = Math.max(biggestStep, Math.abs(data[i] - data[i - 1]));
-      }
+      for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+
+      /*
+       * Clicks are checked at the edges, and only there.
+       *
+       * A click is sound starting or stopping at a non-zero value. Looking for
+       * one in the middle by hunting for large sample-to-sample steps does not
+       * work here: this waveform is a pulse train, so once every cycle it
+       * legitimately takes a step several times larger than its average, and
+       * the measurement cannot tell that from a fault.
+       */
+      const edge = Math.max(
+        ...[...data.slice(0, 32), ...data.slice(Math.floor(rate * (span - 0.05)))].map(Math.abs),
+      );
 
       // 200ms buckets: longer than one cycle of the 5.2Hz flutter, so what is
       // left is the swell rather than the motor running underneath it.
@@ -196,8 +205,25 @@ export async function run(url) {
 
       return {
         rasp: +Math.sqrt(travel / size).toFixed(4),
+        edge: +edge.toFixed(5),
+        // What a small speaker can actually reproduce: everything below about
+        // 300Hz is simply not there on a phone, whatever the graph says.
+        audibleOnAPhone: await (async () => {
+          const off = new OfflineAudioContext(1, Math.ceil(rate * span), rate);
+          const cut = off.createBiquadFilter();
+          cut.type = 'highpass';
+          cut.frequency.value = 300;
+          const cut2 = off.createBiquadFilter();
+          cut2.type = 'highpass';
+          cut2.frequency.value = 300;
+          pencil.buildPurr(off, cut, 0);
+          cut.connect(cut2).connect(off.destination);
+          const thin = (await off.startRendering()).getChannelData(0);
+          let sum = 0;
+          for (let i = 0; i < thin.length; i++) sum += thin[i] ** 2;
+          return +Math.sqrt(sum / thin.length).toFixed(5);
+        })(),
         peak: +peak.toFixed(4),
-        biggestStep: +biggestStep.toFixed(4),
         swells: swells.map((v) => +v.toFixed(4)),
         rests: rests.map((v) => +v.toFixed(4)),
         quietestSwell: Math.min(...swells),
@@ -207,11 +233,23 @@ export async function run(url) {
 
     suite.ok(sound.peak > 0.02, 'she makes a sound at all', `peak ${sound.peak}`);
     suite.ok(sound.peak < 0.25, 'and a quiet one — this is a lap, not a stage', `peak ${sound.peak}`);
-    // A click is a step of a large fraction of full scale in one sample.
     suite.ok(
-      sound.biggestStep < 0.01,
-      'with no clicks at the edges',
-      `largest sample step ${sound.biggestStep}`,
+      sound.edge < 0.002,
+      'fading in and out rather than starting and stopping',
+      `loudest edge sample ${sound.edge}`,
+    );
+    /*
+     * The purr has to live where a telephone can play it.
+     *
+     * A phone speaker is millimetres across and reproduces almost nothing below
+     * about 300Hz. A 28Hz purr with a couple of harmonics is inaudible on one —
+     * which is exactly what happened: perfect on headphones, silent on both
+     * Android browsers, while the pot chime at 261Hz was fine everywhere.
+     */
+    suite.ok(
+      sound.audibleOnAPhone > 0.004,
+      'and enough of it above 300Hz to be heard on a phone',
+      `${sound.audibleOnAPhone} rms above 300Hz`,
     );
     suite.ok(
       sound.quietestSwell > sound.loudestRest * 3,
@@ -285,6 +323,28 @@ export async function run(url) {
       0,
       'tapping the prompt does not walk the player anywhere',
     );
+
+    /*
+     * The E key, on a keyboard that does not have an E where E goes.
+     *
+     * `e.key` is the character the layout produces, so on a Cyrillic keyboard
+     * the key under your finger reports `у` and every `key === 'e'` in the game
+     * is false — which is also true of W, A, S and D, and is most of how you
+     * move. What a game wants is the physical key.
+     */
+    const layout = await game.evaluate((pencil) => {
+      const cat = pencil.game.herd.animals.find((a) => a.kind === 'cat');
+      pencil.game.teleport(cat.x + 24, cat.y + 14);
+      pencil.game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      const before = pencil.game.pets;
+      for (const [key, code] of [['у', 'KeyE'], ['ц', 'KeyW'], ['ф', 'KeyA']]) {
+        dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true }));
+        dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true }));
+      }
+      return { petted: pencil.game.pets - before };
+    });
+
+    suite.equal(layout.petted, 1, 'the E key pets her on a Cyrillic layout too');
 
     /*
      * A purring cat lies heavier, not lighter.
