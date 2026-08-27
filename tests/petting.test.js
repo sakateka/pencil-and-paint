@@ -141,6 +141,74 @@ export async function run(url) {
       `largest step ${shape.biggestJump}`,
     );
 
+    /*
+     * What she actually sounds like.
+     *
+     * Web Audio fails quietly — a mistyped parameter, a curve that lands on
+     * zero, a node left unconnected — and all of them render silence rather
+     * than an error. So the real graph is rendered offline and measured: it is
+     * the only way to know the purr is a purr and not nothing at all.
+     */
+    const sound = await game.evaluate(async (pencil) => {
+      const rate = 16000;
+      const span = 5.6;
+      const offline = new OfflineAudioContext(1, Math.ceil(rate * span), rate);
+      pencil.buildPurr(offline, offline.destination, 0);
+      const data = (await offline.startRendering()).getChannelData(0);
+
+      let peak = 0;
+      let biggestStep = 0;
+      for (let i = 1; i < data.length; i++) {
+        peak = Math.max(peak, Math.abs(data[i]));
+        biggestStep = Math.max(biggestStep, Math.abs(data[i] - data[i - 1]));
+      }
+
+      // 200ms buckets: longer than one cycle of the 5.2Hz flutter, so what is
+      // left is the swell rather than the motor running underneath it.
+      const bucket = Math.floor(rate * 0.2);
+      const loudness = (t) => {
+        const from = Math.floor(t * rate);
+        let sum = 0;
+        for (let i = 0; i < bucket; i++) sum += data[from + i] ** 2;
+        return Math.sqrt(sum / bucket);
+      };
+
+      const swells = [0.58, 2.38, 4.18].map(loudness);
+      const rests = [1.48, 3.28].map(loudness);
+      return {
+        peak: +peak.toFixed(4),
+        biggestStep: +biggestStep.toFixed(4),
+        swells: swells.map((v) => +v.toFixed(4)),
+        rests: rests.map((v) => +v.toFixed(4)),
+        quietestSwell: Math.min(...swells),
+        loudestRest: Math.max(...rests),
+      };
+    });
+
+    suite.ok(sound.peak > 0.02, 'she makes a sound at all', `peak ${sound.peak}`);
+    suite.ok(sound.peak < 0.25, 'and a quiet one — this is a lap, not a stage', `peak ${sound.peak}`);
+    // A click is a step of a large fraction of full scale in one sample.
+    suite.ok(
+      sound.biggestStep < 0.01,
+      'with no clicks at the edges',
+      `largest sample step ${sound.biggestStep}`,
+    );
+    suite.ok(
+      sound.quietestSwell > sound.loudestRest * 3,
+      'three clear swells',
+      `${sound.swells.join(', ')} against rests ${sound.rests.join(', ')}`,
+    );
+    /*
+     * The point of the residual. She is one cat purring continuously whose
+     * intensity rises three times, not three separate noises with silence
+     * between them — so the quiet stretches must still be audibly alive.
+     */
+    suite.ok(
+      sound.loudestRest > sound.quietestSwell * 0.02,
+      'and she never stops purring between them',
+      `rest is ${(sound.loudestRest / sound.quietestSwell).toFixed(3)} of a swell`,
+    );
+
     // The on-screen prompt is the phone's only way in, so click the real thing.
     await game.page.waitForSelector('#action:not(.hidden)', { timeout: 5000 });
 

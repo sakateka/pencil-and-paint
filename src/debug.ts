@@ -40,6 +40,14 @@ export interface DebugHandle {
    * far easier to assert on the curve than on a cat.
    */
   purrStrength(age: number): number;
+  /**
+   * Wire up the purr into any audio graph, live or offline.
+   *
+   * Web Audio fails quietly: a mistyped parameter or a curve that lands on zero
+   * makes silence, not an error. Rendering the real graph offline is the only
+   * way to assert that what she does is a purr and not nothing at all.
+   */
+  buildPurr(ctx: BaseAudioContext, destination: AudioNode, at: number): GainNode;
 }
 
 declare global {
