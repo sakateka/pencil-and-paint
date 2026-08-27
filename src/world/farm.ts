@@ -145,26 +145,43 @@ export function makeHayBale(x: number, y: number, s: number): Scenery {
         ctx.clip();
         strawTexture(ctx, (nearX + farX) / 2, midY, half * 0.85, ry * 0.8, medium, 20);
 
-        // The wrapping, curving round the barrel the way the straw is coiled.
-        ctx.lineCap = 'round';
+        /*
+         * Roundness, said with light rather than with lines.
+         *
+         * This used to be two wrap lines curving round the barrel. At this size
+         * they were near-vertical strokes running the full height and touching
+         * the silhouette at both ends, which does not read as straw wrapped
+         * round a cylinder — it reads as a crack down the side. A cylinder
+         * catching the sky along its top and falling into shadow underneath
+         * says the same thing and cannot draw a seam.
+         */
         if (medium === 'color') {
-          ctx.strokeStyle = 'rgba(150,110,45,.45)';
-          ctx.lineWidth = 1.5;
-        } else {
-          ctx.strokeStyle = PENCIL;
-          ctx.globalAlpha = 0.28;
-          ctx.lineWidth = 0.9;
-        }
-        for (const along of [0.34, 0.66]) {
-          const bx = nearX + (farX - nearX) * along + (medium === 'color' ? 0 : rr(-1, 1));
-          ctx.beginPath();
-          ctx.ellipse(bx, midY, er, ry * 0.96, 0, -Math.PI / 2, Math.PI / 2);
-          ctx.stroke();
+          const shade = ctx.createLinearGradient(0, midY - ry, 0, midY + ry);
+          shade.addColorStop(0, 'rgba(255,244,205,.30)');
+          shade.addColorStop(0.42, 'rgba(255,244,205,0)');
+          shade.addColorStop(0.62, 'rgba(120,85,35,0)');
+          shade.addColorStop(1, 'rgba(120,85,35,.24)');
+          ctx.fillStyle = shade;
+          ctx.fillRect(x - half - 2, midY - ry - 2, half * 2 + 4, ry * 2 + 4);
         }
       });
 
-      // The end face last, so it stays crisp on top of the body.
-      paint(ctx, face, '#ecd48d', medium, { angle: -0.4, edge: STRAW_EDGE, darkScale: 0.75 });
+      /*
+       * The end face last, so it stays crisp on top of the body — but with no
+       * hard edge of its own. The right half of this ellipse is already the
+       * bale's silhouette, and outlining the left half drew a second seam.
+       */
+      paint(ctx, face, '#ecd48d', medium, { angle: -0.4, darkScale: 0.75, outlineAlpha: 0.3 });
+      if (medium === 'color') {
+        // Just enough of the rim to say where the face folds away.
+        isolate(ctx, () => {
+          ctx.strokeStyle = 'rgba(150,110,45,.32)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.ellipse(nearX, midY, er, ry, 0, Math.PI / 2, Math.PI * 1.5);
+          ctx.stroke();
+        });
+      }
       isolate(ctx, () => {
         tracePoly(ctx, face);
         ctx.clip();
