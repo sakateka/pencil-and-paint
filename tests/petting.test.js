@@ -58,13 +58,18 @@ export async function run(url) {
       const during = { purr: cat.purr, label: game.interaction?.label };
       pencil.renderOnce();
 
-      // And four more, by which time she has settled.
-      for (let i = 0; i < 240; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      // Six seconds in she is between murrrs, and still going.
+      for (let i = 0; i < 300; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      const midway = cat.purr;
+
+      // Thirteen, and she has finished.
+      for (let i = 0; i < 420; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       return {
         took,
         pets: game.pets,
         started,
         during,
+        midway,
         after: cat.purr,
         moved: +Math.hypot(cat.x - before.x, cat.y - before.y).toFixed(4),
         state: cat.state,
@@ -73,13 +78,63 @@ export async function run(url) {
 
     suite.ok(stroked.took, 'she can be petted from here');
     suite.equal(stroked.pets, 1, 'the stroke is counted');
-    suite.atLeast(stroked.started, 3, 'which sets her purring');
+    suite.atLeast(stroked.started, 10, 'which sets her purring, for three murrrs');
     suite.ok(stroked.during.purr > 0, 'still purring a second later', `${stroked.during.purr}`);
     suite.ok(stroked.during.purr < stroked.started, 'but running down');
     suite.equal(stroked.during.label, 'she is purring', 'and the prompt says so');
-    suite.equal(stroked.after, 0, 'five seconds on, she has settled again');
+    suite.ok(stroked.midway > 0, 'six seconds in she is still going', `${stroked.midway}`);
+    suite.equal(stroked.after, 0, 'thirteen seconds on, she has settled again');
     suite.equal(stroked.moved, 0, 'she never gets up');
     suite.equal(stroked.state, 'graze', 'and never starts wandering');
+
+    /*
+     * A purr is *murrr … murrr … murrr*, not one long note.
+     *
+     * Three swells of about three seconds, a quiet second between them, and
+     * every one rising and falling without a corner anywhere in it. The sound
+     * and the cat are both driven from this one curve, so pinning the curve
+     * pins both.
+     */
+    const shape = await game.evaluate((pencil) => {
+      const step = 0.02;
+      const samples = [];
+      for (let age = 0; age <= 14; age += step) samples.push(pencil.purrStrength(age));
+
+      const peaks = [];
+      let biggestJump = 0;
+      for (let i = 1; i < samples.length; i++) {
+        biggestJump = Math.max(biggestJump, Math.abs(samples[i] - samples[i - 1]));
+        if (samples[i] > 0.98 && samples[i] >= samples[i - 1] && samples[i] > (samples[i + 1] ?? 0)) {
+          peaks.push(+(i * step).toFixed(2));
+        }
+      }
+      const at = (age) => +pencil.purrStrength(age).toFixed(3);
+      return {
+        peaks,
+        biggestJump: +biggestJump.toFixed(4),
+        gaps: [at(3.5), at(7.5)],
+        start: at(0),
+        ended: at(11.5),
+      };
+    });
+
+    suite.equal(shape.peaks.length, 3, 'three murrrs', shape.peaks.join(', '));
+    suite.ok(
+      shape.peaks.every((t, i) => Math.abs(t - (1.5 + i * 4)) < 0.2),
+      'spaced four seconds apart — three of murrr, one of quiet',
+      shape.peaks.join(', '),
+    );
+    suite.equal(shape.start, 0, 'each one starts from nothing');
+    suite.equal(shape.gaps[0], 0, 'she is quiet between the first and second');
+    suite.equal(shape.gaps[1], 0, 'and between the second and third');
+    suite.equal(shape.ended, 0, 'and finished after the third');
+    // A raised cosine over three seconds cannot move faster than this. A ramp
+    // with a corner in it, or a step, would show up here as a jump.
+    suite.ok(
+      shape.biggestJump < 0.03,
+      'and it goes up and down smoothly, with no edges',
+      `largest step ${shape.biggestJump}`,
+    );
 
     // The on-screen prompt is the phone's only way in, so click the real thing.
     await game.page.waitForSelector('#action:not(.hidden)', { timeout: 5000 });
@@ -193,7 +248,9 @@ export async function run(url) {
       };
 
       const asleep = sample(0);
-      const purring = sample(3);
+      // 9.5 left of 11 is 1.5 seconds in: the peak of the first murrr, where
+      // she is purring hardest and would bounce hardest if anything did.
+      const purring = sample(9.5);
       const span = (a) => +(Math.max(...a) - Math.min(...a)).toFixed(2);
       return {
         seen: !asleep.some(Number.isNaN) && !purring.some(Number.isNaN),

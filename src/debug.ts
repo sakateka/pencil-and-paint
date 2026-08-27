@@ -32,6 +32,14 @@ export interface DebugHandle {
   longestBakeSliceMs(): number;
   /** Whether the performance readout is showing. */
   isPerfOn(): boolean;
+  /**
+   * The shape of a purr, `age` seconds in.
+   *
+   * Exposed because the phrasing — three swells with quiet between them, each
+   * rising and falling without a corner — is the whole point of it, and it is
+   * far easier to assert on the curve than on a cat.
+   */
+  purrStrength(age: number): number;
 }
 
 declare global {

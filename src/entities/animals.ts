@@ -97,8 +97,34 @@ const SHEEP_FLUFF: readonly (readonly [number, number, number])[] = [
   [9, -9, 5.5],
 ];
 
-/** How long one stroke keeps her going. */
-export const PURR_SECONDS = 3.4;
+/**
+ * A purr is not one long note, it is *murrr … murrr … murrr*.
+ *
+ * Each one swells up and falls away again over about three seconds, and
+ * between them she is quiet for a second before starting the next. The shape
+ * is shared by the sound and by everything she does while it runs, so the tail
+ * and the rumble rise and fall together rather than drifting apart.
+ */
+export const MURR_SECONDS = 3;
+export const MURR_GAP = 1;
+export const MURR_COUNT = 3;
+
+/** How long one stroke keeps her going: three murrrs and the quiet between. */
+export const PURR_SECONDS = MURR_COUNT * MURR_SECONDS + (MURR_COUNT - 1) * MURR_GAP;
+
+/**
+ * How hard she is purring, `age` seconds in.
+ *
+ * A raised cosine, so each murrr starts from nothing, swells, and returns to
+ * nothing with no corner at either end — the "up and down smoothly" part. Zero
+ * during the gaps, and zero once she has finished.
+ */
+export function purrStrength(age: number): number {
+  if (age < 0 || age > PURR_SECONDS) return 0;
+  const within = age % (MURR_SECONDS + MURR_GAP);
+  if (within > MURR_SECONDS) return 0;
+  return 0.5 - 0.5 * Math.cos((within / MURR_SECONDS) * TAU);
+}
 
 const SPEEDS: Record<AnimalKind, number> = {
   chicken: 38,
@@ -354,9 +380,16 @@ function drawChicken(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t
  * away and she is a drawing of a sleeping cat again.
  */
 function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
-  // Smoothstepped so the purr arrives and leaves gently instead of snapping on.
-  const p = clamp(a.purr / PURR_SECONDS, 0, 1);
-  const joy = p * p * (3 - 2 * p);
+  /*
+   * Two different clocks, because a cat does two different things at once.
+   *
+   * `joy` is one murrr: it swells and falls three times over the purr, and
+   * drives the parts of her that move with the rumble. `settled` is the whole
+   * mood — she keeps her eyes shut and her face soft throughout, including
+   * through the quiet seconds between murrrs, and only lets go at the end.
+   */
+  const joy = purrStrength(PURR_SECONDS - a.purr);
+  const settled = clamp(Math.min((PURR_SECONDS - a.purr) / 0.6, a.purr / 0.9), 0, 1);
   /*
    * The breath is the same asleep and purring, on purpose.
    *
@@ -369,7 +402,7 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
   const breath = 1 + Math.sin(t * 1.5 + a.phase) * 0.035;
   const flick = joy * Math.sin(t * 2.3 + a.phase) * 2.6;
   const ear = joy * Math.sin(t * 1.7 + a.phase * 2) * 0.7;
-  const squint = joy * 0.85;
+  const squint = settled * 0.85;
   const eyeR = 2 + squint;
 
   movingShadow(ctx, a.x, a.y + 1, 15 * a.scale, 4.5 * a.scale, medium, a.phase * 20);
@@ -401,8 +434,8 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
     ctx.strokeStyle = '#6b4a2c'; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(-13, -9.5 - squint, eyeR, 0.15, Math.PI - 0.15); ctx.stroke();  // shut eye
     ctx.beginPath(); ctx.arc(-8.5, -9.5 - squint, eyeR * 0.85, 0.15, Math.PI - 0.15); ctx.stroke();
-    if (joy > 0.04) {
-      ctx.globalAlpha = joy;
+    if (settled > 0.04) {
+      ctx.globalAlpha = settled;
       ctx.beginPath(); ctx.arc(-12.4, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();  // the small smile
       ctx.beginPath(); ctx.arc(-9.6, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();
     }
@@ -425,8 +458,8 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
     ink(ctx, 0.5, 1);
     ctx.beginPath(); ctx.arc(-13, -9.5 - squint, eyeR, 0.15, Math.PI - 0.15); ctx.stroke();
     ctx.beginPath(); ctx.arc(-8.5, -9.5 - squint, eyeR * 0.85, 0.15, Math.PI - 0.15); ctx.stroke();
-    if (joy > 0.04) {
-      ink(ctx, 0.42 * joy, 0.8);
+    if (settled > 0.04) {
+      ink(ctx, 0.42 * settled, 0.8);
       ctx.beginPath(); ctx.arc(-12.4, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();
       ctx.beginPath(); ctx.arc(-9.6, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();
     }

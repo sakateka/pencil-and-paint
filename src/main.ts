@@ -2,6 +2,13 @@ import { BUILD_ID } from './buildInfo';
 import { rng } from './core/rng';
 import { exposeForTests } from './debug';
 import { installDebugPanel } from './debugPanel';
+import {
+  MURR_COUNT,
+  MURR_GAP,
+  MURR_SECONDS,
+  PURR_SECONDS,
+  purrStrength,
+} from './entities/animals';
 import { WALK_CYCLE } from './entities/player';
 import { Game } from './game';
 import { tickBoil } from './media/ink';
@@ -277,6 +284,7 @@ async function boot(): Promise<void> {
     rngEndState: () => rng.seed,
     longestBakeSliceMs: () => world.longestSliceMs,
     isPerfOn: () => showPerf,
+    purrStrength,
   });
 
   /*
@@ -372,11 +380,18 @@ function chime(index: number): void {
 }
 
 /**
- * A purr: a low rumble, chopped at about twenty-five times a second.
+ * A purr: *murrr … murrr … murrr*.
  *
- * That chopping is the whole trick. A steady tone at this pitch is a hum; it
- * is the amplitude wobbling at roughly a cat's purr rate that makes the ear
- * hear an animal rather than an oscillator.
+ * Two things make it a cat rather than an oscillator. The first is the chop —
+ * a low rumble whose loudness wobbles about twenty-five times a second, which
+ * is roughly the rate a real purr runs at. The second is the phrasing: it is
+ * not one long note but three swells of a few seconds each, quiet in between,
+ * every one rising and falling on a raised cosine so it has no edges.
+ *
+ * The chop lives on its own gain node, in series with the phrasing rather than
+ * added to it. Wired the other way — the wobble summed into the same parameter
+ * that shapes the swell — it keeps modulating a gain of zero, so the quiet
+ * seconds are not quiet at all and the whole thing is one continuous drone.
  */
 function purr(): void {
   try {
@@ -385,6 +400,7 @@ function purr(): void {
     const osc = audio.createOscillator();
     const rumble = audio.createOscillator();
     const depth = audio.createGain();
+    const chop = audio.createGain();
     const envelope = audio.createGain();
     const muffle = audio.createBiquadFilter();
 
@@ -395,19 +411,26 @@ function purr(): void {
 
     rumble.type = 'sine';
     rumble.frequency.value = 25;
-    depth.gain.value = 0.055;
-    rumble.connect(depth).connect(envelope.gain);
+    depth.gain.value = 0.42;
+    chop.gain.value = 0.58;
+    rumble.connect(depth).connect(chop.gain);
 
-    envelope.gain.setValueAtTime(0.0001, now);
-    envelope.gain.linearRampToValueAtTime(0.07, now + 0.25);
-    envelope.gain.setValueAtTime(0.07, now + 1.5);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, now + 2.6);
+    // One murrr, sampled finely enough that the curve itself is smooth.
+    const swell = new Float32Array(96);
+    for (let i = 0; i < swell.length; i++) {
+      swell[i] = 0.085 * (0.5 - 0.5 * Math.cos((i / (swell.length - 1)) * Math.PI * 2));
+    }
+    envelope.gain.setValueAtTime(0, now);
+    for (let i = 0; i < MURR_COUNT; i++) {
+      envelope.gain.setValueCurveAtTime(swell, now + i * (MURR_SECONDS + MURR_GAP), MURR_SECONDS);
+    }
 
-    osc.connect(muffle).connect(envelope).connect(audio.destination);
+    osc.connect(muffle).connect(chop).connect(envelope).connect(audio.destination);
+    const until = now + PURR_SECONDS + 0.1;
     osc.start(now);
     rumble.start(now);
-    osc.stop(now + 2.7);
-    rumble.stop(now + 2.7);
+    osc.stop(until);
+    rumble.stop(until);
   } catch {
     // As above.
   }
