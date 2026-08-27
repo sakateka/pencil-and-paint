@@ -3,7 +3,7 @@ import type { Bounds } from '../core/geom';
 import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities/rest';
 import type { Treehouse } from '../entities/treehouse';
-import { drawInside } from '../world/treehouse';
+import { drawThroughWindow } from '../world/treehouse';
 import { drawWalker, type Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import type { Particles } from '../entities/particles';
@@ -204,7 +204,9 @@ export class Renderer {
        */
       drawBirds(ctx, scene.rest);
       const house = scene.treehouse;
-      if (house.visible) drawInside(ctx, house.x, house.y, house.clock, house.shown);
+      if (house.inside) {
+        drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving);
+      }
     });
 
     this.stages.bakes = world.bakeCount;

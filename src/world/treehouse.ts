@@ -24,9 +24,14 @@ export const FLOOR = 86;
 export const HUT_W = 74;
 export const HUT_H = 44;
 
-/** Where somebody inside stands, from the foot of the tree. */
-export const INSIDE_X = -8;
-export const INSIDE_Y = -FLOOR - 13;
+/**
+ * The window, as one rectangle from the foot of the tree.
+ *
+ * Shared by the boards and by whoever is behind them: the baked window and the
+ * live view through it have to be the same hole, and two copies of four numbers
+ * is two copies that can drift.
+ */
+export const WINDOW = { dx: 6, dy: 10, w: 24, h: 21 } as const;
 
 export function makeTreehouse(x: number, y: number): Scenery {
   const trunkTop = y - FLOOR - 34;
@@ -55,7 +60,7 @@ export function makeTreehouse(x: number, y: number): Scenery {
     [x, y - FLOOR - HUT_H - 26],
     [x + HUT_W / 2 + 8, y - FLOOR - HUT_H],
   ];
-  const window = rectPoly(x + 8, y - FLOOR - HUT_H + 12, 20, 17);
+  const window = rectPoly(x + WINDOW.dx, y - FLOOR - HUT_H + WINDOW.dy, WINDOW.w, WINDOW.h);
   const door = rectPoly(x - 26, y - FLOOR - 26, 19, 26);
 
   /** The ladder up the trunk, and the rail round the platform. */
@@ -175,107 +180,96 @@ export function makeTreehouse(x: number, y: number): Scenery {
 }
 
 /**
- * Somebody inside, seen through the wall.
+ * Whoever is up there, seen through the window and nowhere else.
  *
- * No zoom and no cutaway view: the hut stays exactly the size and angle it was,
- * and instead the near wall goes soft over whoever is behind it. The planking
- * is drawn again on top at a low alpha, which is what makes it read as looking
- * *through* the boards rather than as a hole cut in them.
+ * The wall is a wall. An earlier version made it go soft over them, which read
+ * as a hole cut in somebody's house rather than as somebody being in it — so
+ * now the only way to see in is the way there actually is, and walking about
+ * the room means crossing the one part of the wall you can be seen through.
  *
- * `shown` runs 0 to 1 as they climb in, so the wall fades rather than blinking.
+ * Everything here is clipped to the glass, which is what does the work: the
+ * figure is drawn at full size in the room's own coordinates and simply is not
+ * painted anywhere the window is not.
  */
-export function drawInside(
+export function drawThroughWindow(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  t: number,
-  shown: number,
+  offset: number,
+  facing: -1 | 1,
+  walk: number,
+  moving: boolean,
 ): void {
-  if (shown <= 0.01) return;
-  const cx = x + INSIDE_X;
-  const cy = y + INSIDE_Y;
-  const breath = Math.sin(t * 1.3) * 0.5;
+  const left = x + WINDOW.dx;
+  const top = y - FLOOR - HUT_H + WINDOW.dy;
+  const { w, h } = WINDOW;
 
-  ctx.save();
-  ctx.globalAlpha = Math.min(1, shown);
-
-  // The wall, gone soft. A radial patch of the room behind it, fading out so
-  // there is no edge anywhere — an edge would be a hole.
-  const seeThrough = ctx.createRadialGradient(cx, cy - 8, 4, cx, cy - 8, 32);
-  // Lit rather than dark: a room with somebody in it has a lamp on, and a dark
-  // patch made the figure inside it unreadable against its own shadow.
-  seeThrough.addColorStop(0, 'rgba(120,92,58,.95)');
-  seeThrough.addColorStop(0.6, 'rgba(96,72,46,.88)');
-  seeThrough.addColorStop(1, 'rgba(88,66,42,0)');
-  ctx.fillStyle = seeThrough;
   ctx.save();
   ctx.beginPath();
-  ctx.rect(x - HUT_W / 2, y - FLOOR - HUT_H, HUT_W, HUT_H);
+  ctx.rect(left, top, w, h);
   ctx.clip();
-  ctx.fillRect(x - HUT_W / 2, y - FLOOR - HUT_H, HUT_W, HUT_H);
 
-  // Whoever it is, standing in their own house.
+  // The room behind them: lit, because somebody is in it.
+  const lamp = ctx.createLinearGradient(0, top, 0, top + h);
+  lamp.addColorStop(0, '#f0cf94');
+  lamp.addColorStop(1, '#c79a5e');
+  ctx.fillStyle = lamp;
+  ctx.fillRect(left, top, w, h);
+
+  /*
+   * Them, in the room's coordinates rather than the window's — which is the
+   * point. They walk past the glass and are only painted while they are behind
+   * it, so most of the room is a wall with somebody moving about behind it.
+   */
+  const fx = x + offset;
+  const floor = y - FLOOR - 2;
+  const bob = moving ? Math.abs(Math.sin(walk * Math.PI * 2)) * 1.4 : 0;
+  const fy = floor - bob;
+
+  ctx.save();
+  ctx.translate(fx, fy);
+  ctx.scale(facing, 1);
   ctx.fillStyle = '#3a5a86';
-  ctx.fillRect(cx - 5, cy - 9, 10, 10);
+  ctx.fillRect(-4.5, -10, 9, 10);
   ctx.fillStyle = '#d9463c';
-  ctx.fillRect(cx - 6.5, cy - 21 + breath, 13, 13);
+  ctx.fillRect(-5.5, -21, 11, 11);
   ctx.fillStyle = '#f7c14b';
-  ctx.fillRect(cx - 6.5, cy - 15 + breath, 13, 2.4); // the scarf, so it is plainly them
+  ctx.fillRect(-5.5, -16, 11, 2.2);
   ctx.fillStyle = '#e8a06a';
   ctx.beginPath();
-  ctx.arc(cx, cy - 25.5 + breath, 5.8, 0, TAU);
+  ctx.arc(0, -25, 5, 0, TAU);
   ctx.fill();
   ctx.fillStyle = '#4a3b30';
   ctx.beginPath();
-  ctx.arc(cx, cy - 27.5 + breath, 5.8, Math.PI, TAU);
+  ctx.arc(0, -26.6, 5, Math.PI, TAU);
   ctx.fill();
-
-  // And the boards again, over the top of them.
-  ctx.globalAlpha = Math.min(1, shown) * 0.34;
-  ctx.strokeStyle = WOOD_EDGE;
-  ctx.lineWidth = 1;
-  for (let i = 1; i < 5; i++) {
-    const ly = y - FLOOR - HUT_H + (HUT_H / 5) * i;
-    ctx.beginPath();
-    ctx.moveTo(x - HUT_W / 2, ly);
-    ctx.lineTo(x + HUT_W / 2, ly);
-    ctx.stroke();
-  }
+  ctx.fillStyle = '#2e2b26';
+  ctx.beginPath();
+  ctx.arc(2, -24.6, 0.85, 0, TAU);
+  ctx.fill();
   ctx.restore();
 
-  // The window warms up, which is the part you can see from across the field.
-  ctx.globalAlpha = Math.min(1, shown);
-  ctx.fillStyle = '#ffd98a';
-  ctx.fillRect(x + 8, y - FLOOR - HUT_H + 12, 20, 17);
-  /*
-   * A head and shoulders in the window, which is the part that reads from
-   * across the field — the cut-away wall is only legible up close.
-   */
-  ctx.fillStyle = 'rgba(58,44,28,.62)';
-  const wy = y - FLOOR - HUT_H + 24 + breath * 0.6;
-  ctx.beginPath();
-  ctx.ellipse(x + 18, wy + 4, 7, 4.4, 0, Math.PI, TAU);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(x + 18, wy - 1.5, 3.6, 0, TAU);
-  ctx.fill();
+  ctx.restore();
+
+  // The frame over the top, so they are behind glass rather than in a hole.
+  ctx.save();
   ctx.strokeStyle = WOOD_EDGE;
   ctx.lineWidth = 1.6;
   ctx.beginPath();
-  ctx.moveTo(x + 18, y - FLOOR - HUT_H + 12);
-  ctx.lineTo(x + 18, y - FLOOR - HUT_H + 29);
-  ctx.moveTo(x + 8, y - FLOOR - HUT_H + 20.5);
-  ctx.lineTo(x + 28, y - FLOOR - HUT_H + 20.5);
+  ctx.moveTo(left + w / 2, top);
+  ctx.lineTo(left + w / 2, top + h);
+  ctx.moveTo(left, top + h / 2);
+  ctx.lineTo(left + w, top + h / 2);
+  ctx.strokeRect(left, top, w, h);
   ctx.stroke();
 
-  // A little of it spills onto the platform.
-  const spill = ctx.createRadialGradient(x + 18, y - FLOOR - HUT_H + 20, 2, x + 18, y - FLOOR - HUT_H + 20, 44);
-  spill.addColorStop(0, 'rgba(255,214,130,.30)');
+  // And a little of the lamp on the platform outside.
+  const spill = ctx.createRadialGradient(left + w / 2, top + h, 2, left + w / 2, top + h, 46);
+  spill.addColorStop(0, 'rgba(255,214,130,.26)');
   spill.addColorStop(1, 'rgba(255,214,130,0)');
   ctx.fillStyle = spill;
   ctx.beginPath();
-  ctx.arc(x + 18, y - FLOOR - HUT_H + 20, 44, 0, TAU);
+  ctx.arc(left + w / 2, top + h, 46, 0, TAU);
   ctx.fill();
-
   ctx.restore();
 }

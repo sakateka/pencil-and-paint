@@ -300,10 +300,19 @@ export class Game {
      * friction brings them to a stop as they settle.
      */
     // Fishing or lying down, you are not going anywhere until you get up.
-    const dir =
-      this.fishing.active || this.rest.resting || this.treehouse.inside
-        ? ZERO
-        : input.direction(screenX, screenY);
+    const pushed = input.direction(screenX, screenY);
+    /*
+     * Up in the treehouse the same keys walk you about the room instead. The
+     * walker on the ground stays exactly where they left the ladder, because
+     * that is where they will be standing when they come back down.
+     */
+    if (this.treehouse.inside) {
+      this.treehouse.move(dt, pushed.x);
+      w.vx = 0;
+      w.vy = 0;
+      return;
+    }
+    const dir = this.fishing.active || this.rest.resting ? ZERO : pushed;
     const pushing = dir.x !== 0 || dir.y !== 0;
 
     const responsiveness = Math.min(1, (pushing ? ACCELERATION : FRICTION) * dt);

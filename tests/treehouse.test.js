@@ -7,10 +7,13 @@ const HOUSE = { x: 2180, y: 1712 };
  * The house up the tree, out past the hammock.
  *
  * Going inside does not zoom, move the camera or change the angle — the hut
- * stays exactly where and what it was, and instead the near wall goes soft over
- * whoever is behind it and the window lights up. So what there is to assert is
- * the state: you are in, you cannot walk, the field cannot see you, and the way
- * out says the right thing.
+ * stays exactly where and what it was. The wall stays a wall, too: inside, the
+ * same keys walk you along the one room, and the only place you can be seen
+ * from the field is the window you happen to be crossing.
+ *
+ * None of which is visible to a test, so what is asserted is the state behind
+ * it: you are in, you move along the room and not out of it, the body on the
+ * ground stays at the foot of the ladder, and the way out says the right thing.
  */
 export async function run(url) {
   const suite = new Suite('treehouse');
@@ -49,12 +52,20 @@ export async function run(url) {
       const { game } = pencil;
       const went = game.interact();
       const from = { x: game.walker.x, y: game.walker.y };
-      for (let i = 0; i < 90; i++) game.advance(1 / 60, { direction: () => ({ x: -1, y: 1 }) });
-      pencil.renderOnce(); // somebody seen through a wall must draw cleanly
+      const startedAt = game.treehouse.offset;
+      // Push right for a good while: inside, the same keys walk the room.
+      for (let i = 0; i < 120; i++) game.advance(1 / 60, { direction: () => ({ x: 1, y: 1 }) });
+      const walkedRight = game.treehouse.offset;
+      for (let i = 0; i < 600; i++) game.advance(1 / 60, { direction: () => ({ x: 1, y: 0 }) });
+      const pinned = game.treehouse.offset;
+      pencil.renderOnce(); // somebody seen through a window must draw cleanly
       return {
         went,
         inside: game.treehouse.inside,
-        shown: +game.treehouse.shown.toFixed(2),
+        startedAt: +startedAt.toFixed(1),
+        walkedRight: +walkedRight.toFixed(1),
+        pinned: +pinned.toFixed(1),
+        facing: game.treehouse.facing,
         moved: +Math.hypot(game.walker.x - from.x, game.walker.y - from.y).toFixed(2),
         prompt: game.interaction,
         leaving: game.leaving,
@@ -63,8 +74,15 @@ export async function run(url) {
 
     suite.ok(inside.went, 'you can climb it');
     suite.ok(inside.inside, 'and you are up there');
-    suite.atLeast(inside.shown, 0.95, 'the wall has gone soft over you');
-    suite.equal(inside.moved, 0, 'you cannot walk out of a treehouse');
+    suite.ok(inside.startedAt < 0, 'you come in at the ladder end', `${inside.startedAt}`);
+    suite.ok(
+      inside.walkedRight > inside.startedAt,
+      'and can walk about the room',
+      `${inside.startedAt} to ${inside.walkedRight}`,
+    );
+    suite.equal(inside.facing, 1, 'facing the way you went');
+    suite.ok(inside.pinned < 40, 'but not out through the far wall', `${inside.pinned}`);
+    suite.equal(inside.moved, 0, 'and the body on the ground stays at the ladder');
     suite.equal(inside.prompt, null, 'nothing on offer while you are in it');
     suite.equal(inside.leaving, 'prompt.climbDown', 'and the way out says climb down');
 
