@@ -1,11 +1,17 @@
 import { clamp } from '../core/math';
+import { WALKER_SPEED } from './player';
 import { TREEHOUSE } from '../world/layout';
 
 /** How far either side of the middle of the hut you can get. */
 const HALF_ROOM = 26;
 
-/** How fast, in world units. Slower than walking: it is one room. */
-const ROOM_SPEED = 34;
+/**
+ * Half the speed of walking outside, and derived from it rather than written
+ * down — a room is somewhere you move about unhurriedly, not somewhere you
+ * trudge. It was a third of this to begin with, which meant a noticeable wait
+ * before you reached the window and could be seen at all.
+ */
+const ROOM_SPEED = WALKER_SPEED / 2;
 
 /**
  * Being up in the treehouse.
