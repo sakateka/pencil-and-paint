@@ -100,16 +100,24 @@ const SHEEP_FLUFF: readonly (readonly [number, number, number])[] = [
 /**
  * A purr is not one long note, it is *murrr … murrr … murrr*.
  *
- * Each one swells up and falls away again over about three seconds, and
- * between them she is quiet for a second before starting the next. The shape
+ * Each one swells up and falls away again over a couple of seconds, and
+ * between them she is quiet for a moment before starting the next. The shape
  * is shared by the sound and by everything she does while it runs, so the tail
  * and the rumble rise and fall together rather than drifting apart.
  */
-export const MURR_SECONDS = 3;
-export const MURR_GAP = 1;
+/*
+ * Three murrrs, taken at pace.
+ *
+ * At three seconds a murrr the whole thing ran eleven seconds, which outstays
+ * one stroke of a cat. The count is the character of it, though, so what gives
+ * is the tempo: the same three swells and the same two rests, played through in
+ * about two thirds of the time.
+ */
+export const MURR_SECONDS = 2;
+export const MURR_GAP = 0.7;
 export const MURR_COUNT = 3;
 
-/** How long one stroke keeps her going: three murrrs and the quiet between. */
+/** How long one stroke keeps her going: the murrrs and the quiet between. */
 export const PURR_SECONDS = MURR_COUNT * MURR_SECONDS + (MURR_COUNT - 1) * MURR_GAP;
 
 /**
