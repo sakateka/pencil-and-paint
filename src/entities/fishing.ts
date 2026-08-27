@@ -1,4 +1,4 @@
-import { TAU } from '../core/math';
+import { clamp, lerp, TAU } from '../core/math';
 import { waterArea, type Ellipse } from '../world/terrain';
 
 /**
@@ -74,6 +74,18 @@ export class Fishing {
 
   get active(): boolean {
     return this.phase !== 'off';
+  }
+
+  /**
+   * How far through landing a fish we are, 0 to 1. Zero at any other time.
+   *
+   * The catch is two movements in sequence — the rod comes up, and only then
+   * does the fish clear the water — so the drawing needs to know where in the
+   * catch it is, not merely that there is one.
+   */
+  get catchProgress(): number {
+    if (this.phase !== 'caught') return 0;
+    return clamp(1 - this.timer / RESULT_SECONDS, 0, 1);
   }
 
   /** What the prompt on screen says. */
@@ -214,12 +226,26 @@ export function drawCamp(
   drawTent(ctx, f.tentX, f.tentY);
   drawFire(ctx, f.fireX, f.fireY, t);
 
-  // The rod, held out towards the water, and the line hanging from its tip.
+  /*
+   * Landing a fish is two movements, in order.
+   *
+   * First the rod comes up and the line comes in — `pull` rises quickly, holds
+   * while the fish is on its way, and settles back as the line goes out again.
+   * Only once that is done does the fish clear the water, and it does it over
+   * the walker rather than out where the float was: it is being lifted to the
+   * bank, not leaping about in the middle of the pond.
+   */
+  const caught = f.catchProgress;
+  const pull = bump(caught, 0.3, 0.72);
+  const leap = caught > LEAP_AFTER ? (caught - LEAP_AFTER) / (1 - LEAP_AFTER) : 0;
+
+  // The rod: held out at the water, swept up and back as it is pulled.
   const handX = walkerX + face * 9;
   const handY = walkerY - 25;
   const toFloat = Math.atan2(f.floatY - handY, f.floatX - handX);
-  const tipX = handX + Math.cos(toFloat) * 34;
-  const tipY = handY + Math.sin(toFloat) * 34 - 10;
+  const reach = 34 * (1 - pull * 0.5);
+  const tipX = handX + Math.cos(toFloat) * reach;
+  const tipY = handY + Math.sin(toFloat) * reach - 10 - pull * 28;
 
   ctx.strokeStyle = '#6b4a2c';
   ctx.lineWidth = 2.2;
@@ -229,22 +255,34 @@ export function drawCamp(
   ctx.stroke();
 
   const bob = Math.sin(t * 1.6) * 1.4;
-  const floatY = f.floatY + bob + f.dip * 5;
+  // The float rides out of the water and in towards the rod as the line comes
+  // in, then drops back as the next cast goes out.
+  const restingY = f.floatY + bob + f.dip * 5;
+  const floatX = lerp(f.floatX, tipX, pull * 0.85);
+  const floatY = lerp(restingY, tipY + 9, pull * 0.85);
 
   ctx.strokeStyle = 'rgba(70,64,54,.55)';
   ctx.lineWidth = 0.9;
   ctx.beginPath();
   ctx.moveTo(tipX, tipY);
-  // A slack line sags. A straight one looks like wire.
-  ctx.quadraticCurveTo((tipX + f.floatX) / 2, (tipY + floatY) / 2 + 9, f.floatX, floatY);
+  // A slack line sags. A straight one looks like wire — and it pulls taut as
+  // the rod comes up, so the sag goes with it.
+  const sag = 9 * (1 - pull);
+  ctx.quadraticCurveTo((tipX + floatX) / 2, (tipY + floatY) / 2 + sag, floatX, floatY);
   ctx.stroke();
 
-  drawRipples(ctx, f.floatX, floatY, t, f.dip);
+  // Rings stay on the water, and fade out as the float leaves it.
+  if (pull < 0.95) {
+    ctx.save();
+    ctx.globalAlpha = 1 - pull;
+    drawRipples(ctx, f.floatX, restingY, t, f.dip);
+    ctx.restore();
+  }
 
   // The float: red on top, white below, tipping as it is pulled under.
   ctx.save();
-  ctx.translate(f.floatX, floatY);
-  ctx.rotate(f.dip * 0.7);
+  ctx.translate(floatX, floatY);
+  ctx.rotate(f.dip * 0.7 + pull * 0.9);
   ctx.fillStyle = '#f7f2e6';
   ctx.beginPath();
   ctx.ellipse(0, 1.6, 2.6, 3, 0, 0, TAU);
@@ -255,9 +293,26 @@ export function drawCamp(
   ctx.fill();
   ctx.restore();
 
-  if (f.phase === 'caught') drawCatch(ctx, f, floatY);
+  if (leap > 0) drawCatch(ctx, leap, walkerX + face * 4, walkerY);
   ctx.restore();
 }
+
+/**
+ * Up over `rise`, held, and back down after `fall`. All in 0..1.
+ *
+ * Smoothstepped at both ends, so a movement built on this has no corner where
+ * it starts or where it stops.
+ */
+function bump(p: number, rise: number, fall: number): number {
+  if (p <= 0) return 0;
+  const ease = (u: number) => u * u * (3 - 2 * u);
+  if (p < rise) return ease(p / rise);
+  if (p > fall) return ease(Math.max(0, 1 - (p - fall) / (1 - fall)));
+  return 1;
+}
+
+/** How far into the catch the fish clears the water. The rod goes first. */
+const LEAP_AFTER = 0.38;
 
 /** Rings spreading from the float, and a hard one the moment it is pulled. */
 function drawRipples(
@@ -280,17 +335,24 @@ function drawRipples(
   ctx.globalAlpha = 1;
 }
 
-/** A fish, out of the water for a moment and gone again. */
-function drawCatch(ctx: CanvasRenderingContext2D, f: Fishing, floatY: number): void {
-  // Eased so it leaps and falls rather than sliding up and down.
-  const lift = Math.sin(Math.min(1, (2.2 - f.clock) % 2.2) * Math.PI);
-  const arc = Math.sin(Math.min(1, f.clock % 2.2) * Math.PI);
-  const height = Math.max(lift, arc) * 26;
+/**
+ * A fish, up over the walker for a moment and gone again.
+ *
+ * `u` runs 0 to 1 across the leap alone, which is the fix for what this used to
+ * do: it was driven from the camp's own clock, so the arc had nothing to do
+ * with when anything was caught and the fish simply appeared mid-flight.
+ */
+function drawCatch(ctx: CanvasRenderingContext2D, u: number, x: number, y: number): void {
+  const height = Math.sin(Math.min(1, u) * Math.PI) * 40;
   if (height < 0.5) return;
 
   ctx.save();
-  ctx.translate(f.floatX + 6, floatY - height);
-  ctx.rotate(-0.5);
+  // Head up on the way, head down coming back — the same turn a fish makes.
+  ctx.translate(x, y - 30 - height);
+  ctx.rotate(-Math.cos(Math.min(1, u) * Math.PI) * 0.75);
+  // Big enough to read as a fish at a glance, and to tell apart from the float
+  // it is hanging next to.
+  ctx.scale(1.3, 1.3);
   ctx.fillStyle = '#8fb6c9';
   ctx.beginPath();
   ctx.ellipse(0, 0, 8, 3.6, 0, 0, TAU);

@@ -144,6 +144,59 @@ export async function run(url) {
     const stillQuiet = await game.evaluate((pencil) => pencil.purrsPlayed());
     suite.equal(stillQuiet, 0, 'and landing one purrs no cats either');
 
+    /*
+     * The fish comes out of the water *after* the rod comes up, not with it.
+     *
+     * Sampled off the real canvas, in a box above the walker's head, looking
+     * for the fish's own pale blue. Camp is pitched on the north bank for this,
+     * so what is behind that box is grass rather than pond — the water is very
+     * nearly the same colour as the fish, and a detector cannot tell them apart.
+     */
+    const sequence = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      const pond = game.world.pond;
+      game.cancel();
+      game.teleport(pond.x, pond.y - pond.ry - 26);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.interact();
+      for (let i = 0; i < 20 * 60; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        if (game.fishing.phase === 'bite') break;
+      }
+      game.interact();
+      game.particles.clear(); // the splash is nearly the fish's colour
+
+      const ctx = renderer.context;
+      const fishPixels = () => {
+        pencil.renderOnce();
+        const x0 = Math.round((game.camera.toScreenX(game.walker.x) - 34) * renderer.scale);
+        const y0 = Math.round((game.camera.toScreenY(game.walker.y) - 96) * renderer.scale);
+        const w = Math.round(68 * renderer.scale);
+        const h = Math.round(60 * renderer.scale);
+        const { data } = ctx.getImageData(x0, y0, w, h);
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          if (r > 115 && r < 172 && g > 158 && g < 202 && b > 178 && b < 222 && b > g && g > r + 18) n++;
+        }
+        return n;
+      };
+
+      // Wind the catch forward and look at each stage.
+      const at = (want) => {
+        while (game.fishing.catchProgress < want && game.fishing.phase === 'caught') {
+          game.advance(1 / 240, { direction: () => ({ x: 0, y: 0 }) });
+        }
+        return fishPixels();
+      };
+      return { start: at(0.02), pulling: at(0.25), leaping: at(0.6), phase: game.fishing.phase };
+    });
+
+    suite.equal(sequence.phase, 'caught', 'still landing it while we look');
+    suite.equal(sequence.start, 0, 'no fish at the instant it is hooked');
+    suite.equal(sequence.pulling, 0, 'none while the rod is still coming up');
+    suite.atLeast(sequence.leaping, 30, 'and there it is, once the rod is up');
+
     // It goes back out on its own.
     const again = await game.evaluate((pencil) => {
       const { game } = pencil;
@@ -155,18 +208,24 @@ export async function run(url) {
     // Miss one.
     const missed = await game.evaluate((pencil) => {
       const { game } = pencil;
+      const before = game.fishing.caught;
       for (let i = 0; i < 20 * 60; i++) {
         game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         if (game.fishing.phase === 'bite') break;
       }
       // Say nothing and let it go.
       for (let i = 0; i < 130; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
-      return { phase: game.fishing.phase, label: game.interaction?.label, caught: game.fishing.caught };
+      return {
+        phase: game.fishing.phase,
+        label: game.interaction?.label,
+        caught: game.fishing.caught,
+        before,
+      };
     });
 
     suite.equal(missed.phase, 'missed', 'ignore a bite and it gets away');
     suite.equal(missed.label, 'it got away', 'and it says so');
-    suite.equal(missed.caught, 1, 'with nothing added to the tally');
+    suite.equal(missed.caught, missed.before, 'with nothing added to the tally');
 
     /*
      * You are sitting down, so you do not walk.
@@ -236,7 +295,7 @@ export async function run(url) {
 
     suite.ok(!left.active, 'walking away packs up the camp');
     suite.equal(left.phase, 'off', 'and puts the rod down');
-    suite.equal(left.caught, 1, 'the fish you caught are still yours');
+    suite.equal(left.caught, missed.caught, 'the fish you caught are still yours');
 
     // A fresh game closes it again.
     const restarted = await game.evaluate((pencil) => {
@@ -244,6 +303,7 @@ export async function run(url) {
       return { won: pencil.game.won, caught: pencil.game.fishing.caught, active: pencil.game.fishing.active };
     });
     suite.ok(!restarted.won, 'a new world is unfinished again');
+    suite.ok(missed.caught >= 2, 'more than one landed over the run', `${missed.caught}`);
     suite.equal(restarted.caught, 0, 'and the tally starts over');
     suite.ok(!restarted.active, 'with no camp standing');
 
