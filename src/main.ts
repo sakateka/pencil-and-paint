@@ -514,11 +514,14 @@ const birdsong = new Sample(birdsongUrl, 0.42, 1.4);
 /**
  * The water, while you are sitting by it.
  *
- * Half a minute of real shoreline rather than a few seconds on a loop: this one
- * plays for as long as somebody sits there, which can be a while, and a short
- * loop announces itself the second time round.
+ * Running water, not a beach. The first go at this was a pebble shore, which
+ * turned out to be waves breaking — busy, and the opposite of what somebody
+ * sitting with a rod is after. This holds the same gentle level throughout.
+ *
+ * Short, where the birdsong is long, and for a reason: a repeated bird call
+ * gives a loop away, and running water has no landmark in it to recognise.
  */
-const pond = new Sample(pondUrl, 0.34, 2.2);
+const pond = new Sample(pondUrl, 0.4, 2.6);
 
 /**
  * How many purrs have been played.

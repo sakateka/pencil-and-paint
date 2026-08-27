@@ -131,19 +131,39 @@ export async function run(url) {
       const audio = [...document.querySelectorAll('audio')].find((a) => a.src.includes('pond'));
       if (!audio) return { found: false };
       const response = await fetch(audio.src);
+      // Decode it and check it does not surge: a pond that swells and crashes
+      // is a beach, which is what the first attempt at this turned out to be.
+      const bytes = await response.arrayBuffer();
+      const offline = new OfflineAudioContext(1, 8000 * 4, 8000);
+      const decoded = await offline.decodeAudioData(bytes.slice(0));
+      const pcm = decoded.getChannelData(0);
+      const rate = decoded.sampleRate;
+      const levels = [];
+      for (let s = 0; s + rate * 2 < pcm.length; s += rate * 2) {
+        let sum = 0;
+        for (let i = 0; i < rate * 2; i++) sum += pcm[s + i] ** 2;
+        levels.push(Math.sqrt(sum / (rate * 2)));
+      }
       return {
         found: true,
         ok: response.ok,
-        bytes: (await response.arrayBuffer()).byteLength,
-        seconds: audio.duration,
+        bytes: bytes.byteLength,
+        seconds: decoded.duration,
         loops: audio.loop,
+        steadiness: +(Math.max(...levels) / Math.min(...levels)).toFixed(2),
       };
     });
 
     suite.ok(water.found, 'casting a line starts the water');
     suite.ok(water.ok, 'and the recording is there');
     suite.ok(water.loops, 'looping, so a long sit does not run out');
-    suite.atLeast(Math.round(water.seconds), 30, 'and it is a long piece, not a snippet');
+    /*
+     * Steady rather than long. The birdsong has to run for a while because a
+     * repeated call gives the loop away; running water has no landmark in it,
+     * so what matters here is that it holds one level and never surges.
+     */
+    suite.atLeast(Math.round(water.seconds), 12, 'long enough to settle into');
+    suite.ok(water.steadiness < 1.6, 'and calm — no waves breaking', `${water.steadiness}x`);
 
     // Striking before the bite is not punished.
     const early2 = await game.evaluate((pencil) => {

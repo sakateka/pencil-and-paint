@@ -6,7 +6,9 @@ pot chimes still are. Three sounds are recordings.
 
 ## Sound
 
-Three recordings, all public domain, all from Wikimedia Commons.
+Three recordings, all from Wikimedia Commons, all **public domain** — no
+attribution required, no royalties, no conditions of any kind. Credited anyway,
+because each one is somebody's afternoon and somebody's microphone.
 
 ### `src/assets/purr.mp3`
 
@@ -32,15 +34,23 @@ sounded like a cat.
 
 The water, while you are fishing.
 
-- Source: *On a pebble beach*, via
-  [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:On_a_pebble_beach.ogg)
+- Source: *Shallow small river with stony riverbed*, by **stephan**, via
+  [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Shallow_small_river_with_stony_riverbed.ogg)
 - Licence: **Public domain**
 
-Changes made: mixed to mono, high-passed at 120 Hz to take out the wind and the
-handling rumble, low-passed at 9 kHz, levelled with a long window so the waves
-still come and go, and looped by crossfading its own tail back over its head.
-Thirty-six seconds rather than a few, because somebody fishing sits there a
-while and a short loop announces itself the second time round.
+Changes made: mixed to mono, high-passed at 90 Hz to take out the handling
+rumble, low-passed at 9 kHz, brought up 8 dB to a fixed peak, and looped by
+crossfading its own tail back over its head.
+
+It took two goes to get here. The first was a pebble beach, which turned out to
+be waves breaking on stones — busy, and the exact opposite of what sitting with
+a rod is supposed to feel like. The second was a lovely Dordogne pond, but under
+CC BY: free and royalty-free, though it did carry one condition. This one is
+water, holds the same level from end to end, and carries nothing at all.
+
+Sixteen seconds, where the others are three quarters of a minute. Length matters
+for the birds, where a repeated call gives the loop away; running water has no
+landmarks in it, so there is nothing to recognise coming round again.
 
 ### `src/assets/birdsong.mp3`
 
