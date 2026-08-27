@@ -144,104 +144,52 @@ export async function run(url) {
     );
 
     /*
-     * What she actually sounds like.
+     * What she actually sounds like — which is now a recording, not a graph.
      *
-     * Web Audio fails quietly — a mistyped parameter, a curve that lands on
-     * zero, a node left unconnected — and all of them render silence rather
-     * than an error. So the real graph is rendered offline and measured: it is
-     * the only way to know the purr is a purr and not nothing at all.
+     * There was a page of assertions here that rendered the synthesised purr
+     * offline and measured its swells, its harmonics and its edges. All of it
+     * is gone with the synthesis, and none of it was wrong: the graph did
+     * exactly what it was measured to do, and it still did not sound like a
+     * cat. What is left to check is that the file arrives, and that it arrives
+     * only when somebody has actually touched her.
      */
-    const sound = await game.evaluate(async (pencil) => {
-      const rate = 16000;
-      const span = 5.6;
-      const offline = new OfflineAudioContext(1, Math.ceil(rate * span), rate);
-      pencil.buildPurr(offline, offline.destination, 0);
-      const data = (await offline.startRendering()).getChannelData(0);
+    await game.page.waitForFunction(
+      () => performance.getEntriesByType('resource').some((e) => e.name.includes('purr')),
+      null,
+      { timeout: 15000 },
+    );
+    const fetched = await game.evaluate(() =>
+      performance
+        .getEntriesByType('resource')
+        .filter((e) => e.name.includes('purr'))
+        .map((e) => Math.round(e.startTime)),
+    );
+    suite.equal(fetched.length, 1, 'the purr is fetched once');
+    suite.ok(fetched[0] > 0, 'and only once she was stroked, not at load', `${fetched[0]}ms in`);
 
-      let peak = 0;
-      for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
-
-      /*
-       * Clicks are checked at the edges, and only there.
-       *
-       * A click is sound starting or stopping at a non-zero value. Looking for
-       * one in the middle by hunting for large sample-to-sample steps does not
-       * work here: this waveform is a pulse train, so once every cycle it
-       * legitimately takes a step several times larger than its average, and
-       * the measurement cannot tell that from a fault.
-       */
-      const edge = Math.max(
-        ...[...data.slice(0, 32), ...data.slice(Math.floor(rate * (span - 0.05)))].map(Math.abs),
+    const sound = await game.evaluate(async () => {
+      const audio = [...document.querySelectorAll('audio')].find((a) =>
+        a.src.includes('purr'),
       );
-
-      // 200ms buckets: longer than one cycle of the 5.2Hz flutter, so what is
-      // left is the swell rather than the motor running underneath it.
-      const bucket = Math.floor(rate * 0.2);
-      const loudness = (t) => {
-        const from = Math.floor(t * rate);
-        let sum = 0;
-        for (let i = 0; i < bucket; i++) sum += data[from + i] ** 2;
-        return Math.sqrt(sum / bucket);
-      };
-
-      const swells = [0.58, 2.38, 4.18].map(loudness);
-      const rests = [1.48, 3.28].map(loudness);
-
-      /*
-       * How rough the roll is, as a crude spectral centroid: how far the
-       * waveform travels from one sample to the next, against how big it is.
-       *
-       * This is what separates *rrrr* from *mmmm*. At 28Hz the ear does not
-       * hear a note, it hears each pulse, and how sharp those pulses are is
-       * the whole character of the sound. A pure sine at this pitch and rate
-       * would score 0.011; anything much above that is harmonics.
-       */
-      let travel = 0;
-      let size = 0;
-      const from = Math.round(0.43 * rate);
-      const to = Math.round(0.93 * rate);
-      for (let i = from; i < to; i++) {
-        travel += (data[i] - data[i - 1]) ** 2;
-        size += data[i] ** 2;
-      }
-
+      if (!audio) return { found: false };
+      const response = await fetch(audio.src);
+      const bytes = (await response.arrayBuffer()).byteLength;
       return {
-        rasp: +Math.sqrt(travel / size).toFixed(4),
-        edge: +edge.toFixed(5),
-        peak: +peak.toFixed(4),
-        swells: swells.map((v) => +v.toFixed(4)),
-        rests: rests.map((v) => +v.toFixed(4)),
-        quietestSwell: Math.min(...swells),
-        loudestRest: Math.max(...rests),
+        found: true,
+        ok: response.ok,
+        type: response.headers.get('content-type'),
+        bytes,
+        loops: audio.loop,
       };
     });
 
-    suite.ok(sound.peak > 0.02, 'she makes a sound at all', `peak ${sound.peak}`);
-    suite.ok(sound.peak < 0.25, 'and a quiet one — this is a lap, not a stage', `peak ${sound.peak}`);
+    suite.ok(sound.found, 'stroking her asks for it');
+    suite.ok(sound.ok, 'and it is there', String(sound.type));
+    suite.ok(sound.loops, 'set to loop, so a long stroke does not run out');
     suite.ok(
-      sound.edge < 0.002,
-      'fading in and out rather than starting and stopping',
-      `loudest edge sample ${sound.edge}`,
-    );
-    suite.ok(
-      sound.quietestSwell > sound.loudestRest * 3,
-      'three clear swells',
-      `${sound.swells.join(', ')} against rests ${sound.rests.join(', ')}`,
-    );
-    /*
-     * The point of the residual. She is one cat purring continuously whose
-     * intensity rises three times, not three separate noises with silence
-     * between them — so the quiet stretches must still be audibly alive.
-     */
-    suite.ok(
-      sound.loudestRest > sound.quietestSwell * 0.02,
-      'and she never stops purring between them',
-      `rest is ${(sound.loudestRest / sound.quietestSwell).toFixed(3)} of a swell`,
-    );
-    suite.ok(
-      sound.rasp > 0.014,
-      'it rolls rather than hums — a bare sine here would score 0.011',
-      `${sound.rasp}`,
+      sound.bytes > 10000 && sound.bytes < 200000,
+      'at a size worth downloading for a cat',
+      `${Math.round(sound.bytes / 1024)}KB`,
     );
 
     // The on-screen prompt is the phone's only way in, so click the real thing.

@@ -189,9 +189,11 @@ export class Renderer {
        * invisible for the second the hammock takes to lift.
        */
       if (!scene.rest.resting) drawWalker(ctx, walker, scene.elapsed);
-      drawBirds(ctx, scene.rest);
       scene.particles.draw(ctx, walker.x, walker.y, scene.litRadius, flooded);
       this.time('occluders', () => this.drawOccluders(ctx, scene));
+      // After the occluders: the bird is sitting on top of a tree, and the tree
+      // is one of them.
+      drawBirds(ctx, scene.rest);
     });
 
     this.stages.bakes = world.bakeCount;

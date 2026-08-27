@@ -59,7 +59,7 @@ export async function run(url) {
         lay,
         resting: game.rest.resting,
         birds: game.rest.birds,
-        present: game.rest.present.length,
+        perched: game.rest.perched,
         settled: +game.rest.settled.toFixed(2),
         prompt: game.interaction?.say,
       };
@@ -68,8 +68,8 @@ export async function run(url) {
     suite.ok(quiet.lay, 'you can get into it');
     suite.ok(quiet.resting, 'and stay there');
     suite.atLeast(quiet.settled, 0.95, 'the cloth takes your weight');
-    suite.ok(!quiet.birds, 'but the birds do not come to an unfinished valley');
-    suite.equal(quiet.present, 0, 'not one of them, after twenty seconds');
+    suite.ok(!quiet.birds, 'but no bird comes to an unfinished valley');
+    suite.ok(!quiet.perched, 'not after twenty seconds of lying there');
     suite.equal(quiet.prompt, undefined, 'with nothing on offer but lying there');
 
     // Nor can you wander off while lying in it.
@@ -101,37 +101,53 @@ export async function run(url) {
     suite.ok(up.moved > 5, 'and you can walk again', `${up.moved}px`);
 
     /*
-     * Finish the valley, and lie down again. Now they come — but not at once:
-     * they arrive one at a time, which is what birds do when you settle.
+     * Finish the valley and the bird comes back to the tree — whether or not
+     * anybody is in the hammock.
+     *
+     * It belongs to the finished valley, not to lying down. What the hammock
+     * decides is only whether you are close enough and still enough to hear it.
      */
-    const withBirds = await game.evaluate((pencil) => {
+    const bird = await game.evaluate((pencil) => {
       const { game } = pencil;
-      game.collectAll();
-      game.teleport(1780, 1760);
-      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
-      game.interact();
       const step = (seconds) => {
         for (let i = 0; i < 60 * seconds; i++) {
           game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         }
-        return game.rest.present.length;
       };
-      const atOnce = game.rest.present.length;
-      const early = step(2);
-      const later = step(6);
-      pencil.renderOnce(); // birds must draw without complaint too
-      return { birds: game.rest.birds, atOnce, early, later, won: game.won };
+      game.collectAll();
+      game.teleport(1780, 1830); // standing well clear of the hammock
+      step(0.1);
+      const atOnce = game.rest.perched;
+      step(1.6); // the delay plus the landing
+      pencil.renderOnce(); // a bird on a tree must draw without complaint
+      return {
+        won: game.won,
+        resting: game.rest.resting,
+        atOnce,
+        soon: game.rest.perched,
+        landed: +game.rest.landed.toFixed(2),
+      };
     });
 
-    suite.ok(withBirds.won, 'every pot found');
-    suite.ok(withBirds.birds, 'and now the birds are out');
-    suite.equal(withBirds.atOnce, 0, 'though none the instant you lie down');
-    suite.ok(withBirds.early > 0, 'one or two after a moment', `${withBirds.early}`);
-    suite.ok(
-      withBirds.later > withBirds.early,
-      'and more as you stay still',
-      `${withBirds.early} then ${withBirds.later}`,
-    );
+    suite.ok(bird.won, 'every pot found');
+    suite.ok(!bird.resting, 'and nobody is in the hammock');
+    suite.ok(!bird.atOnce, 'the bird does not blink into existence');
+    suite.ok(bird.soon, 'but it is on the tree a second later, unprompted');
+    suite.equal(bird.landed, 1, 'having landed rather than appeared');
+
+    // Lying down is what starts it singing.
+    await game.evaluate((pencil) => {
+      const { game } = pencil;
+      game.teleport(1780, 1760);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.interact();
+    });
+    const singing = await game.evaluate((pencil) => ({
+      resting: pencil.game.rest.resting,
+      perched: pencil.game.rest.perched,
+    }));
+    suite.ok(singing.resting, 'lying down beneath it');
+    suite.ok(singing.perched, 'the bird is still there');
 
     /*
      * The sound is a real recording, so unlike everything else here it is a

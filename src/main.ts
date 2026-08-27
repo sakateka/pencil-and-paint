@@ -13,21 +13,17 @@ import {
   type Lang,
 } from './i18n';
 import { installDebugPanel } from './debugPanel';
-import {
-  MURR_COUNT,
-  MURR_GAP,
-  MURR_SECONDS,
-  PURR_SECONDS,
-  purrStrength,
-} from './entities/animals';
+import { purrStrength } from './entities/animals';
 import { WALK_CYCLE } from './entities/player';
 import { Game } from './game';
 import { tickBoil } from './media/ink';
 import { yieldToBrowser } from './core/schedule';
 import { GRAIN } from './media/sprites';
 import { Renderer } from './render/renderer';
-import { birdsongStatus, startBirdsong, stopBirdsong, updateBirdsong } from './systems/birdsong';
+import birdsongUrl from './assets/birdsong.mp3';
+import purrUrl from './assets/purr.mp3';
 import { buzzPurr, hapticStatus } from './systems/haptics';
+import { Sample } from './systems/sample';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
 import { latestDrawing, Studio } from './studio';
@@ -255,7 +251,8 @@ async function boot(): Promise<void> {
     onPet: (first) => {
       // Here, where it is certainly a cat that was touched. Both are inside the
       // tap or keypress that caused it, so the browser allows the motor to run.
-      purr();
+      purrsPlayed++;
+      purrSound.play();
       buzzPurr();
       if (first) ui.note('note.firstPet');
     },
@@ -263,9 +260,9 @@ async function boot(): Promise<void> {
     onFishingEnd: (landed) => ui.showCreel(landed),
     onRestStart: (birds) => {
       ui.note(birds ? 'note.restBirds' : 'note.restQuiet');
-      if (birds) startBirdsong();
+      if (birds) birdsong.play();
     },
-    onRestEnd: () => stopBirdsong(),
+    onRestEnd: () => birdsong.stop(),
     onDraw: () => openStudio(),
     onCatch: (total) => {
       // Up the same scale the pots used, so the valley keeps one voice.
@@ -370,7 +367,6 @@ async function boot(): Promise<void> {
     longestBakeSliceMs: () => world.longestSliceMs,
     isPerfOn: () => showPerf,
     purrStrength,
-    buildPurr,
     purrsPlayed: () => purrsPlayed,
     i18n: {
       keys: () => KEYS,
@@ -410,10 +406,15 @@ async function boot(): Promise<void> {
     game.advance(dt, input);
     ui.setAction(game.interaction?.say ?? null);
     ui.setLeave(game.fishing.active || game.rest.resting);
-    updateBirdsong(dt);
-    // The purr follows the walker: it fades as you leave her and comes back if
-    // you turn around while she is still going.
-    setPurrLevel(game.purrLoudness);
+    /*
+     * The purr follows the walker: it fades as you leave her, comes back if you
+     * turn around while she is still going, and stops of its own accord once
+     * she settles — `purrLoudness` is zero for all three of those.
+     */
+    purrSound.level = game.purrLoudness;
+    if (game.purrLoudness === 0) purrSound.stop();
+    purrSound.update(dt);
+    birdsong.update(dt);
 
     const drawStart = performance.now();
     renderer.render(game.scene);
@@ -427,7 +428,7 @@ async function boot(): Promise<void> {
         `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
         hapticStatus(),
-        birdsongStatus(),
+        `purr ${purrSound.status()} · birds ${birdsong.status()}`,
         ...loadReport,
       ]);
     }
@@ -485,100 +486,21 @@ function chime(index: number): void {
 }
 
 /**
- * The chest resonance itself. Everything else is shaping on top of this.
+ * The cat, recorded rather than synthesised.
  *
- * Real cats purr somewhere between 20 and 35 times a second, so this is free to
- * move within that range — and where it sits decides what a small speaker can
- * do with it. Every harmonic moves with it, so nudging the pitch up carries the
- * whole sound towards the range a phone can reproduce without touching the
- * harmonic ratios, which are what the voice actually is.
+ * There was a small orchestra here once: an oscillator carrying a harmonic
+ * series, two more drifting its pitch, two wobbling its loudness, a fifth
+ * chopping it at five hertz, a band-limited noise layer for breath, and a
+ * hand-built envelope phrasing the whole thing into three swells. It was an
+ * interesting piece of synthesis and it never once sounded like a cat.
  *
- * Measured energy, by band:
- *
- *              100-300Hz   300-800Hz
- *     28Hz       0.0129      0.0016
- *     34Hz       0.0161      0.0029     <- here
- *     40Hz       0.0190      0.0045
- *
- * 34 is the cautious end of that: still squarely a cat, three semitones up, and
- * nearly twice the energy where a telephone lives. Put it back to 28 and the
- * voice is exactly the one tuned by ear on headphones.
+ * "Purr (10 sec loopable)" — public domain, via Wikimedia Commons. See
+ * CREDITS.md.
  */
-const PURR_FUNDAMENTAL = 34;
+const purrSound = new Sample(purrUrl, 0.55, 0.9);
 
-/** Loudest the purr ever gets. It is meant to be close and quiet, not loud. */
-const PURR_PEAK = 0.09;
-
-/**
- * How much purr is left between the swells.
- *
- * Not zero, which is the point. A cat does not stop and start three times; it
- * purrs continuously and the intensity rises three times. Silence in the gaps
- * turns one animal into three separate noises.
- */
-const PURR_RESIDUAL = 0.13;
-
-/**
- * The swells are not identical, because nothing alive repeats itself exactly.
- * Fixed rather than random: she should sound the same every time you stroke her.
- */
-const SWELL_WEIGHT = [1, 1.05, 0.955];
-
-/**
- * The purr's intensity across its whole length, in [PURR_RESIDUAL, ~1].
- *
- * Each swell is a raised cosine, but wider than the visible one so the body of
- * it is rounded and the tails very nearly meet — between two swells the level
- * dips to the residual for a moment rather than falling away to nothing.
- */
-function purrShape(samples: number): Float32Array {
-  const shape = new Float32Array(samples);
-  const cycle = MURR_SECONDS + MURR_GAP;
-  const half = MURR_SECONDS * 0.62;
-  for (let i = 0; i < samples; i++) {
-    const t = (i / (samples - 1)) * PURR_SECONDS;
-    let level = PURR_RESIDUAL;
-    for (let k = 0; k < MURR_COUNT; k++) {
-      const distance = Math.abs(t - (k * cycle + MURR_SECONDS / 2));
-      if (distance >= half) continue;
-      level +=
-        (1 - PURR_RESIDUAL) *
-        SWELL_WEIGHT[k % SWELL_WEIGHT.length] *
-        (0.5 + 0.5 * Math.cos((distance / half) * Math.PI));
-    }
-    shape[i] = level;
-  }
-  return shape;
-}
-
-/**
- * Body noise: the sound of an animal breathing, not of an oscillator.
- *
- * Generated once and kept. Seeded rather than `Math.random` for two reasons —
- * she should sound the same every time, and the world's own generator must not
- * be touched, since the tests fingerprint where it ends up. The one-pole filter
- * takes the hiss off before it is ever heard; what is left is body, not air.
- */
-let purrNoise: AudioBuffer | undefined;
-function bodyNoise(ctx: BaseAudioContext): AudioBuffer {
-  // Keyed on the rate: a buffer made for the live context is the wrong length
-  // for an offline one rendering at a different rate.
-  if (purrNoise?.sampleRate === ctx.sampleRate) return purrNoise;
-  const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 2), ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  let seed = 0x9e3779b9;
-  let smoothed = 0;
-  for (let i = 0; i < data.length; i++) {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    smoothed += (seed / 2147483648 - 1 - smoothed) * 0.06;
-    data[i] = smoothed * 3;
-  }
-  purrNoise = buffer;
-  return buffer;
-}
-
-/** The purr currently sounding, faded out if she is stroked again. */
-let purring: GainNode | undefined;
+/** And the birds, which were never anything but a recording. */
+const birdsong = new Sample(birdsongUrl, 0.42, 1.4);
 
 /**
  * How many purrs have been played.
@@ -590,191 +512,6 @@ let purring: GainNode | undefined;
  */
 let purrsPlayed = 0;
 
-/**
- * A purr: *prrrrrrrr*.
- *
- * Not a voice — a cat purring is a chest vibrating, and it is built here as
- * one. A 28Hz fundamental with a weak second harmonic and a trace of a third,
- * which is below what a phone can reproduce at all; what you hear on a small
- * speaker is the harmonics and the flutter, and what you hear on headphones is
- * the rumble underneath them.
- *
- * Four things keep it from sounding synthetic:
- *
- *   - it never stops. The three swells ride on a residual that carries through
- *     the gaps, so it is one animal getting more pleased three times.
- *   - the pitch drifts a few percent, slowly, from two detuned oscillators that
- *     never line up; the loudness wanders by a similar amount on two more.
- *   - a shallow 5Hz flutter, the motor underneath the purr. Shallow is the
- *     whole point: any deeper and it is a tremolo pedal.
- *   - the same flutter opens the filter a little, so she is fractionally
- *     brighter at the top of each pulse — richer when she means it.
- */
-export function buildPurr(ctx: BaseAudioContext, destination: AudioNode, now: number): GainNode {
-  const until = now + PURR_SECONDS + 0.2;
-
-  const chest = ctx.createOscillator();
-  /*
-   * One oscillator for the whole harmonic series, so it drifts as a unit and
-   * stays locked in phase — separate oscillators beat against each other.
-   *
-   * The upper harmonics are what make it *rrrr* rather than *mmmm*. Twenty-eight
-   * times a second is below the pitch the ear will hear as a note, so what it
-   * hears instead is each individual pulse — and how rough that roll sounds
-   * depends entirely on how sharp the pulses are. Three harmonics gave a smooth
-   * hum; nine give it a roll, and cost nothing in level, since the wave is
-   * normalised.
-   *
-   * These nine numbers were found by ear and they are easy to overshoot. As a
-   * rough measure of roughness — the rms distance the waveform travels sample
-   * to sample, against its own size, where a bare sine would score 0.011:
-   *
-   *     0.017  three harmonics and a bit: warm, not quite a roll
-   *     0.020  these
-   *     0.033  a long harmonic tail: too rough
-   *     0.050  the same with a resonance at 430Hz: sounds like a bottle
-   *
-   * Everything above about 0.025 stopped sounding like a cat.
-   */
-  chest.setPeriodicWave(
-    ctx.createPeriodicWave(
-      new Float32Array(10),
-      new Float32Array([0, 1, 0.45, 0.26, 0.17, 0.12, 0.09, 0.068, 0.05, 0.038]),
-    ),
-  );
-  chest.frequency.value = PURR_FUNDAMENTAL;
-
-  const body = ctx.createBiquadFilter();
-  body.type = 'lowpass';
-  body.Q.value = 0.7;
-
-  const flutter = ctx.createGain();
-  flutter.gain.value = 0.86;
-  const shimmer = ctx.createGain();
-  shimmer.gain.value = 1;
-  const swell = ctx.createGain();
-  const master = ctx.createGain();
-  master.gain.value = 1;
-
-  /** A slow oscillator wired into someone else's parameter. */
-  const modulate = (rate: number, depth: number, target: AudioParam) => {
-    const lfo = ctx.createOscillator();
-    const amount = ctx.createGain();
-    lfo.frequency.value = rate;
-    amount.gain.value = depth;
-    lfo.connect(amount).connect(target);
-    lfo.start(now);
-    lfo.stop(until);
-    return lfo;
-  };
-
-  // Pitch drift: two rates that do not divide into each other, so the sum
-  // never settles into a pattern the ear can follow. About ±3% all told.
-  modulate(0.13, PURR_FUNDAMENTAL * 0.02, chest.frequency);
-  modulate(0.31, PURR_FUNDAMENTAL * 0.012, chest.frequency);
-  // Loudness wander, ±7.5%.
-  modulate(0.7, 0.045, shimmer.gain);
-  modulate(1.9, 0.03, shimmer.gain);
-  // The motor: 5.2Hz, 14% deep, and a touch of the same rhythm on the filter.
-  const motor = modulate(5.2, 0.14, flutter.gain);
-  const colour = ctx.createGain();
-  colour.gain.value = 26;
-  motor.connect(colour).connect(body.frequency);
-
-  const shape = purrShape(1024);
-  const level = new Float32Array(shape.length);
-  const brightness = new Float32Array(shape.length);
-  for (let i = 0; i < shape.length; i++) {
-    const t = (i / (shape.length - 1)) * PURR_SECONDS;
-    // No click at either end: in over a moment, out over half a second.
-    const fade = Math.min(1, t / 0.12, (PURR_SECONDS - t) / 0.5);
-    level[i] = PURR_PEAK * shape[i] * fade;
-    // Dull and distant at the residual, open at the peak. The cutoff has to
-    // clear the upper harmonics at the top of a swell or the roll is filtered
-    // straight back off again, which is what 330 was doing.
-    brightness[i] = 105 + 415 * ((shape[i] - PURR_RESIDUAL) / (1 - PURR_RESIDUAL));
-  }
-  swell.gain.setValueAtTime(0, now);
-  swell.gain.setValueCurveAtTime(level, now, PURR_SECONDS);
-  body.frequency.setValueCurveAtTime(brightness, now, PURR_SECONDS);
-
-  // Breath and body, a good 25dB under everything else, and joined after the
-  // flutter so it is not chopped along with the purr.
-  const breath = ctx.createBufferSource();
-  breath.buffer = bodyNoise(ctx);
-  breath.loop = true;
-  const breathHigh = ctx.createBiquadFilter();
-  breathHigh.type = 'highpass';
-  breathHigh.frequency.value = 80;
-  const breathLow = ctx.createBiquadFilter();
-  breathLow.type = 'lowpass';
-  breathLow.frequency.value = 400;
-  const breathLevel = ctx.createGain();
-  breathLevel.gain.value = 0.055;
-  breath.connect(breathHigh).connect(breathLow).connect(breathLevel).connect(swell);
-  breath.start(now);
-  breath.stop(until);
-
-  chest.connect(body).connect(flutter).connect(shimmer).connect(swell);
-  swell.connect(master).connect(destination);
-  chest.start(now);
-  chest.stop(until);
-
-  chest.onended = () => {
-    if (purring === master) purring = undefined;
-    master.disconnect();
-  };
-  return master;
-}
-
-/** The level the purr was last set to, so a still walker is not re-scheduling. */
-let purrLevel = 1;
-
-/**
- * How loud she is from where you are standing.
- *
- * Called every frame while a purr is sounding. `setTargetAtTime` rather than a
- * plain assignment: stepping a gain sixty times a second is sixty tiny
- * discontinuities, which is audible as a crackle on exactly the kind of quiet
- * low sound this is.
- */
-function setPurrLevel(level: number): void {
-  if (!purring || !audio) return;
-  if (Math.abs(level - purrLevel) < 0.02) return;
-  purrLevel = level;
-  purring.gain.setTargetAtTime(level, audio.currentTime, 0.09);
-}
-
-/** Play one, replacing whichever is already sounding. */
-function purr(): void {
-  try {
-    audio ??= new AudioContext();
-    /*
-     * A context can be suspended and stay that way.
-     *
-     * Mobile browsers start one suspended unless it was created inside a
-     * gesture, and suspend a running one when the page goes to the background.
-     * Either way it never resumes on its own, so every node after it renders
-     * into nothing — the graph is perfect and the phone is silent.
-     */
-    if (audio.state === 'suspended') void audio.resume();
-    const now = audio.currentTime;
-
-    // Stroking her again restarts the purr rather than stacking a second one
-    // on top of the first, which doubles the volume and beats against itself.
-    if (purring) {
-      const old = purring;
-      old.gain.cancelScheduledValues(now);
-      old.gain.setValueAtTime(old.gain.value, now);
-      old.gain.linearRampToValueAtTime(0, now + 0.18);
-    }
-    purring = buildPurr(audio, audio.destination, now);
-    purrLevel = 1;
-    purrsPlayed++;
-  } catch {
-    // As above.
-  }
-}
 
 /**
  * A blank screen tells you nothing. If the world cannot be built — most likely

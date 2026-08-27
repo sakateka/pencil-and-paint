@@ -20,23 +20,26 @@ const SETTLE_SECONDS = 1.1;
 /** How far the cloth drops under a person, on top of its own hang. */
 const LOADED_SAG = 26;
 
-/** How many birds come out, once the valley is finished. */
-const BIRD_COUNT = 5;
+/**
+ * How long after the valley is finished before the bird turns up.
+ *
+ * Short. It belongs to the finished valley rather than to the hammock — the
+ * moment the last pot is in, something comes back to the tree — and a long wait
+ * for it only reads as a delay, since by then you are usually walking away.
+ */
+const BIRD_DELAY = 0.6;
 
-/** How long before the first bird dares. */
-const BIRD_DELAY = 1.6;
+/** How long it takes to drop in and settle once it has decided to. */
+const BIRD_LANDING = 0.9;
 
-interface Bird {
-  /** Where it circles, relative to the hammock. */
-  readonly orbitX: number;
-  readonly orbitY: number;
-  readonly radius: number;
-  readonly speed: number;
-  readonly phase: number;
-  readonly size: number;
-  /** When it joins in. */
-  readonly after: number;
-}
+/**
+ * Where it sits: the top of the right-hand tree's crown, from the hammock.
+ *
+ * The tree stands half a span to the right at the same ground line, and its
+ * upper leaf clump tops out about here.
+ */
+const PERCH_X = 62;
+const PERCH_Y = -110;
 
 export class Rest {
   /** Whether anybody is lying down. */
@@ -55,33 +58,25 @@ export class Rest {
   readonly x: number;
   readonly y: number;
 
-  /** Whether the birds are out — which is to say, whether the valley is done. */
+  /** Whether the valley is done, which is what the bird waits for. */
   birds = false;
 
-  private readonly flock: Bird[] = [];
+  /**
+   * The bird's own clock, which runs from the moment the valley is finished.
+   *
+   * Separate from `clock`, which only runs while somebody is lying down: the
+   * bird is on the tree whether or not anybody is in the hammock. What the
+   * hammock decides is whether you are close enough and still enough to hear it.
+   */
+  private birdClock = 0;
 
   constructor(x: number, y: number) {
     this.x = x;
     this.y = y;
-    for (let i = 0; i < BIRD_COUNT; i++) {
-      // Fixed rather than random: the flock should look the same every time you
-      // lie down, the way the birds in your own garden do.
-      const t = i / BIRD_COUNT;
-      this.flock.push({
-        orbitX: Math.cos(t * TAU + 0.7) * 60,
-        orbitY: -74 - (i % 3) * 22,
-        radius: 46 + (i % 4) * 15,
-        speed: 0.5 + (i % 3) * 0.14,
-        phase: t * TAU,
-        size: 3.2 + (i % 3) * 0.7,
-        after: BIRD_DELAY + i * 0.8,
-      });
-    }
   }
 
-  lieDown(birds: boolean): void {
+  lieDown(): void {
     this.resting = true;
-    this.birds = birds;
     this.clock = 0;
   }
 
@@ -100,7 +95,12 @@ export class Rest {
     this.clock = 0;
   }
 
-  update(dt: number): void {
+  update(dt: number, won: boolean): void {
+    // The bird comes when the valley is finished and goes when it is unfinished
+    // again, which only happens on a restart.
+    this.birds = won;
+    this.birdClock = won ? this.birdClock + dt : 0;
+
     // The sag eases both ways, so getting up lifts the cloth rather than
     // snapping it flat while the person is still drawn in it.
     const wanted = this.resting ? 1 : 0;
@@ -114,10 +114,28 @@ export class Rest {
     return this.resting || this.settled > 0.02;
   }
 
-  /** The birds that have joined in by now. */
-  get present(): readonly Bird[] {
-    if (!this.birds) return [];
-    return this.flock.filter((b) => this.clock > b.after);
+  /** Whether the bird has come. Nothing to do with the hammock. */
+  get perched(): boolean {
+    return this.birds && this.birdClock > BIRD_DELAY;
+  }
+
+  /** How far through landing it is, 0 to 1. */
+  get landed(): number {
+    return clamp((this.birdClock - BIRD_DELAY) / BIRD_LANDING, 0, 1);
+  }
+
+  /** Its own clock, for the small things it does while it sits there. */
+  get birdTime(): number {
+    return this.birdClock;
+  }
+
+  /** Where it sits, in world coordinates. */
+  get perchX(): number {
+    return this.x + PERCH_X;
+  }
+
+  get perchY(): number {
+    return this.y + PERCH_Y;
   }
 }
 
@@ -160,14 +178,15 @@ export function drawHammock(ctx: CanvasRenderingContext2D, rest: Rest, medium: M
 }
 
 /**
- * The birds, which are neither the valley's nor the hammock's.
+ * The bird, which is neither the valley's nor the hammock's.
  *
- * Drawn after the mask rather than through it: they only come out once every
- * pot is found, by which time the colour has flooded everything anyway.
+ * Drawn after the mask rather than through it — it only comes once every pot is
+ * found, by which time the colour has flooded everything anyway — and after the
+ * occluders, because it is sitting on top of a tree that is one of them.
  */
 export function drawBirds(ctx: CanvasRenderingContext2D, rest: Rest): void {
-  if (!rest.resting) return;
-  for (const bird of rest.present) drawBird(ctx, rest, bird);
+  if (!rest.perched) return;
+  drawPerchedBird(ctx, rest);
 }
 
 /** The walker, lying along the curve with their hands behind their head. */
@@ -245,33 +264,97 @@ function drawSleeper(
   ctx.restore();
 }
 
-/** A bird, circling above and flapping. */
-function drawBird(ctx: CanvasRenderingContext2D, rest: Rest, bird: Bird): void {
-  const age = rest.clock - bird.after;
-  const arrive = clamp(age / 1.2, 0, 1);
-  const t = rest.clock * bird.speed + bird.phase;
-  const cx = rest.x + bird.orbitX + Math.cos(t) * bird.radius;
-  // Flattened, because a circle overhead is an ellipse from down here.
-  const cy = rest.y + bird.orbitY + Math.sin(t) * bird.radius * 0.34 - (1 - arrive) * 40;
+/**
+ * The bird, sitting on the tree the hammock is tied to.
+ *
+ * There used to be five of these and they circled, which at this size and rate
+ * turned out to look less like birds than like a cloud of midges over somebody
+ * having a nap. One bird, sitting still, doing the small things a sitting bird
+ * does, is worth more than five doing laps.
+ */
+function drawPerchedBird(ctx: CanvasRenderingContext2D, rest: Rest): void {
+  const settle = rest.landed;
+  const t = rest.birdTime;
+  const x = rest.perchX;
+  // Drops the last little way in, rather than appearing on the branch.
+  const y = rest.perchY - (1 - settle) * 26;
 
-  // Wings beat in bursts with a glide between, the way small birds fly.
-  const beat = Math.sin(rest.clock * 11 + bird.phase * 3);
-  const glide = Math.sin(rest.clock * 0.7 + bird.phase) > 0.55 ? 0.25 : 1;
-  const flap = beat * glide;
-  const s = bird.size;
+  /*
+   * What a sitting bird actually does: almost nothing, slowly, and then all at
+   * once. The bob is barely there, the head turns every few seconds and holds,
+   * and the tail flicks on its own schedule so the two never line up.
+   */
+  const bob = Math.sin(t * 1.4) * 0.7;
+  const turn = Math.sin(t * 0.37) > 0 ? 1 : -1;
+  const flick = Math.max(0, Math.sin(t * 0.9) - 0.93) * 34;
+  // Wings only while it is still arriving.
+  const flutter = (1 - settle) * Math.sin(t * 22) * 5;
 
   ctx.save();
-  ctx.globalAlpha = arrive * 0.85;
-  ctx.translate(cx, cy);
-  // Leaning into the turn, and facing the way it is going.
-  ctx.scale(Math.cos(t) > 0 ? 1 : -1, 1);
-  ctx.strokeStyle = '#4a4238';
-  ctx.lineWidth = 1.7;
+  ctx.globalAlpha = Math.min(1, settle * 2.5);
+  ctx.translate(x, y + bob);
+  ctx.scale(turn, 1);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Legs, gripping whatever it is standing on.
+  ctx.strokeStyle = '#6b5a44';
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(-s * 1.7, -flap * s * 0.75);
-  ctx.quadraticCurveTo(-s * 0.6, flap * s * 0.5, 0, 0);
-  ctx.quadraticCurveTo(s * 0.6, flap * s * 0.5, s * 1.7, -flap * s * 0.75);
+  ctx.moveTo(-1, 3.2);
+  ctx.lineTo(-1.6, 5.4);
+  ctx.moveTo(1, 3.2);
+  ctx.lineTo(1.4, 5.4);
   ctx.stroke();
+
+  // Tail, up and back, flicking now and then.
+  ctx.save();
+  ctx.rotate(flick * 0.05);
+  ctx.fillStyle = '#6f6152';
+  ctx.beginPath();
+  ctx.moveTo(-3, -0.5);
+  ctx.lineTo(-10.5, -3.6);
+  ctx.lineTo(-9.5, -0.4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Body: brown back, warm breast.
+  ctx.fillStyle = '#7a6a58';
+  ctx.beginPath();
+  ctx.ellipse(-1, 0, 5.4, 4.2, -0.18, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#e08b4a';
+  ctx.beginPath();
+  ctx.ellipse(0.4, 1.2, 3.8, 3, -0.1, 0, TAU);
+  ctx.fill();
+
+  // A wing, folded — or beating, if it is still coming in.
+  ctx.save();
+  ctx.rotate(flutter * 0.09);
+  ctx.fillStyle = '#6f6152';
+  ctx.beginPath();
+  ctx.ellipse(-1.6, -0.4, 3.6, 2, 0.25, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+
+  // Head, beak, eye.
+  ctx.fillStyle = '#7a6a58';
+  ctx.beginPath();
+  ctx.arc(4, -2.6, 3, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#e8c06a';
+  ctx.beginPath();
+  ctx.moveTo(6.4, -2.8);
+  ctx.lineTo(9.4, -2);
+  ctx.lineTo(6.4, -1.2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#2e2b26';
+  ctx.beginPath();
+  ctx.arc(5.2, -3.4, 0.9, 0, TAU);
+  ctx.fill();
+
   ctx.restore();
 }
 

@@ -271,7 +271,7 @@ export class Game {
     // ends, the ledger is read out once and only once.
     const wasFishing = this.fishing.active;
     this.fishing.update(dt, this.walker.x, this.walker.y);
-    this.rest.update(dt);
+    this.rest.update(dt, this.won);
     if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.landed);
     this.camera.follow(this.walker.x, this.walker.y, dt);
   }
@@ -457,7 +457,7 @@ export class Game {
        * The pots gate the birds, not the hammock. Lying down is allowed from
        * the first minute; an unfinished valley is simply a quiet one.
        */
-      this.rest.lieDown(this.won);
+      this.rest.lieDown();
       this.events.onRestStart(this.won);
       return true;
     }
