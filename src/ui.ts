@@ -27,9 +27,12 @@ export class Ui {
   private readonly action = element<HTMLButtonElement>('action');
   private readonly actionLabel = element('actionLabel');
   private readonly leave = element<HTMLButtonElement>('leave');
+  private readonly creel = element('creel');
+  private readonly creelList = element('creelList');
 
   private doneTimer: number | undefined;
   private noteTimer: number | undefined;
+  private creelTimer: number | undefined;
 
   /** What the hint said before a passing note took it over. */
   private hintText = HINT_DEFAULT;
@@ -86,6 +89,19 @@ export class Ui {
     if (showing === this.leaving) return;
     this.leaving = showing;
     this.leave.classList.toggle('hidden', !showing);
+  }
+
+  /**
+   * What the pond gave up, once the camp is down.
+   *
+   * Sits for a while and then goes, like the note does — nothing here should
+   * need dismissing. An empty run says so rather than showing an empty box.
+   */
+  showCreel(summary: string): void {
+    this.creelList.textContent = summary === '' ? 'nothing but weed, this time' : summary;
+    this.creel.classList.remove('hidden');
+    clearTimeout(this.creelTimer);
+    this.creelTimer = setTimeout(() => this.creel.classList.add('hidden'), 9000);
   }
 
   /** A line that says itself and then gives the hint back. */
@@ -147,6 +163,8 @@ export class Ui {
   reset(): void {
     clearTimeout(this.doneTimer);
     clearTimeout(this.noteTimer);
+    clearTimeout(this.creelTimer);
+    this.creel.classList.add('hidden');
     this.noteTimer = undefined;
     this.done.classList.add('hidden');
     this.hintText = HINT_DEFAULT;

@@ -164,6 +164,10 @@ export async function run(url) {
         if (game.fishing.phase === 'bite') break;
       }
       game.interact();
+      // Pin the kind: the pond holds seven things in seven colours, and a
+      // detector has to know which one it is looking for. A roach is pale
+      // silver, which nothing else on a green bank comes close to.
+      game.fishing.hooked = 'roach';
       game.particles.clear(); // the splash is nearly the fish's colour
 
       const ctx = renderer.context;
@@ -177,7 +181,7 @@ export async function run(url) {
         let n = 0;
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i], g = data[i + 1], b = data[i + 2];
-          if (r > 115 && r < 172 && g > 158 && g < 202 && b > 178 && b < 222 && b > g && g > r + 18) n++;
+          if (r > 170 && r < 226 && g > 185 && g < 236 && b > 195 && b < 246 && b > g && g > r) n++;
         }
         return n;
       };
@@ -284,6 +288,124 @@ export async function run(url) {
     await game.page.click('#leave');
     const tapped = await game.evaluate((pencil) => pencil.game.fishing.active);
     suite.ok(!tapped, 'and the button does the same, for a phone');
+
+    /*
+     * What the pond gave up, once the camp is down.
+     *
+     * The tally is kept for the whole playthrough rather than the session, so
+     * an afternoon of fishing reads as an afternoon and not as four separate
+     * sittings.
+     */
+    const creel = await game.page.$eval('#creel', (el) => ({
+      showing: !el.classList.contains('hidden'),
+      text: el.querySelector('#creelList').textContent,
+    }));
+    const expected = await game.evaluate((pencil) => pencil.game.fishing.summary);
+    suite.ok(creel.showing, 'packing up shows what you caught');
+    suite.equal(creel.text, expected, 'and it says the same as the ledger', creel.text);
+    suite.ok(creel.text.length > 0, 'which is not empty after a good run');
+
+    /*
+     * Seven things live in this pond, and each is drawn its own way.
+     *
+     * Rendered rather than merely counted: a kind with a typo in its drawing
+     * throws, and a switch that quietly falls through draws nothing at all.
+     */
+    const drawn = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const keep = { caught: game.fishing.caught, tally: { ...game.fishing.tally } };
+      const kinds = ['roach', 'crucian', 'carp', 'catfish', 'boot', 'shoe', 'treasure'];
+      const inked = [];
+      for (const kind of kinds) {
+        const f = game.fishing;
+        f.phase = 'bite';
+        f.strike();
+        f.hooked = kind;
+        while (f.catchProgress < 0.6 && f.phase === 'caught') {
+          game.advance(1 / 240, { direction: () => ({ x: 0, y: 0 }) });
+        }
+        game.particles.clear();
+        pencil.renderOnce();
+        inked.push(f.label);
+      }
+      game.fishing.caught = keep.caught;
+      game.fishing.tally = keep.tally;
+      return { inked, kinds: kinds.length };
+    });
+
+    suite.equal(drawn.inked.length, 7, 'all seven draw without complaint');
+    suite.equal(
+      new Set(drawn.inked).size,
+      7,
+      'and each one says what it is',
+      drawn.inked.join(' / '),
+    );
+
+    /*
+     * The odds. Four casts in five are a fish, and the gold thing is rare
+     * without being a rumour.
+     */
+    const odds = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const keep = { caught: game.fishing.caught, tally: { ...game.fishing.tally } };
+      const counts = {};
+      const runs = 20000;
+      for (let i = 0; i < runs; i++) {
+        game.fishing.phase = 'bite';
+        game.fishing.strike();
+        counts[game.fishing.hooked] = (counts[game.fishing.hooked] ?? 0) + 1;
+      }
+      const fish = ['roach', 'crucian', 'carp', 'catfish'].reduce((n, k) => n + (counts[k] ?? 0), 0);
+      game.fishing.caught = keep.caught;
+      game.fishing.tally = keep.tally;
+      return { counts, fishShare: fish / runs, treasure: (counts.treasure ?? 0) / runs, runs };
+    });
+
+    suite.ok(
+      odds.fishShare > 0.82 && odds.fishShare < 0.94,
+      'most of what comes up has fins',
+      `${(odds.fishShare * 100).toFixed(1)}%`,
+    );
+    suite.ok(
+      odds.treasure > 0.004 && odds.treasure < 0.02,
+      'and the gold thing is about one cast in a hundred',
+      `${(odds.treasure * 100).toFixed(2)}%`,
+    );
+    suite.equal(
+      Object.keys(odds.counts).length,
+      7,
+      'nothing in the pond is unreachable',
+      Object.keys(odds.counts).join(', '),
+    );
+
+    // The ledger, read out as a line.
+    const wording = await game.evaluate((pencil) => {
+      const f = pencil.game.fishing;
+      const keep = { ...f.tally };
+      const say = (t) => {
+        for (const k of Object.keys(f.tally)) f.tally[k] = t[k] ?? 0;
+        return f.summary;
+      };
+      const said = {
+        none: say({}),
+        one: say({ roach: 1 }),
+        several: say({ roach: 3 }),
+        mixed: say({ roach: 3, carp: 1, boot: 2 }),
+        everything: say({ roach: 2, crucian: 1, carp: 1, catfish: 1, boot: 1, shoe: 1, treasure: 1 }),
+      };
+      f.tally = keep; // this was a measurement, not an afternoon's fishing
+      return said;
+    });
+
+    suite.equal(wording.none, '', 'an empty run says nothing');
+    suite.equal(wording.one, 'a roach', 'one of a thing is named, not counted');
+    suite.equal(wording.several, '3 roach', 'several are counted');
+    suite.equal(wording.mixed, '3 roach, a carp and 2 old boots', 'and the list reads properly');
+    suite.ok(
+      wording.everything.endsWith('and something gold'),
+      'with the gold thing saved for last',
+      wording.everything,
+    );
 
     // Walk away: the camp packs itself up.
     const left = await game.evaluate((pencil) => {

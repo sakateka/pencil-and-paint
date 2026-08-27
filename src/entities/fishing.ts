@@ -17,6 +17,71 @@ import { waterArea, type Ellipse } from '../world/terrain';
 
 export type FishingPhase = 'off' | 'waiting' | 'bite' | 'caught' | 'missed';
 
+export type CatchKind =
+  | 'roach'
+  | 'crucian'
+  | 'carp'
+  | 'catfish'
+  | 'boot'
+  | 'shoe'
+  | 'treasure';
+
+interface CatchSpec {
+  readonly kind: CatchKind;
+  /** Relative likelihood; these are out of a hundred. */
+  readonly weight: number;
+  /** What the prompt says the moment it comes up. */
+  readonly said: string;
+  /** How it is listed afterwards, alone and in company. */
+  readonly one: string;
+  readonly many: string;
+}
+
+/**
+ * What is in this pond, and how often.
+ *
+ * Weighted so that the ordinary fish are ordinary: four times in five it is
+ * something with fins, and the rest of the time the pond gives up something
+ * somebody lost. The gold thing is one cast in a hundred, which is rare enough
+ * that finding one is worth telling somebody about and common enough that it
+ * happens.
+ */
+const CATCHES: readonly CatchSpec[] = [
+  { kind: 'roach', weight: 32, said: 'a roach!', one: 'a roach', many: 'roach' },
+  { kind: 'crucian', weight: 25, said: 'a crucian carp!', one: 'a crucian carp', many: 'crucian carp' },
+  { kind: 'carp', weight: 18, said: 'a carp!', one: 'a carp', many: 'carp' },
+  { kind: 'catfish', weight: 13, said: 'a catfish!', one: 'a catfish', many: 'catfish' },
+  { kind: 'boot', weight: 6, said: 'an old boot', one: 'an old boot', many: 'old boots' },
+  { kind: 'shoe', weight: 5, said: "somebody's shoe", one: 'a lost shoe', many: 'lost shoes' },
+  { kind: 'treasure', weight: 1, said: 'something gold…', one: 'something gold', many: 'gold things' },
+];
+
+const TOTAL_WEIGHT = CATCHES.reduce((sum, c) => sum + c.weight, 0);
+
+/** Draw one from the pond. */
+function pickCatch(): CatchSpec {
+  let roll = Math.random() * TOTAL_WEIGHT;
+  for (const c of CATCHES) {
+    roll -= c.weight;
+    if (roll < 0) return c;
+  }
+  return CATCHES[0];
+}
+
+const SPEC = Object.fromEntries(CATCHES.map((c) => [c.kind, c])) as Record<CatchKind, CatchSpec>;
+
+/** An empty ledger. */
+function emptyTally(): Record<CatchKind, number> {
+  return Object.fromEntries(CATCHES.map((c) => [c.kind, 0])) as Record<CatchKind, number>;
+}
+
+/** "3 roach, a carp and an old boot" — the list, read out properly. */
+function readOut(parts: string[]): string {
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
 /** How far you can wander before the camp packs itself up. */
 const LEAVE_RADIUS = 130;
 
@@ -51,8 +116,14 @@ export class Fishing {
   /** Seconds left in the current phase. */
   private timer = 0;
 
-  /** How many have been landed this playthrough. */
+  /** How many things have been landed this playthrough, of any sort. */
   caught = 0;
+
+  /** How many of each, kept for the tally shown when you pack up. */
+  tally: Record<CatchKind, number> = emptyTally();
+
+  /** What is on the line right now. */
+  hooked: CatchKind = 'roach';
 
   /** Where the camp was pitched. */
   campX = 0;
@@ -96,7 +167,7 @@ export class Fishing {
       case 'bite':
         return 'now!';
       case 'caught':
-        return this.caught === 1 ? 'a fish!' : `${this.caught} fish`;
+        return SPEC[this.hooked].said;
       case 'missed':
         return 'it got away';
       case 'off':
@@ -196,10 +267,31 @@ export class Fishing {
    */
   strike(): boolean {
     if (this.phase !== 'bite') return false;
+    this.hooked = pickCatch().kind;
+    this.tally[this.hooked]++;
     this.caught++;
     this.phase = 'caught';
     this.timer = RESULT_SECONDS;
     return true;
+  }
+
+  /**
+   * What the pond gave up, as a line to read.
+   *
+   * In the order they appear in the table, so the fish come before the rubbish
+   * and the gold thing is last — which is where you want it.
+   */
+  get summary(): string {
+    const parts = CATCHES.filter((c) => this.tally[c.kind] > 0).map((c) =>
+      this.tally[c.kind] === 1 ? c.one : `${this.tally[c.kind]} ${c.many}`,
+    );
+    return readOut(parts);
+  }
+
+  /** Everything back to nothing, for a new playthrough. */
+  forget(): void {
+    this.caught = 0;
+    this.tally = emptyTally();
   }
 }
 
@@ -293,7 +385,7 @@ export function drawCamp(
   ctx.fill();
   ctx.restore();
 
-  if (leap > 0) drawCatch(ctx, leap, walkerX + face * 4, walkerY);
+  if (leap > 0) drawCatch(ctx, leap, walkerX + face * 4, walkerY, f.hooked);
   ctx.restore();
 }
 
@@ -336,38 +428,358 @@ function drawRipples(
 }
 
 /**
- * A fish, up over the walker for a moment and gone again.
+ * Whatever came up, over the walker for a moment and gone again.
  *
  * `u` runs 0 to 1 across the leap alone, which is the fix for what this used to
  * do: it was driven from the camp's own clock, so the arc had nothing to do
  * with when anything was caught and the fish simply appeared mid-flight.
  */
-function drawCatch(ctx: CanvasRenderingContext2D, u: number, x: number, y: number): void {
+function drawCatch(
+  ctx: CanvasRenderingContext2D,
+  u: number,
+  x: number,
+  y: number,
+  kind: CatchKind,
+): void {
   const height = Math.sin(Math.min(1, u) * Math.PI) * 40;
   if (height < 0.5) return;
 
   ctx.save();
-  // Head up on the way, head down coming back — the same turn a fish makes.
   ctx.translate(x, y - 30 - height);
-  ctx.rotate(-Math.cos(Math.min(1, u) * Math.PI) * 0.75);
-  // Big enough to read as a fish at a glance, and to tell apart from the float
-  // it is hanging next to.
-  ctx.scale(1.3, 1.3);
-  ctx.fillStyle = '#8fb6c9';
+  /*
+   * A fish turns as it goes — head up on the way, head down coming back. An
+   * old boot does not: it hangs off the line and swings, which is most of what
+   * makes it read as rubbish rather than as a catch.
+   */
+  const alive = kind !== 'boot' && kind !== 'shoe' && kind !== 'treasure';
+  ctx.rotate(
+    alive
+      ? -Math.cos(Math.min(1, u) * Math.PI) * 0.75
+      : 0.35 + Math.sin(u * Math.PI * 2.4) * 0.22,
+  );
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  switch (kind) {
+    case 'roach':
+      drawRoach(ctx);
+      break;
+    case 'crucian':
+      drawCrucian(ctx);
+      break;
+    case 'carp':
+      drawCarp(ctx);
+      break;
+    case 'catfish':
+      drawCatfish(ctx);
+      break;
+    case 'boot':
+      drawBoot(ctx);
+      break;
+    case 'shoe':
+      drawShoe(ctx);
+      break;
+    case 'treasure':
+      drawTreasure(ctx, u);
+      break;
+  }
+  ctx.restore();
+}
+
+/** The body and tail every fish here is built from. */
+function fishBody(
+  ctx: CanvasRenderingContext2D,
+  length: number,
+  depth: number,
+  colour: string,
+  belly: string,
+): void {
+  ctx.fillStyle = colour;
   ctx.beginPath();
-  ctx.ellipse(0, 0, 8, 3.6, 0, 0, TAU);
+  ctx.ellipse(0, 0, length, depth, 0, 0, TAU);
   ctx.fill();
+
+  // The pale underside every fish has, clipped to the body so it reads as
+  // light on a curve rather than a stripe painted on.
+  ctx.save();
   ctx.beginPath();
-  ctx.moveTo(-7, 0);
-  ctx.lineTo(-12, -3.4);
-  ctx.lineTo(-12, 3.4);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#2e2b26';
+  ctx.ellipse(0, 0, length, depth, 0, 0, TAU);
+  ctx.clip();
+  ctx.fillStyle = belly;
   ctx.beginPath();
-  ctx.arc(4.4, -0.9, 0.8, 0, TAU);
+  ctx.ellipse(0, depth * 0.72, length * 0.92, depth * 0.55, 0, 0, TAU);
   ctx.fill();
   ctx.restore();
+}
+
+function tail(ctx: CanvasRenderingContext2D, at: number, span: number, colour: string): void {
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  ctx.moveTo(at, 0);
+  ctx.lineTo(at - span, -span * 0.8);
+  ctx.lineTo(at - span * 0.55, 0);
+  ctx.lineTo(at - span, span * 0.8);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function eye(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, ring?: string): void {
+  if (ring) {
+    ctx.fillStyle = ring;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.9, 0, TAU);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#2e2b26';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.fill();
+}
+
+/** Small, silver, red-finned. The one you catch most days. */
+function drawRoach(ctx: CanvasRenderingContext2D): void {
+  const fin = '#d9603c';
+  ctx.fillStyle = fin;
+  ctx.beginPath();
+  ctx.moveTo(-1, 3);
+  ctx.lineTo(-4, 8);
+  ctx.lineTo(3, 4);
+  ctx.closePath();
+  ctx.fill();
+  fishBody(ctx, 9, 4, '#c3cfd6', '#eef3f5');
+  tail(ctx, -9, 6, fin);
+  ctx.fillStyle = fin;
+  ctx.beginPath();
+  ctx.moveTo(-2, -3.4);
+  ctx.lineTo(1, -8);
+  ctx.lineTo(4, -3);
+  ctx.closePath();
+  ctx.fill();
+  eye(ctx, 5.4, -1, 1.1, '#e8b23c');
+}
+
+/** Deep, round and bronze — a pond fish that has done well for itself. */
+function drawCrucian(ctx: CanvasRenderingContext2D): void {
+  const fin = '#8a6a3f';
+  fishBody(ctx, 9.5, 6.4, '#b9884a', '#e6c98a');
+  tail(ctx, -9.5, 6.5, fin);
+  ctx.fillStyle = fin;
+  ctx.beginPath();
+  ctx.moveTo(-4, -5.6);
+  ctx.quadraticCurveTo(0, -11, 4, -4.6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-2, 5.4);
+  ctx.lineTo(-4, 9);
+  ctx.lineTo(2, 5);
+  ctx.closePath();
+  ctx.fill();
+  eye(ctx, 6, -1.6, 1.1, '#f0d79a');
+}
+
+/** Bigger, golden, scaled, and whiskered at the corners of its mouth. */
+function drawCarp(ctx: CanvasRenderingContext2D): void {
+  const fin = '#9c6c33';
+  fishBody(ctx, 12.5, 6.8, '#cf9646', '#f0d492');
+  tail(ctx, -12.5, 8, fin);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 12.5, 6.8, 0, 0, TAU);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(120,84,34,.4)';
+  ctx.lineWidth = 0.9;
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.arc(i * 4.4 - 1, 0, 4.6, -1.1, 1.1);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.fillStyle = fin;
+  ctx.beginPath();
+  ctx.moveTo(-6, -6);
+  ctx.quadraticCurveTo(0, -12.5, 6, -4.8);
+  ctx.closePath();
+  ctx.fill();
+
+  // The barbels, which are the whole reason a carp looks like a carp.
+  ctx.strokeStyle = '#9c6c33';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(11.5, 2);
+  ctx.quadraticCurveTo(14.5, 3.6, 13.6, 6.4);
+  ctx.moveTo(11.8, 0.6);
+  ctx.quadraticCurveTo(15.4, 1.4, 15.4, 4);
+  ctx.stroke();
+  eye(ctx, 8, -1.8, 1.2, '#f7e6b4');
+}
+
+/** Long, flat-headed, dark, and mostly whiskers. */
+function drawCatfish(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = '#5f6b58';
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.quadraticCurveTo(11, -6.2, 2, -5.4);
+  ctx.quadraticCurveTo(-8, -4.6, -14, -2.4);
+  ctx.quadraticCurveTo(-9, 0, -14, 2.4);
+  ctx.quadraticCurveTo(-8, 5.2, 2, 5.8);
+  ctx.quadraticCurveTo(11, 6.4, 14, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.quadraticCurveTo(11, -6.2, 2, -5.4);
+  ctx.quadraticCurveTo(-8, -4.6, -14, -2.4);
+  ctx.quadraticCurveTo(-9, 0, -14, 2.4);
+  ctx.quadraticCurveTo(-8, 5.2, 2, 5.8);
+  ctx.quadraticCurveTo(11, 6.4, 14, 0);
+  ctx.closePath();
+  ctx.clip();
+  ctx.fillStyle = '#a8ad86';
+  ctx.beginPath();
+  ctx.ellipse(0, 5.4, 12, 3.2, 0, 0, TAU);
+  ctx.fill();
+  // The mottling that says river bottom.
+  ctx.fillStyle = 'rgba(40,48,38,.32)';
+  for (const [mx, my, mr] of [[-6, -2, 2.6], [1, -3, 2], [6, -1, 1.6], [-2, 1, 2.2]] as const) {
+    ctx.beginPath();
+    ctx.ellipse(mx, my, mr, mr * 0.7, 0.3, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = '#5f6b58';
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(12.6, -1.6);
+  ctx.quadraticCurveTo(19, -6, 21.5, -3);
+  ctx.moveTo(12.8, 0.4);
+  ctx.quadraticCurveTo(18, 2.4, 20, 6);
+  ctx.moveTo(12.4, 1.8);
+  ctx.quadraticCurveTo(15.4, 5.4, 14.6, 8.4);
+  ctx.stroke();
+  eye(ctx, 9.6, -2.6, 1, '#c9c48e');
+}
+
+/** Weed and all. */
+function drawWeed(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+  ctx.strokeStyle = '#5f7f4a';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.quadraticCurveTo(x - 4, y + 6, x - 1, y + 11);
+  ctx.moveTo(x + 2, y);
+  ctx.quadraticCurveTo(x + 6, y + 5, x + 3, y + 9);
+  ctx.stroke();
+}
+
+/** A wellington, filled with pond. */
+function drawBoot(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = '#4a3f38';
+  ctx.beginPath();
+  ctx.moveTo(-4, -11);
+  ctx.lineTo(4.5, -11);
+  ctx.lineTo(5, 3);
+  ctx.lineTo(13, 4);
+  ctx.quadraticCurveTo(15, 5.4, 13, 8);
+  ctx.lineTo(-4.5, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#31292470';
+  ctx.beginPath();
+  ctx.ellipse(0.2, -10.6, 4.4, 1.8, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#2f2a25';
+  ctx.beginPath();
+  ctx.moveTo(-4.5, 5.4);
+  ctx.lineTo(13.4, 6.2);
+  ctx.lineTo(13, 8);
+  ctx.lineTo(-4.5, 8);
+  ctx.closePath();
+  ctx.fill();
+  drawWeed(ctx, 8, 6);
+}
+
+/** Somebody's shoe, one of a pair that is now one. */
+function drawShoe(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = '#8a6a4f';
+  ctx.beginPath();
+  ctx.moveTo(-8, -3);
+  ctx.quadraticCurveTo(-9, 3, -7, 5);
+  ctx.lineTo(10, 5.6);
+  ctx.quadraticCurveTo(13, 4, 10.5, 1);
+  ctx.quadraticCurveTo(4, -1.4, 0, -4.6);
+  ctx.quadraticCurveTo(-4, -6, -8, -3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#efe8d8';
+  ctx.beginPath();
+  ctx.moveTo(-7.6, 4.4);
+  ctx.lineTo(10.6, 5.2);
+  ctx.quadraticCurveTo(13, 4.2, 10.6, 2.2);
+  ctx.lineTo(-7.4, 1.8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#efe8d8';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-5, -2.4);
+  ctx.lineTo(-1.6, -0.6);
+  ctx.moveTo(-4.6, -0.4);
+  ctx.lineTo(-1.2, -2.6);
+  ctx.stroke();
+  drawWeed(ctx, 4, 4.4);
+}
+
+/** Something gold, and one cast in a hundred. */
+function drawTreasure(ctx: CanvasRenderingContext2D, u: number): void {
+  /*
+   * Stroked, not a disc with a hole punched in it.
+   *
+   * `destination-out` would have made a proper ring, and it would also have
+   * erased the valley behind it — the composite applies to everything already
+   * on the canvas, not just to this fish's worth of gold.
+   */
+  ctx.strokeStyle = '#c98a2c';
+  ctx.lineWidth = 3.4;
+  ctx.beginPath();
+  ctx.arc(0, 0, 4.9, 0, TAU);
+  ctx.stroke();
+  ctx.strokeStyle = '#f7e6b4';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, 4.9, -2.5, -0.7);
+  ctx.stroke();
+
+  ctx.fillStyle = '#9fd8ea';
+  ctx.beginPath();
+  ctx.moveTo(0, -10.6);
+  ctx.lineTo(2.6, -7.2);
+  ctx.lineTo(0, -4.4);
+  ctx.lineTo(-2.6, -7.2);
+  ctx.closePath();
+  ctx.fill();
+
+  // A glint that crosses it once, rather than twinkling all the way up.
+  const glint = Math.sin(Math.min(1, u * 1.6) * Math.PI);
+  if (glint > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = glint;
+    ctx.strokeStyle = '#fffdf2';
+    ctx.lineWidth = 1.4;
+    const r = 5 + glint * 7;
+    ctx.beginPath();
+    ctx.moveTo(-r, 0);
+    ctx.lineTo(r, 0);
+    ctx.moveTo(0, -r);
+    ctx.lineTo(0, r);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 /** A small ridge tent, pitched facing the fire. */

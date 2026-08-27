@@ -208,9 +208,7 @@ async function boot(): Promise<void> {
   const interact = () => void game.interact();
 
   /** Stand up and pack the camp away. Q, or the button beside the prompt. */
-  const cancel = () => {
-    if (game.cancel()) ui.note('you pack the camp away and stand up');
-  };
+  const cancel = () => void game.cancel();
 
   const ui = new Ui({
     onStart: () => start(),
@@ -239,6 +237,7 @@ async function boot(): Promise<void> {
       if (first) ui.note('she does not open her eyes — but she knows you are there');
     },
     onFishingStart: () => ui.note('the fire catches. there is nowhere else to be'),
+    onFishingEnd: (summary) => ui.showCreel(summary),
     onCatch: (total) => {
       // Up the same scale the pots used, so the valley keeps one voice.
       chime(total - 1);

@@ -153,6 +153,18 @@
     font-family:ui-monospace, Menlo, Consolas, monospace;
   }
 
+  /* What the pond gave up. Under the counter on the left: the bottom of the
+     screen already has the hint across the middle, the prompt row above that
+     and the finishing note in the corner, and this appears while you are still
+     standing at the water with all three of them showing. */
+  #creel {
+    left:14px; top:108px; max-width:min(58vw,290px);
+    transition:opacity .6s ease, visibility 0s linear 0s;
+  }
+  #creel.hidden { transition:opacity .6s ease, visibility 0s linear .6s; }
+  #creel .creel-title { font-size:17px; margin-bottom:3px; }
+  #creel .creel-list  { font-size:14px; line-height:1.5; opacity:.8; }
+
   /* the finish is a quiet note in the corner, not a wall across the screen */
   #done {
     right:14px; bottom:14px; max-width:290px; text-align:center;
@@ -222,6 +234,11 @@
     <button id="startBtn">Start walking</button>
     <div id="build" class="build"></div>
   </div>
+</div>
+
+<div id="creel" class="panel hidden">
+  <div class="creel-title">you packed up</div>
+  <div id="creelList" class="creel-list"></div>
 </div>
 
 <div id="done" class="panel hidden">

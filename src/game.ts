@@ -76,6 +76,8 @@ export interface GameEvents {
   onFishingStart(): void;
   /** A fish has been landed; `total` counts them this playthrough. */
   onCatch(total: number): void;
+  /** The camp has come down, however it came down. `summary` may be empty. */
+  onFishingEnd(summary: string): void;
 }
 
 /**
@@ -144,7 +146,7 @@ export class Game {
     this.particles.clear();
     this.field.clearTrail();
     this.fishing.packUp();
-    this.fishing.caught = 0;
+    this.fishing.forget();
     this.herd.scatter();
     this.pots = scatterPots(
       POT_COUNT,
@@ -235,7 +237,11 @@ export class Game {
     // you come running: the purr belongs to the moment you were there for.
     if (this.cat && this.cat.purr > 0 && this.distanceToCat > PURR_EARSHOT) this.cat.purr = 0;
 
+    // The camp can also come down on its own — see `Fishing.update`. However it
+    // ends, the ledger is read out once and only once.
+    const wasFishing = this.fishing.active;
     this.fishing.update(dt, this.walker.x, this.walker.y);
+    if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.summary);
     this.camera.follow(this.walker.x, this.walker.y, dt);
   }
 
@@ -341,6 +347,7 @@ export class Game {
   cancel(): boolean {
     if (!this.fishing.active) return false;
     this.fishing.packUp();
+    this.events.onFishingEnd(this.fishing.summary);
     return true;
   }
 
