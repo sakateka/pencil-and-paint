@@ -8,6 +8,7 @@ import { tickBoil } from './media/ink';
 import { yieldToBrowser } from './core/schedule';
 import { GRAIN } from './media/sprites';
 import { Renderer } from './render/renderer';
+import { buzzPurr } from './systems/haptics';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
 import { Ui } from './ui';
@@ -192,7 +193,11 @@ async function boot(): Promise<void> {
 
   /** Reach out and touch whatever is here — the E key, or the on-screen prompt. */
   const interact = () => {
-    if (game.interact()) purr();
+    if (!game.interact()) return;
+    purr();
+    // Both come from a tap or a keypress, so we are inside a user gesture and
+    // the browser will actually allow the motor to run.
+    buzzPurr();
   };
 
   const ui = new Ui({

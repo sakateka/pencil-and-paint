@@ -83,6 +83,17 @@ export async function run(url) {
 
     // The on-screen prompt is the phone's only way in, so click the real thing.
     await game.page.waitForSelector('#action:not(.hidden)', { timeout: 5000 });
+
+    // A phone should buzz for it. There is no motor in a headless browser, so
+    // what is asserted is that the call is made and what it asks for.
+    await game.page.evaluate(() => {
+      globalThis.buzzes = [];
+      navigator.vibrate = (pattern) => {
+        globalThis.buzzes.push(pattern);
+        return true;
+      };
+    });
+
     const before = await game.evaluate((pencil) => ({
       pets: pencil.game.pets,
       x: pencil.game.walker.x,
@@ -96,6 +107,19 @@ export async function run(url) {
 
     suite.equal(after.pets, before.pets + 1, 'tapping the prompt pets her too');
     suite.ok(after.purr > 0, 'and she purrs for it');
+
+    const buzzes = await game.page.evaluate(() => globalThis.buzzes);
+    suite.equal(buzzes.length, 1, 'the phone buzzes once for the stroke');
+    suite.ok(
+      Array.isArray(buzzes[0]) && buzzes[0].length > 1,
+      'as a pattern of pulses, not one flat buzz',
+      JSON.stringify(buzzes[0]),
+    );
+    suite.ok(
+      buzzes[0].reduce((a, b) => a + b, 0) < 800,
+      'and it is over quickly',
+      `${buzzes[0].reduce((a, b) => a + b, 0)}ms`,
+    );
     suite.equal(
       +Math.hypot(after.x - before.x, after.y - before.y).toFixed(1),
       0,
