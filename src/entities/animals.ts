@@ -357,9 +357,18 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
   // Smoothstepped so the purr arrives and leaves gently instead of snapping on.
   const p = clamp(a.purr / PURR_SECONDS, 0, 1);
   const joy = p * p * (3 - 2 * p);
-  const breath = 1 + Math.sin(t * (1.5 + joy * 3.6) + a.phase) * (0.035 + joy * 0.045);
-  const flick = joy * Math.sin(t * 6.2 + a.phase) * 4.5;
-  const ear = joy * Math.sin(t * 4.6 + a.phase * 2) * 1.3;
+  /*
+   * The breath is the same asleep and purring, on purpose.
+   *
+   * It is a vertical scale of the whole cat about the ground line, so deepening
+   * it does not make her chest rise — it makes her ears rise, and quickening it
+   * as well made her bounce like something on a spring. A purring cat lies
+   * heavier than a sleeping one, not lighter. So the purr is said with the
+   * things that do not lift her off the ground: the tail, the ears, the face.
+   */
+  const breath = 1 + Math.sin(t * 1.5 + a.phase) * 0.035;
+  const flick = joy * Math.sin(t * 2.3 + a.phase) * 2.6;
+  const ear = joy * Math.sin(t * 1.7 + a.phase * 2) * 0.7;
   const squint = joy * 0.85;
   const eyeR = 2 + squint;
 

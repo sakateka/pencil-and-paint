@@ -120,10 +120,94 @@ export async function run(url) {
       'and it is over quickly',
       `${buzzes[0].reduce((a, b) => a + b, 0)}ms`,
     );
+    // A phone's motor needs tens of milliseconds just to spin up: ask it for
+    // less and it answers with silence, which looks exactly like a bug.
+    suite.atLeast(
+      Math.min(...buzzes[0].filter((_, i) => i % 2 === 0)),
+      50,
+      'every pulse is long enough for a motor to actually run',
+    );
     suite.equal(
       +Math.hypot(after.x - before.x, after.y - before.y).toFixed(1),
       0,
       'tapping the prompt does not walk the player anywhere',
+    );
+
+    /*
+     * A purring cat lies heavier, not lighter.
+     *
+     * The whole cat is drawn scaled vertically about the ground line, so a
+     * deeper breath does not raise her chest — it raises her ears, and a
+     * quicker one on top of that had her bouncing like something on a spring.
+     * This measures the top of her against the sky and insists the purr does
+     * not move it any more than sleeping does.
+     */
+    const bob = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      const cat = game.herd.animals.find((a) => a.kind === 'cat');
+      game.teleport(cat.x + 34, cat.y + 34);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.particles.clear(); // the darkest heart is nearly her colour
+      const ctx = renderer.context;
+
+      /*
+       * The centroid of her coat, not its top edge.
+       *
+       * An edge lands on whichever pixel row it rounds to, so half a pixel of
+       * real movement reads as either zero or one depending on where the camera
+       * happens to sit — a first attempt at this measured a four-pixel bounce as
+       * no movement at all. Anti-aliasing means the centre of mass moves
+       * smoothly and by fractions, whatever the alignment.
+       */
+      const centreOfCat = () => {
+        pencil.renderOnce();
+        const x0 = Math.round((game.camera.toScreenX(cat.x) - 24) * renderer.scale);
+        const y0 = Math.round((game.camera.toScreenY(cat.y) - 36) * renderer.scale);
+        const w = Math.round(34 * renderer.scale);
+        const h = Math.round(34 * renderer.scale);
+        const { data } = ctx.getImageData(x0, y0, w, h);
+        let mass = 0;
+        let weighted = 0;
+        for (let row = 0; row < h; row++) {
+          for (let col = 0; col < w; col++) {
+            const i = (row * w + col) * 4;
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            // Her coat, told apart from grass and the cottage wall behind her.
+            if (r > 150 && g > 90 && g < 175 && b < 125 && r - b > 55) {
+              mass++;
+              weighted += row;
+            }
+          }
+        }
+        return mass ? weighted / mass : NaN;
+      };
+
+      const sample = (purr) => {
+        const out = [];
+        for (let i = 0; i < 40; i++) {
+          cat.clock = 10 + i * 0.05;
+          cat.purr = purr;
+          out.push(centreOfCat());
+        }
+        return out;
+      };
+
+      const asleep = sample(0);
+      const purring = sample(3);
+      const span = (a) => +(Math.max(...a) - Math.min(...a)).toFixed(2);
+      return {
+        seen: !asleep.some(Number.isNaN) && !purring.some(Number.isNaN),
+        asleep: span(asleep),
+        purring: span(purring),
+      };
+    });
+
+    suite.ok(bob.seen, 'the cat is on screen in every sampled frame');
+    suite.ok(bob.asleep < 1, 'a sleeping cat barely stirs', `${bob.asleep}px`);
+    suite.ok(
+      bob.purring <= bob.asleep + 0.4,
+      'and a purring one stirs no more than that',
+      `${bob.purring}px purring vs ${bob.asleep}px asleep`,
     );
 
     // Walk away and the offer withdraws.
