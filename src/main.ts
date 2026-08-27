@@ -21,6 +21,7 @@ import { yieldToBrowser } from './core/schedule';
 import { GRAIN } from './media/sprites';
 import { Renderer } from './render/renderer';
 import birdsongUrl from './assets/birdsong.mp3';
+import pondUrl from './assets/pond.mp3';
 import purrUrl from './assets/purr.mp3';
 import { buzzPurr, hapticStatus } from './systems/haptics';
 import { Sample } from './systems/sample';
@@ -256,8 +257,14 @@ async function boot(): Promise<void> {
       buzzPurr();
       if (first) ui.note('note.firstPet');
     },
-    onFishingStart: () => ui.note('note.fire'),
-    onFishingEnd: (landed) => ui.showCreel(landed),
+    onFishingStart: () => {
+      ui.note('note.fire');
+      pond.play();
+    },
+    onFishingEnd: (landed) => {
+      ui.showCreel(landed);
+      pond.stop();
+    },
     onRestStart: (birds) => {
       ui.note(birds ? 'note.restBirds' : 'note.restQuiet');
       if (birds) birdsong.play();
@@ -416,6 +423,7 @@ async function boot(): Promise<void> {
     if (game.purrLoudness === 0) purrSound.stop();
     purrSound.update(dt);
     birdsong.update(dt);
+    pond.update(dt);
 
     const drawStart = performance.now();
     renderer.render(game.scene);
@@ -429,7 +437,7 @@ async function boot(): Promise<void> {
         `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
         hapticStatus(),
-        `purr ${purrSound.status()} · birds ${birdsong.status()}`,
+        `purr ${purrSound.status()} · birds ${birdsong.status()} · pond ${pond.status()}`,
         ...loadReport,
       ]);
     }
@@ -502,6 +510,15 @@ const purrSound = new Sample(purrUrl, 0.55, 0.9);
 
 /** And the birds, which were never anything but a recording. */
 const birdsong = new Sample(birdsongUrl, 0.42, 1.4);
+
+/**
+ * The water, while you are sitting by it.
+ *
+ * Half a minute of real shoreline rather than a few seconds on a loop: this one
+ * plays for as long as somebody sits there, which can be a while, and a short
+ * loop announces itself the second time round.
+ */
+const pond = new Sample(pondUrl, 0.34, 2.2);
 
 /**
  * How many purrs have been played.

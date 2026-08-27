@@ -161,8 +161,16 @@ export async function run(url) {
      * entry appears when the network is done with it. Waiting on the first and
      * then reading the second is a race, and it lost about one run in three.
      */
+    /*
+     * Wait for the metadata, not just the request: `duration` is NaN until the
+     * browser has read the header, and reading it any earlier is a race that
+     * loses about one run in three.
+     */
     await game.page.waitForFunction(
-      () => performance.getEntriesByType('resource').some((e) => e.name.includes('birdsong')),
+      () =>
+        [...document.querySelectorAll('audio')].some(
+          (a) => a.src.includes('birdsong') && a.readyState >= 1,
+        ),
       null,
       { timeout: 15000 },
     );
@@ -184,15 +192,27 @@ export async function run(url) {
       if (!url) return { found: false };
       const response = await fetch(url);
       const bytes = (await response.arrayBuffer()).byteLength;
-      return { found: true, ok: response.ok, type: response.headers.get('content-type'), bytes };
+      return {
+        found: true,
+        ok: response.ok,
+        type: response.headers.get('content-type'),
+        bytes,
+        seconds: [...document.querySelectorAll('audio')].find((a) => a.src.includes('birdsong'))
+          ?.duration,
+      };
     });
 
     suite.ok(audio.found, 'lying down asks for the birdsong');
     suite.ok(audio.ok, 'and it is there', String(audio.type));
     suite.ok(
-      audio.bytes > 20000 && audio.bytes < 400000,
+      audio.bytes > 20000 && audio.bytes < 600000,
       'at a size worth downloading for a hammock',
       `${Math.round(audio.bytes / 1024)}KB`,
+    );
+    suite.atLeast(
+      Math.round(audio.seconds),
+      40,
+      'and long enough that lying there does not become a loop',
     );
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));

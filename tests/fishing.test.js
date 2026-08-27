@@ -109,6 +109,42 @@ export async function run(url) {
     suite.equal(quiet.purrs, 0, 'pitching camp and casting purrs no cats');
     suite.equal(quiet.catPurr, 0, 'and leaves the one by the cottage asleep');
 
+    /*
+     * Sitting by water should sound like it, for as long as you sit there —
+     * so this one is half a minute of real shoreline rather than a few seconds
+     * on a loop, which announces itself the second time round.
+     */
+    /*
+     * Wait for the metadata, not just the request: `duration` is NaN until the
+     * browser has read the header, and reading it any earlier is a race that
+     * loses about one run in three.
+     */
+    await game.page.waitForFunction(
+      () =>
+        [...document.querySelectorAll('audio')].some(
+          (a) => a.src.includes('pond') && a.readyState >= 1,
+        ),
+      null,
+      { timeout: 15000 },
+    );
+    const water = await game.evaluate(async () => {
+      const audio = [...document.querySelectorAll('audio')].find((a) => a.src.includes('pond'));
+      if (!audio) return { found: false };
+      const response = await fetch(audio.src);
+      return {
+        found: true,
+        ok: response.ok,
+        bytes: (await response.arrayBuffer()).byteLength,
+        seconds: audio.duration,
+        loops: audio.loop,
+      };
+    });
+
+    suite.ok(water.found, 'casting a line starts the water');
+    suite.ok(water.ok, 'and the recording is there');
+    suite.ok(water.loops, 'looping, so a long sit does not run out');
+    suite.atLeast(Math.round(water.seconds), 30, 'and it is a long piece, not a snippet');
+
     // Striking before the bite is not punished.
     const early2 = await game.evaluate((pencil) => {
       const before = pencil.game.fishing.phase;

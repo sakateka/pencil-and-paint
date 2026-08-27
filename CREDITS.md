@@ -2,11 +2,11 @@
 
 Everything in *Pencil & Paint* is drawn at runtime and there are no image files.
 Almost everything it makes a noise with is a handful of oscillators, too — the
-pot chimes still are. Two sounds are recordings.
+pot chimes still are. Three sounds are recordings.
 
 ## Sound
 
-Two recordings, both public domain, both from Wikimedia Commons.
+Three recordings, all public domain, all from Wikimedia Commons.
 
 ### `src/assets/purr.mp3`
 
@@ -28,6 +28,20 @@ a filtered noise layer for breath, and a hand-built envelope phrasing the whole
 thing into three swells. It was an interesting piece of work and it never once
 sounded like a cat.
 
+### `src/assets/pond.mp3`
+
+The water, while you are fishing.
+
+- Source: *On a pebble beach*, via
+  [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:On_a_pebble_beach.ogg)
+- Licence: **Public domain**
+
+Changes made: mixed to mono, high-passed at 120 Hz to take out the wind and the
+handling rumble, low-passed at 9 kHz, levelled with a long window so the waves
+still come and go, and looped by crossfading its own tail back over its head.
+Thirty-six seconds rather than a few, because somebody fishing sits there a
+while and a short loop announces itself the second time round.
+
 ### `src/assets/birdsong.mp3`
 
 The bird on the tree by the hammock, once the valley is finished.
@@ -39,9 +53,10 @@ The bird on the tree by the hammock, once the valley is finished.
 - Licence: **Public domain** — no conditions attached; credited here because it
   is somebody's morning and somebody's recording of it.
 
-Changes made: trimmed to a fifteen-second loop from two passages of song,
-high-passed at 250 Hz to remove the traffic rumble under the original, levelled,
-and re-encoded as mono MP3.
+Changes made: high-passed at 250 Hz to remove the traffic rumble under the
+original, levelled, looped by crossfading its tail back over its head, and
+re-encoded as mono MP3. Forty-six seconds — very nearly all of the recording —
+so that lying in the hammock does not turn into listening to a loop.
 
 Recordings rather than synthesis, in both cases for the same reason. A whistle
 is easy and a blackbird answering another blackbird across a garden is not; a low
