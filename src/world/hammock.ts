@@ -18,7 +18,7 @@ import { circleCollider, type Scenery } from './types';
  */
 
 /** How far apart the trees stand. */
-export const HAMMOCK_SPAN = 168;
+export const HAMMOCK_SPAN = 140;
 
 /** How high the ropes are tied. */
 const TIE_HEIGHT = 52;

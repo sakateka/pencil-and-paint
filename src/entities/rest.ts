@@ -152,9 +152,17 @@ function drawSleeper(
   rest: Rest,
 ): void {
   const fade = clamp((rest.settled - 0.05) / 0.4, 0, 1);
-  const head = hammockPoint(x, y, 0.26, sag);
-  const hips = hammockPoint(x, y, 0.54, sag);
-  const feet = hammockPoint(x, y, 0.84, sag);
+  /*
+   * Where the body lies along the cloth, as fractions across it.
+   *
+   * These were nearly twice as far apart and the sleeper came out about two
+   * metres long — a stick man stretched from one tree to the other. A person is
+   * roughly as long lying down as they are tall standing up, and the walker is
+   * some fifty units tall, which over this span is a bit over a quarter of it.
+   */
+  const head = hammockPoint(x, y, 0.35, sag);
+  const hips = hammockPoint(x, y, 0.5, sag);
+  const feet = hammockPoint(x, y, 0.63, sag);
   // Breathing, slow and shallow. Anything more and they look uncomfortable.
   const breath = Math.sin(rest.clock * 0.9) * 0.7;
 
@@ -163,48 +171,48 @@ function drawSleeper(
 
   // Legs, bent over the far edge the way they are when a hammock holds you.
   ctx.strokeStyle = '#3a5a86';
-  ctx.lineWidth = 7;
+  ctx.lineWidth = 6.4;
   ctx.beginPath();
   ctx.moveTo(hips.x, hips.y + 2);
-  ctx.quadraticCurveTo(feet.x - 12, feet.y - 4, feet.x, feet.y + 1);
+  ctx.quadraticCurveTo(feet.x - 6, feet.y - 3, feet.x, feet.y);
   ctx.stroke();
   ctx.strokeStyle = '#4a3b30';
-  ctx.lineWidth = 5;
+  ctx.lineWidth = 4.6;
   ctx.beginPath();
-  ctx.moveTo(feet.x - 2, feet.y + 1);
-  ctx.lineTo(feet.x + 7, feet.y - 1);
+  ctx.moveTo(feet.x - 1, feet.y);
+  ctx.lineTo(feet.x + 5, feet.y - 1.5);
   ctx.stroke();
 
   // Body, along the sag.
   ctx.strokeStyle = '#d9463c';
-  ctx.lineWidth = 13;
+  ctx.lineWidth = 11.5;
   ctx.beginPath();
-  ctx.moveTo(head.x + 5, head.y - 1 + breath);
-  ctx.quadraticCurveTo((head.x + hips.x) / 2, head.y + 4 + breath, hips.x, hips.y + 1);
+  ctx.moveTo(head.x + 4, head.y + breath);
+  ctx.quadraticCurveTo((head.x + hips.x) / 2, head.y + 3.5 + breath, hips.x, hips.y + 1);
   ctx.stroke();
 
   // An arm folded up behind the head.
   ctx.strokeStyle = '#e8a06a';
-  ctx.lineWidth = 4.6;
+  ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.moveTo(head.x + 9, head.y + 2 + breath);
-  ctx.quadraticCurveTo(head.x + 4, head.y - 12 + breath, head.x - 5, head.y - 8 + breath);
+  ctx.moveTo(head.x + 7, head.y + 2 + breath);
+  ctx.quadraticCurveTo(head.x + 3, head.y - 10 + breath, head.x - 4, head.y - 7 + breath);
   ctx.stroke();
 
   // Head, tipped back into the cloth.
   ctx.fillStyle = '#e8a06a';
   ctx.beginPath();
-  ctx.arc(head.x - 5, head.y - 3 + breath, 7.4, 0, TAU);
+  ctx.arc(head.x - 4, head.y - 2.5 + breath, 6.6, 0, TAU);
   ctx.fill();
   ctx.fillStyle = '#4a3b30';
   ctx.beginPath();
-  ctx.arc(head.x - 7.5, head.y - 6.5 + breath, 7, Math.PI * 0.75, Math.PI * 2.05);
+  ctx.arc(head.x - 6, head.y - 5.5 + breath, 6.3, Math.PI * 0.75, Math.PI * 2.05);
   ctx.fill();
   // Eyes shut, because that is the whole point of lying down.
   ctx.strokeStyle = '#4a3b30';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.arc(head.x - 2.5, head.y - 2 + breath, 1.9, 0.2, Math.PI - 0.2);
+  ctx.arc(head.x - 1.8, head.y - 1.6 + breath, 1.7, 0.2, Math.PI - 0.2);
   ctx.stroke();
 
   ctx.restore();
