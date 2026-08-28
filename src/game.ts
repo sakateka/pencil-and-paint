@@ -7,6 +7,7 @@ import { Herd } from './entities/herd';
 import { Owl } from './entities/owl';
 import { Vigil, VIGIL_SECONDS } from './entities/vigil';
 import { Lion } from './entities/lion';
+import { Perch } from './entities/perch';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
 import { scatterPots, type Pot } from './entities/pots';
@@ -16,7 +17,7 @@ import type { Scene } from './render/renderer';
 import { isSpotClear, resolveCollisions, type WorldEdges } from './systems/collision';
 import type { Input } from './systems/input';
 import { POT_HUES } from './world/palette';
-import { EASEL, HAMMOCK, SPAWN, TREEHOUSE } from './world/layout';
+import { BENCH, EASEL, HAMMOCK, HAYSTACK, SPAWN, TREEHOUSE } from './world/layout';
 import type { World } from './world/world';
 
 export const POT_COUNT = 14;
@@ -83,6 +84,9 @@ const HAMMOCK_REACH = 78;
 /** And to the easel to pick up the brush. */
 const EASEL_REACH = 56;
 
+/** How near a bench or a haystack you have to be to get on it. */
+const PERCH_REACH = 52;
+
 /** And to the foot of the treehouse to get a hand on the ladder. */
 const TREEHOUSE_REACH = 58;
 
@@ -96,9 +100,16 @@ export interface GameEvents {
   onPet(first: boolean): void;
   /** Camp has been pitched at the water's edge. */
   onFishingStart(): void;
-  /** Sat down on the stump in the wood, and got up again. */
-  onSitStart(): void;
-  onSitEnd(): void;
+  /**
+   * Sat down somewhere, and got up again.
+   *
+   * The line comes with it rather than being chosen by the caller: the stump is
+   * a place where something is coming and says so, and the bench and the
+   * haystack are places where nothing is, which is their whole point. One note
+   * for all three would sell each of them as the others.
+   */
+  onSitStart(note: string): void;
+  onSitEnd(note: string): void;
   /** Two minutes of sitting still, rewarded. */
   onElephant(): void;
   /** A fish has been landed; `total` counts them this playthrough. */
@@ -136,6 +147,15 @@ export class Game {
 
   /** Lying in the far corner, doing nothing whatsoever. */
   readonly lion: Lion;
+
+  /**
+   * Places to stop that want nothing from you: the bench and the haystack.
+   *
+   * Unlike the stump, nothing is waiting at the end of either. That is the
+   * point of them — the valley should have somewhere to sit that is not also a
+   * puzzle.
+   */
+  readonly perches: readonly Perch[];
   readonly fishing = new Fishing();
   readonly rest = new Rest(HAMMOCK.x, HAMMOCK.y);
   readonly treehouse = new Treehouse();
@@ -187,6 +207,16 @@ export class Game {
     this.herd = new Herd(world.animalSpawns);
     this.owl = new Owl(world.owlPerch.x, world.owlPerch.y, world.owlPerch.scale);
     this.lion = new Lion(world.lion.x, world.lion.y);
+    this.perches = [
+      new Perch(BENCH.x, BENCH.y, 'bench', 'prompt.sitBench', 1),
+      /*
+       * Up on the stack itself, on its near-left slope — not on the grass
+       * beside it. Facing away from the hay, so that the recline tips them
+       * backwards *into* it; the other way round they lay flat on the ground,
+       * leaning away from the only thing holding them up.
+       */
+      new Perch(HAYSTACK.x - 20, HAYSTACK.y - 12, 'hay', 'prompt.lieHay', -1),
+    ];
     this.vigil = new Vigil(
       world.vigil.x,
       world.vigil.y,
@@ -222,6 +252,7 @@ export class Game {
     this.rest.getUp();
     this.treehouse.climbOut();
     this.vigil.reset();
+    for (const perch of this.perches) perch.getUp();
     this.herd.scatter();
     this.pots = scatterPots(
       POT_COUNT,
@@ -319,6 +350,7 @@ export class Game {
     this.rest.update(dt, this.won);
     this.owl.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.owl.x, this.owl.y, 10));
     this.lion.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.lion.x, this.lion.y, 14));
+    for (const perch of this.perches) perch.update(dt, this.isAwakeAt(perch.x, perch.y, 12));
     this.vigil.lit = this.isAwakeAt(this.vigil.elephantX, this.vigil.elephantY, 12);
     if (this.vigil.update(dt)) this.events.onElephant();
     this.treehouse.update(dt);
@@ -365,7 +397,8 @@ export class Game {
       w.vy = 0;
       return;
     }
-    const dir = this.fishing.active || this.rest.resting || this.vigil.sitting ? ZERO : pushed;
+    const stopped = this.fishing.active || this.rest.resting || this.vigil.sitting || this.perched;
+    const dir = stopped ? ZERO : pushed;
     const pushing = dir.x !== 0 || dir.y !== 0;
 
     const responsiveness = Math.min(1, (pushing ? ACCELERATION : FRICTION) * dt);
@@ -453,7 +486,7 @@ export class Game {
    */
   get leaving(): string | null {
     if (this.treehouse.inside) return 'prompt.climbDown';
-    if (this.vigil.sitting) return 'prompt.standUp';
+    if (this.vigil.sitting || this.perched) return 'prompt.standUp';
     if (this.rest.resting) return 'prompt.getUp';
     if (this.fishing.active) return 'prompt.packUp';
     return null;
@@ -470,6 +503,7 @@ export class Game {
      * nothing — the way out is the button beside it, which is enough.
      */
     if (this.rest.resting || this.treehouse.inside || this.vigil.sitting) return null;
+    if (this.perched) return null;
     if (this.fishing.active) return { kind: 'fish', say: this.fishing.labelKey };
     if (this.atTheWater()) return { kind: 'fish', say: this.fishing.labelKey };
     // The easel first: it stands close enough to the hammock that both are in
@@ -478,6 +512,8 @@ export class Game {
     if (this.atTheTreehouse()) return { kind: 'climb', say: 'prompt.climb' };
     if (this.atTheHammock()) return { kind: 'rest', say: 'prompt.rest' };
     if (this.atTheStump()) return { kind: 'sit', say: 'prompt.sit' };
+    const perch = this.perchInReach();
+    if (perch) return { kind: 'sit', say: perch.say };
     return null;
   }
 
@@ -489,9 +525,15 @@ export class Game {
    * convenience.
    */
   cancel(): boolean {
+    const perch = this.perched;
+    if (perch) {
+      perch.getUp();
+      this.events.onSitEnd(perch.parting);
+      return true;
+    }
     if (this.vigil.sitting) {
       this.vigil.getUp();
-      this.events.onSitEnd();
+      this.events.onSitEnd('note.stoodUp');
       return true;
     }
     if (this.treehouse.inside) {
@@ -513,6 +555,21 @@ export class Game {
   /** Is the walker close enough to the hammock to lie down in it? */
   private atTheHammock(): boolean {
     return Math.hypot(this.walker.x - HAMMOCK.x, this.walker.y - HAMMOCK.y) < HAMMOCK_REACH;
+  }
+
+  /** Whichever of the places to stop is within reach, if any. */
+  private perchInReach(): Perch | null {
+    for (const perch of this.perches) {
+      if (Math.hypot(this.walker.x - perch.x, this.walker.y - perch.y) < PERCH_REACH) {
+        return perch;
+      }
+    }
+    return null;
+  }
+
+  /** The one being used, if any. */
+  private get perched(): Perch | null {
+    return this.perches.find((p) => p.resting) ?? null;
   }
 
   /**
@@ -586,7 +643,18 @@ export class Game {
     if (this.atTheStump()) {
       if (this.vigil.sitting) return false;
       this.vigil.sitDown();
-      this.events.onSitStart();
+      this.events.onSitStart('note.satDown');
+      return true;
+    }
+
+    const perch = this.perchInReach();
+    if (perch) {
+      // Already sitting on one of them, so there is nothing to do here — you
+      // cannot reach a second without standing up first, but the rules should
+      // say so rather than relying on that.
+      if (this.perched) return false;
+      perch.sitDown();
+      this.events.onSitStart(perch.note);
       return true;
     }
 
@@ -698,6 +766,7 @@ export class Game {
       owl: this.owl,
       vigil: this.vigil,
       lion: this.lion,
+      perches: this.perches,
       easel: EASEL,
       treehouse: this.treehouse,
       easelPicture: this.easelPicture,

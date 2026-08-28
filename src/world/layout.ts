@@ -46,6 +46,10 @@ export const EASEL = { x: 1902, y: 1782 } as const;
  */
 export const TREEHOUSE = { x: 2180, y: 1712 } as const;
 
+/** The bench in the middle of the valley, and the haystack up at the farm. */
+export const BENCH = { x: 1425, y: 1255 } as const;
+export const HAYSTACK = { x: 2585, y: 590 } as const;
+
 export interface AnimalSpawn {
   kind: AnimalKind;
   x: number;
@@ -313,13 +317,13 @@ export function buildLayout(): Layout {
   // rails actually meet.
   enclose(scenery, sites, PADDOCK, { gate: { side: 'top', from: 2120, to: 2240 } });
 
-  scenery.push(makeHaystack(2585, 590, 1));
+  scenery.push(makeHaystack(HAYSTACK.x, HAYSTACK.y, 1));
   scenery.push(makeHayBale(1935, 610, 1));
   scenery.push(makeHayBale(1988, 632, 0.9));
   scenery.push(makeHayBale(2612, 1075, 1.05));
   scenery.push(makeTrough(2090, 985));
   scenery.push(makeWell(1655, 1205));
-  scenery.push(makeBench(1425, 1255));
+  scenery.push(makeBench(BENCH.x, BENCH.y));
 
   /*
    * The hammock, in the quiet south-east where nothing else is.

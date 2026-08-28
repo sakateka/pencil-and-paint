@@ -204,14 +204,17 @@ export function drawStump(ctx: CanvasRenderingContext2D, v: Vigil, medium: Mediu
 }
 
 /**
- * The walker, sat on the stump with their knees up.
+ * The walker, sat down with their knees up.
+ *
+ * Exported, because the bench wants exactly the same figure — one drawing of
+ * this person sitting, used wherever they sit.
  *
  * Drawn here rather than by `drawWalker`, the same way the sleeper in the
  * hammock is: the standing figure would otherwise be planted through the middle
  * of the stump, and a person sitting is not a person standing with a shorter
  * gap between their feet.
  */
-function drawSitter(
+export function drawSitter(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,

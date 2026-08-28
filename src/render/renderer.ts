@@ -5,6 +5,7 @@ import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities
 import { drawOwl, type Owl } from '../entities/owl';
 import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
 import { drawLion, type Lion } from '../entities/lion';
+import { drawPerch, type Perch } from '../entities/perch';
 import { drawSky } from '../world/sky';
 import { withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
@@ -39,6 +40,7 @@ export interface Scene {
   readonly owl: Owl;
   readonly vigil: Vigil;
   readonly lion: Lion;
+  readonly perches: readonly Perch[];
   readonly treehouse: Treehouse;
   /** The last thing drawn at the easel, if there is one. */
   readonly easelPicture: HTMLImageElement | undefined;
@@ -199,7 +201,12 @@ export class Renderer {
        * on `resting` rather than on the cloth still settling, or they stay
        * invisible for the second the hammock takes to lift.
        */
-      if (!scene.rest.resting && !scene.treehouse.inside && !scene.vigil.sitting) {
+      if (
+        !scene.rest.resting &&
+        !scene.treehouse.inside &&
+        !scene.vigil.sitting &&
+        !scene.perches.some((p) => p.resting)
+      ) {
         drawWalker(ctx, walker, scene.elapsed);
       }
       scene.particles.draw(ctx, walker.x, walker.y, scene.litRadius, flooded);
@@ -225,6 +232,20 @@ export class Renderer {
       withBoil(scene.owl.awake, () =>
         drawOwl(ctx, scene.owl, scene.owl.awake ? 'color' : 'sketch'),
       );
+      /*
+       * And whoever is sitting on the bench or lying in the hay, for a third
+       * time the same reason: the haystack is tall scenery, laid back over
+       * anything standing north of it, and lying *on* the hay means being north
+       * of its base. Drawn with the rest of the live things, somebody who
+       * walked up from behind and lay down was painted over with straw and
+       * disappeared outright.
+       *
+       * In colour, always. This is the walker — the standing figure is dropped
+       * while they are down — and the walker is never in graphite.
+       */
+      for (const perch of scene.perches) {
+        if (perch.resting) drawPerch(ctx, perch, 'color');
+      }
       const house = scene.treehouse;
       if (house.inside) {
         drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving);
