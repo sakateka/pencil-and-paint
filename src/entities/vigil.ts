@@ -6,20 +6,35 @@ import { groundShadow } from '../media/pencil';
 /**
  * The stump in the northern wood, and what turns up if you wait by it.
  *
- * Two minutes is a long time to ask anyone to do nothing, and that is the whole
- * point: nothing else here is on a clock, and the one thing that is asks for
- * patience rather than for walking further. Stand up and it goes away again.
+ * Sitting still is a long time to ask anyone to do nothing, and that is the
+ * whole point: nothing else here is on a clock, and the one thing that is asks
+ * for patience rather than for walking further. Stand up and it goes away
+ * again.
  *
  * The elephant is from one of the paintings — dark brown, blocky, a striped
  * trunk, green eyes and red toenails — and there is nothing in this valley to
  * explain it. There does not need to be.
  */
 
-/** How long you have to sit before anything happens. */
-export const VIGIL_SECONDS = 120;
+/**
+ * How long you have to sit before anything happens.
+ *
+ * Two minutes to begin with, which is what the note asked for and is far too
+ * long — long enough that most people would stand up before finding out there
+ * was anything to wait for. Ten seconds is still plainly a wait rather than a
+ * button press, and it is short enough that somebody idly sitting down will
+ * actually see the end of it.
+ */
+export const VIGIL_SECONDS = 10;
 
-/** Seconds it takes to arrive, and the quicker seconds it takes to melt away. */
-const ARRIVING = 6;
+/**
+ * Seconds it takes to arrive, and the quicker seconds it takes to melt away.
+ *
+ * Shortened along with the wait: six seconds of fading was fine against two
+ * minutes and is most of a ten-second wait, which made the whole thing feel
+ * like it was still loading.
+ */
+const ARRIVING = 3.5;
 const LEAVING = 2;
 
 /** How much bigger than life it is. Nothing about it is to scale anyway. */
@@ -320,6 +335,64 @@ function drawSitter(
 }
 
 /**
+ * The puff it arrives in and goes away in.
+ *
+ * Lobed the same way the clouds along the top of the map are, so that whatever
+ * is happening up there looks like it belongs to the sky rather than to a menu.
+ */
+function drawMirageCloud(
+  ctx: CanvasRenderingContext2D,
+  v: Vigil,
+  amount: number,
+  clock: number,
+  medium: Medium,
+): void {
+  const lobes = [
+    [-26, -30, 15],
+    [-6, -36, 19],
+    [14, -31, 17],
+    [26, -22, 12],
+    [-18, -18, 15],
+    [4, -16, 17],
+    [20, -13, 12],
+  ] as const;
+
+  ctx.save();
+  ctx.translate(v.elephantX, v.elephantY);
+  ctx.scale(ELEPHANT_SCALE, ELEPHANT_SCALE);
+  ctx.translate(0, -(8 + Math.sin(clock * 0.62) * 4.6));
+  // Swelling as it forms, so it does not simply switch on at full size.
+  const grow = 0.72 + amount * 0.28;
+
+  if (medium === 'color') {
+    ctx.globalAlpha = amount * 0.8;
+    ctx.fillStyle = '#ffffff';
+    for (const [lx, ly, r] of lobes) {
+      ctx.beginPath();
+      ctx.ellipse(
+        lx * grow + Math.sin(clock * 1.3 + lx) * 1.8,
+        ly * grow,
+        r * grow,
+        r * 0.72 * grow,
+        0,
+        0,
+        TAU,
+      );
+      ctx.fill();
+    }
+  } else {
+    ctx.globalAlpha = amount;
+    ink(ctx, 0.3, 1);
+    for (const [lx, ly, r] of lobes) {
+      ctx.beginPath();
+      ctx.ellipse(lx * grow, ly * grow, r * grow, r * 0.72 * grow, 0, 0, TAU);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/**
  * The elephant, from the painting.
  *
  * Side on and facing left, dark brown and blocky, with the ears set high on the
@@ -335,14 +408,21 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
   const ear = Math.sin(clock * 0.8) * 0.09;
   const swish = Math.sin(clock * 0.7) * 2.4;
 
-  ctx.save();
   /*
-   * Fading in where it stands, rather than walking out of the trees.
+   * It arrives as a cloud and then condenses out of it.
    *
-   * It was going to come in from the north, and that was worse: a thing that
-   * walks up to you is an event, and this should feel like something that was
-   * there all along and which you only now happen to be still enough to see.
+   * A shape that simply fades up out of nothing is a shape being switched on.
+   * This gathers first — a blur of white in the air where nothing was — and the
+   * animal resolves inside it as the blur burns off, which is how something
+   * seen across hot air actually turns up. Run backwards it comes apart into
+   * cloud again when you stand up, which is a better exit than a dimmer.
    */
+  const cloud = Math.min(here / 0.22, 1) * clamp((0.92 - here) / 0.46, 0, 1);
+  const solid = clamp((here - 0.3) / 0.7, 0, 1);
+  if (cloud > 0) drawMirageCloud(ctx, v, cloud, clock, medium);
+  if (solid <= 0) return;
+
+  ctx.save();
   /*
    * Never quite solid.
    *
@@ -355,8 +435,25 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * against the body and show its seams the whole time rather than only while
    * it arrived.
    */
-  ctx.globalAlpha = here * 0.8;
+  ctx.globalAlpha = solid * 0.8;
   ctx.translate(v.elephantX, v.elephantY);
+  /*
+   * Wavering, hardest while it is still arriving.
+   *
+   * A shear that oscillates rather than a wobble of the whole shape: leaning it
+   * a little one way and then the other is what moving air does to something
+   * seen through it. It never settles completely — a tenth of it stays, so the
+   * animal in the sky is never quite steady.
+   */
+  const heat = 0.1 + (1 - solid) * 0.9;
+  ctx.transform(
+    1,
+    0,
+    Math.sin(clock * 2.3) * 0.07 * heat,
+    1 - Math.sin(clock * 1.7) * 0.03 * heat,
+    0,
+    0,
+  );
   ctx.scale(ELEPHANT_SCALE, ELEPHANT_SCALE);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';

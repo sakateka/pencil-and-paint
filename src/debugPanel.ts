@@ -86,7 +86,7 @@ export function installDebugPanel(game: Game, extras: {
     },
     {
       label: 'Summon the elephant',
-      hint: 'sits you on the stump and skips the two minutes',
+      hint: 'sits you on the stump and skips the wait',
       run: () => {
         game.teleport(game.vigil.x, game.vigil.y + 30);
         game.summonElephant();

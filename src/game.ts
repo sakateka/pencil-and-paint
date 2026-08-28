@@ -625,7 +625,7 @@ export class Game {
   }
 
   /**
-   * Debug: skip the two minutes of sitting.
+   * Debug: skip the wait on the stump.
    *
    * Waiting it out is the whole point of the stump, and also the whole problem
    * with testing anything downstream of it by hand.

@@ -4,13 +4,12 @@ import { openGame } from './harness.js';
 /**
  * The stump in the northern wood, and the elephant.
  *
- * Two minutes of sitting still is the only thing in this valley that costs
- * patience rather than walking, so the assertions are about the waiting: that
- * it is genuinely long, that standing up loses it, and that nothing turns up a
- * moment early.
+ * Sitting still is the only thing in this valley that costs patience rather
+ * than walking, so the assertions are about the waiting: that it is a real
+ * wait, that standing up loses it, and that nothing turns up a moment early.
  *
- * The clock is stepped rather than waited out — two minutes per run, five times
- * over, would be most of the suite's runtime spent watching a stump.
+ * The clock is stepped rather than waited out, so the suite does not spend its
+ * runtime watching a stump.
  */
 export async function run(url) {
   const suite = new Suite('vigil');
@@ -66,7 +65,7 @@ export async function run(url) {
       const sat = game.interact();
       const from = { x: game.walker.x, y: game.walker.y };
       // Push hard the whole time: sitting still means sitting still.
-      for (let i = 0; i < 60 * 110; i++) {
+      for (let i = 0; i < 60 * 8; i++) {
         game.advance(1 / 60, { direction: () => ({ x: 1, y: 1 }) });
       }
       return {
@@ -84,7 +83,7 @@ export async function run(url) {
     suite.ok(waiting.sat, 'you can sit down on it');
     suite.ok(waiting.sitting, 'and you are sitting');
     suite.equal(waiting.moved, 0, 'and cannot walk off while you are');
-    suite.ok(waiting.clock >= 108, 'nearly two minutes in', `${waiting.clock}s`);
+    suite.ok(waiting.clock >= 7.5, 'most of the way through the wait', `${waiting.clock}s`);
     suite.equal(waiting.elephant, 0, 'and there is still nothing there');
     suite.ok(!waiting.seen, 'nothing has been seen');
     suite.equal(waiting.prompt, null, 'nothing on offer while you sit');
@@ -93,7 +92,7 @@ export async function run(url) {
     // The rest of the wait.
     const arrived = await game.evaluate((pencil) => {
       const { game } = pencil;
-      for (let i = 0; i < 60 * 20; i++) {
+      for (let i = 0; i < 60 * 8; i++) {
         game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       }
       pencil.renderOnce(); // something enormous must draw cleanly
