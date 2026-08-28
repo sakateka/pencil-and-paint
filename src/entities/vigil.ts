@@ -1,6 +1,6 @@
 import { clamp, TAU } from '../core/math';
 import { ink, inkArc, inkLine, inkLines, jitter } from '../media/ink';
-import { PENCIL, type Medium } from '../media/medium';
+import type { Medium } from '../media/medium';
 import { groundShadow } from '../media/pencil';
 
 /**
@@ -333,7 +333,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
   // An ear, and the tail, and nothing else. It stands there.
   const clock = v.beastClock;
   const ear = Math.sin(clock * 0.8) * 0.09;
-  const tail = Math.sin(clock * 0.7) * 3.2;
+  const swish = Math.sin(clock * 0.7) * 2.4;
 
   ctx.save();
   /*
@@ -360,142 +360,178 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    */
   ctx.translate(0, -(7 + Math.sin(clock * 0.45) * 2.6));
 
+  /*
+   * The shape, measured off the painting rather than remembered.
+   *
+   * What makes it that elephant and not a generic one: the body is a deep slab
+   * with a domed back, not an oval; the head and the trunk are a single tall
+   * mass hanging off the front of it, and the trunk is nearly as wide as the
+   * head; and the tail comes off the rump, outside the body, ending in a frayed
+   * brush. The first version had a tail — it was simply drawn inside the body
+   * outline, so nobody ever saw it.
+   */
+  const body = () => {
+    ctx.beginPath();
+    ctx.moveTo(-27, -15);
+    ctx.quadraticCurveTo(-29, -33, -16, -37);
+    ctx.quadraticCurveTo(2, -41, 18, -37);
+    ctx.quadraticCurveTo(27, -33, 26, -15);
+    ctx.quadraticCurveTo(0, -11, -27, -15);
+    ctx.closePath();
+  };
+
+  const headAndTrunk = () => {
+    ctx.beginPath();
+    // Head, tall and narrow, tucked against the front of the body.
+    ctx.moveTo(-22, -24);
+    ctx.quadraticCurveTo(-40, -26, -38, -38);
+    ctx.quadraticCurveTo(-36, -47, -27, -46);
+    ctx.quadraticCurveTo(-20, -45, -20, -34);
+    ctx.closePath();
+    ctx.moveTo(-36, -30);
+    // Trunk: wide at the top, barely tapering, hanging almost to the ground.
+    ctx.quadraticCurveTo(-37, -16, -34.5, -4.5);
+    ctx.quadraticCurveTo(-31.5, -2.5, -28.5, -5);
+    ctx.quadraticCurveTo(-28, -18, -26.5, -29);
+    ctx.closePath();
+  };
+
+  /*
+   * Four legs, and the back pair stop short of the front pair's feet.
+   *
+   * Straight off the painting, where the hind feet sit a good way higher up the
+   * page than the fore feet. It is not perspective and it is not a mistake —
+   * it is what makes the animal look as though it is barely touching the
+   * ground, which is the whole character of the drawing.
+   *
+   * Each entry is the leg's centre, its width, and how far down its foot goes.
+   */
+  const legs = [
+    [-20, 9, -1.5],
+    [-12, 8, -2.4],
+    [14, 8, -7],
+    [22, 9, -6.2],
+  ] as const;
+
+  /** Off the rump, down and out, ending in a splayed brush. */
+  const tail = (wide: number) => {
+    ctx.lineWidth = wide;
+    ctx.beginPath();
+    ctx.moveTo(25, -32);
+    ctx.quadraticCurveTo(31, -26, 30.5 + swish, -16);
+    ctx.stroke();
+    ctx.lineWidth = wide * 0.7;
+    for (const a of [-0.5, 0, 0.5]) {
+      ctx.beginPath();
+      ctx.moveTo(30.5 + swish, -16);
+      ctx.lineTo(30.5 + swish + Math.sin(a) * 4, -16 + Math.cos(a) * 6);
+      ctx.stroke();
+    }
+  };
+
   if (medium === 'color') {
-    // Hide, ears and trunk, all sampled from the painting.
+    // Hide, ears, trunk and eyes, all sampled from the painting.
     const hide = '#4e3f28';
+
+    // Tail first only in the sense that it must not be buried: it hangs clear
+    // of the rump, so it is drawn after the body below.
+    ctx.fillStyle = '#ec6052';
     /*
-     * Toenails first, so the feet are drawn over their tops.
+     * Toenails: three to a foot, sat at the bottom of each leg.
      *
      * Sampled off the painting rather than guessed: the paint is a coral,
      * `srgb(236,96,82)`, which reads far pinker than the flat red I first put
      * here and rather redder than the pink I replaced it with.
      */
-    ctx.fillStyle = '#ec6052';
-    for (const fx of [-16, -6, 14, 24]) {
-      ctx.beginPath();
-      ctx.ellipse(fx, -1, 5.2, 3, 0, 0, TAU);
-      ctx.fill();
+    for (const [fx, w, foot] of legs) {
+      for (const n of [-1, 0, 1]) {
+        ctx.beginPath();
+        // Big and round. Small ones read as a serrated red fringe along the
+        // bottom of each leg rather than as toes.
+        ctx.ellipse(fx + n * (w / 2.7), foot + 0.1, w / 5.2, 3.1, 0, 0, TAU);
+        ctx.fill();
+      }
     }
-    ctx.fillStyle = hide;
-    // Legs: four blunt columns.
-    for (const [fx, w] of [
-      [-16, 9],
-      [-6, 8],
-      [14, 8],
-      [24, 9],
-    ] as const) {
-      ctx.beginPath();
-      ctx.rect(fx - w / 2, -26, w, 23);
-      ctx.fill();
-    }
-    // Body: one heavy slab, higher at the shoulder.
-    ctx.beginPath();
-    ctx.moveTo(-22, -24);
-    ctx.quadraticCurveTo(-24, -46, -8, -49);
-    ctx.quadraticCurveTo(14, -52, 28, -45);
-    ctx.quadraticCurveTo(33, -38, 30, -23);
-    ctx.quadraticCurveTo(4, -18, -22, -24);
-    ctx.closePath();
-    ctx.fill();
-    // Tail.
-    ctx.strokeStyle = hide;
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    ctx.moveTo(29, -42);
-    ctx.quadraticCurveTo(34, -34, 32 + tail, -25);
-    ctx.stroke();
 
-    // Head and trunk, at the left end.
     ctx.fillStyle = hide;
-    ctx.beginPath();
-    ctx.ellipse(-24, -40, 12, 13, 0.12, 0, TAU);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(-30, -32);
-    ctx.quadraticCurveTo(-38, -20, -35, -4);
-    ctx.quadraticCurveTo(-31.5, -2, -29.5, -5);
-    ctx.quadraticCurveTo(-31, -20, -24, -30);
-    ctx.closePath();
-    ctx.fill();
-    // The stripes across the trunk.
-    ctx.strokeStyle = '#1a1410';
-    ctx.lineWidth = 1.6;
-    for (const i of [0, 1, 2, 3, 4]) {
-      const ty = -25 + i * 4.4;
+    for (const [fx, w, foot] of legs) {
       ctx.beginPath();
-      ctx.moveTo(-35.4 + i * 0.5, ty);
-      ctx.lineTo(-31 + i * 0.35, ty + 0.8);
-      ctx.stroke();
+      ctx.rect(fx - w / 2, -18, w, 18 + foot);
+      ctx.fill();
     }
-    // Ears, set high and round.
-    ctx.save();
-    ctx.translate(-22, -49);
-    ctx.rotate(ear);
-    ctx.fillStyle = '#3d3120';
+
+    // The far ear, behind the head.
     ctx.beginPath();
-    ctx.ellipse(-4, -2, 8, 9, -0.25, 0, TAU);
+    ctx.ellipse(-33, -43, 7.4, 8.4, -0.2, 0, TAU);
     ctx.fill();
-    ctx.fillStyle = hide;
+
+    body();
+    ctx.fill();
+    headAndTrunk();
+    ctx.fill();
+
+    // The near ear, over the head, leaning as it listens.
+    ctx.save();
+    ctx.translate(-25.5, -44);
+    ctx.rotate(ear);
+    ctx.fillStyle = '#5a4930';
     ctx.beginPath();
-    ctx.ellipse(7, -3, 8.5, 9.5, 0.2, 0, TAU);
+    ctx.ellipse(0, 0, 8.2, 8.8, 0.18, 0, TAU);
     ctx.fill();
     ctx.restore();
-    // Two green eyes, which is what the painting gives it.
-    ctx.fillStyle = '#427441';
-    for (const ey of [[-27.5, -42], [-20.5, -43]] as const) {
+
+    ctx.strokeStyle = hide;
+    ctx.lineCap = 'round';
+    tail(2.6);
+
+    // The stripes down the trunk.
+    ctx.fillStyle = '#1a1410';
+    for (const i of [0, 1, 2, 3, 4]) {
       ctx.beginPath();
-      ctx.ellipse(ey[0], ey[1], 2, 1.5, 0.2, 0, TAU);
+      ctx.ellipse(-32.6 + i * 0.7, -25 + i * 4.6, 2.4, 1.5, 0.1, 0, TAU);
       ctx.fill();
     }
-  } else {
-    const k = 6100;
-    ink(ctx, 0.5, 1.3);
-    ctx.beginPath();
-    ctx.moveTo(-22 + jitter(k, 0.7), -24);
-    ctx.quadraticCurveTo(-24, -46, -8, -49);
-    ctx.quadraticCurveTo(14, -52, 28, -45);
-    ctx.quadraticCurveTo(33, -38, 30 + jitter(k + 1, 0.7), -23);
-    ctx.quadraticCurveTo(4, -18, -22, -24);
-    ctx.stroke();
-    for (const [fx, w] of [
-      [-16, 9],
-      [-6, 8],
-      [14, 8],
-      [24, 9],
-    ] as const) {
-      inkLines(
-        ctx,
-        [
-          [fx - w / 2, -24, fx - w / 2, -2],
-          [fx + w / 2, -24, fx + w / 2, -2],
-          [fx - w / 2, -2, fx + w / 2, -2],
-        ],
-        k + 10 + fx,
-      );
+
+    // Two green eyes, which is what the painting gives it.
+    ctx.fillStyle = '#427441';
+    for (const ex of [-33.5, -26.5]) {
+      ctx.beginPath();
+      ctx.ellipse(ex, -36.5, 2.1, 1.6, 0.15, 0, TAU);
+      ctx.fill();
     }
-    inkArc(ctx, -24, -40, 12.5, k + 30);
-    ink(ctx, 0.5, 1.2);
-    ctx.beginPath();
-    ctx.moveTo(-30, -32);
-    ctx.quadraticCurveTo(-38, -20, -35, -4);
-    ctx.quadraticCurveTo(-31.5, -2, -29.5, -5);
-    ctx.quadraticCurveTo(-31, -20, -24, -30);
-    ctx.stroke();
-    ink(ctx, 0.42, 1);
-    for (const i of [0, 1, 2, 3, 4]) {
-      const ty = -25 + i * 4.4;
-      inkLine(ctx, -35.4 + i * 0.5, ty, -31 + i * 0.35, ty + 0.8, k + 40 + i);
-    }
-    inkArc(ctx, -26, -51, 8.5, k + 50);
-    inkArc(ctx, -15, -52, 9, k + 52);
-    ink(ctx, 0.6, 1.4);
-    for (const ey of [[-27.5, -42], [-20.5, -43]] as const) inkArc(ctx, ey[0], ey[1], 1.6, k + 60 + ey[0]);
-    ink(ctx, 0.45, 1.1);
-    ctx.strokeStyle = PENCIL;
-    ctx.beginPath();
-    ctx.moveTo(29, -42);
-    ctx.quadraticCurveTo(34, -34, 32 + tail, -25);
-    ctx.stroke();
+
+    ctx.restore();
+    return;
   }
+
+  const k = 6100;
+  ink(ctx, 0.5, 1.3);
+  body();
+  ctx.stroke();
+  ink(ctx, 0.5, 1.2);
+  headAndTrunk();
+  ctx.stroke();
+  for (const [fx, w, foot] of legs) {
+    inkLines(
+      ctx,
+      [
+        [fx - w / 2, -16, fx - w / 2, foot],
+        [fx + w / 2, -16, fx + w / 2, foot],
+        [fx - w / 2, foot, fx + w / 2, foot],
+      ],
+      k + 10 + fx,
+    );
+  }
+  ink(ctx, 0.45, 1.1);
+  inkArc(ctx, -33, -43, 7.6, k + 30);
+  inkArc(ctx, -25.5, -44, 8.4, k + 32);
+  ink(ctx, 0.55, 1.2);
+  tail(1.2);
+  ink(ctx, 0.6, 1.6);
+  for (const i of [0, 1, 2, 3, 4]) {
+    inkLine(ctx, -34 + i * 0.7, -25 + i * 4.6, -31.2 + i * 0.7, -24.6 + i * 4.6, k + 40 + i);
+  }
+  ink(ctx, 0.65, 1.5);
+  for (const ex of [-33.5, -26.5]) inkArc(ctx, ex, -36.5, 1.7, k + 60 + ex);
   ctx.restore();
 }
