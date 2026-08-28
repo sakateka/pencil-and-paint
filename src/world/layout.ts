@@ -64,6 +64,8 @@ export interface Layout {
   owl: { x: number; y: number; scale: number };
   /** The stump to sit on, and the clearing the elephant stands in. */
   vigil: { x: number; y: number; elephantX: number; elephantY: number };
+  /** Where the lion lies, up in the top-left corner. */
+  lion: { x: number; y: number };
 }
 
 /**
@@ -574,6 +576,17 @@ export function buildLayout(): Layout {
     draw() {},
   });
 
+  /*
+   * The lion, in the top-left corner of the map.
+   *
+   * Held well in from the very corner on purpose. The camera stops at the edge
+   * of the world, so standing up there puts world (0,0) at the top-left of the
+   * screen — which is exactly where the paint-pot panel sits. Anything within
+   * about two hundred by a hundred and twenty of the origin spends its life
+   * behind the HUD and might as well not be drawn.
+   */
+  const lion = scan(240, 620, 190, 430, 34) ?? { x: 300, y: 260 };
+
   return {
     scenery,
     tufts,
@@ -581,6 +594,7 @@ export function buildLayout(): Layout {
     pond: pond.area,
     animals,
     owl,
+    lion,
     vigil: { x: stump.x, y: stump.y, elephantX: standing.x, elephantY: standing.y },
   };
 }

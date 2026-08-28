@@ -6,6 +6,7 @@ import { Treehouse } from './entities/treehouse';
 import { Herd } from './entities/herd';
 import { Owl } from './entities/owl';
 import { Vigil, VIGIL_SECONDS } from './entities/vigil';
+import { Lion } from './entities/lion';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
 import { scatterPots, type Pot } from './entities/pots';
@@ -132,6 +133,9 @@ export class Game {
 
   /** The stump, the waiting, and what turns up at the end of it. */
   readonly vigil: Vigil;
+
+  /** Lying in the far corner, doing nothing whatsoever. */
+  readonly lion: Lion;
   readonly fishing = new Fishing();
   readonly rest = new Rest(HAMMOCK.x, HAMMOCK.y);
   readonly treehouse = new Treehouse();
@@ -182,6 +186,7 @@ export class Game {
     this.camera = new Camera(SPAWN.x, SPAWN.y, world.width, world.height);
     this.herd = new Herd(world.animalSpawns);
     this.owl = new Owl(world.owlPerch.x, world.owlPerch.y, world.owlPerch.scale);
+    this.lion = new Lion(world.lion.x, world.lion.y);
     this.vigil = new Vigil(
       world.vigil.x,
       world.vigil.y,
@@ -305,6 +310,7 @@ export class Game {
     this.fishing.update(dt, this.walker.x, this.walker.y);
     this.rest.update(dt, this.won);
     this.owl.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.owl.x, this.owl.y, 10));
+    this.lion.update(dt, this.isAwakeAt(this.lion.x, this.lion.y, 14));
     this.vigil.lit = this.isAwakeAt(this.vigil.elephantX, this.vigil.elephantY, 12);
     if (this.vigil.update(dt)) this.events.onElephant();
     this.treehouse.update(dt);
@@ -683,6 +689,7 @@ export class Game {
       rest: this.rest,
       owl: this.owl,
       vigil: this.vigil,
+      lion: this.lion,
       easel: EASEL,
       treehouse: this.treehouse,
       easelPicture: this.easelPicture,

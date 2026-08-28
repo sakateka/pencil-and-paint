@@ -4,6 +4,7 @@ import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
 import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
+import { drawLion, type Lion } from '../entities/lion';
 import { withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
@@ -36,6 +37,7 @@ export interface Scene {
   readonly rest: Rest;
   readonly owl: Owl;
   readonly vigil: Vigil;
+  readonly lion: Lion;
   readonly treehouse: Treehouse;
   /** The last thing drawn at the easel, if there is one. */
   readonly easelPicture: HTMLImageElement | undefined;
@@ -312,6 +314,11 @@ export class Renderer {
       !hidden(vigil.elephantX, vigil.elephantY, 90)
     ) {
       still(() => drawElephant(ctx, vigil, medium));
+    }
+
+    const { lion } = scene;
+    if (camera.canSee(lion.x, lion.y, 90) && !hidden(lion.x, lion.y, 60)) {
+      still(() => drawLion(ctx, lion, medium));
     }
 
     // Yours, over the abandoned one baked into the board. Colour only: in

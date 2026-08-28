@@ -108,6 +108,9 @@ export class World {
   /** The stump to sit on, and where the elephant stands if you wait. */
   readonly vigil: { x: number; y: number; elephantX: number; elephantY: number };
 
+  /** Where the lion lies, in the top-left corner. */
+  readonly lion: { x: number; y: number };
+
   private readonly occluders: Occluder[];
   /** Set once the canvases have been handed back; nothing may draw after. */
   private disposed = false;
@@ -147,6 +150,7 @@ export class World {
     animalSpawns: AnimalSpawn[],
     owlPerch: { x: number; y: number; scale: number },
     vigil: { x: number; y: number; elephantX: number; elephantY: number },
+    lion: { x: number; y: number },
   ) {
     this.layers = layers;
     this.bakeScale = layers.color.scale;
@@ -156,6 +160,7 @@ export class World {
     this.animalSpawns = animalSpawns;
     this.owlPerch = owlPerch;
     this.vigil = vigil;
+    this.lion = lion;
   }
 
   /**
@@ -308,7 +313,7 @@ export class World {
       occluders.push({ scenery: piece, bounds: piece.bounds, seed: seeds[i], sprites: new Map() });
     });
 
-    const world = new World(layers, colliders, occluders, layout.pond, layout.animals, layout.owl, layout.vigil);
+    const world = new World(layers, colliders, occluders, layout.pond, layout.animals, layout.owl, layout.vigil, layout.lion);
     world.longestSliceMs = longestSlice;
     world.bakePhases = phases;
     world.bakeYields = yields;
