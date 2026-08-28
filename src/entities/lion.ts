@@ -1,5 +1,5 @@
 import { TAU } from '../core/math';
-import { ink, inkArc, inkLine, jitter } from '../media/ink';
+import { ink, inkArc, jitter } from '../media/ink';
 import { PAPER, PENCIL, type Medium } from '../media/medium';
 import { groundShadow } from '../media/pencil';
 
@@ -26,6 +26,9 @@ const DARK = '#1d1712';
 /** The mane, as it is painted: red, green, yellow, orange, over and over. */
 const MANE = ['#d8412c', '#4f8f3a', '#f2c33e', '#d8412c', '#e8792a', '#4f8f3a'] as const;
 
+/** How near you have to be before it bothers to lift its head. */
+const NOTICES = 210;
+
 export class Lion {
   /** Its own clock, which only runs while the colour has reached it. */
   clock = 0;
@@ -33,22 +36,68 @@ export class Lion {
   /** Whether the colour has reached it. */
   awake = false;
 
+  /**
+   * Head up, 0 to 1.
+   *
+   * At 0 it is lying with its head down on its paws, eyes shut. At 1 it has
+   * picked its head up and is looking at you. It only ever does the second
+   * thing because you walked over, which is the entire content of its life.
+   */
+  alert = 0;
+
   constructor(
     readonly x: number,
     readonly y: number,
   ) {}
 
-  update(dt: number, awake: boolean): void {
+  update(dt: number, walkerX: number, walkerY: number, awake: boolean): void {
     this.awake = awake;
-    // Asleep is asleep: out in the graphite it is a drawing of a lion.
+    // Asleep is asleep: out in the graphite the blink and the tail stop.
     if (awake) this.clock += dt;
+
+    /*
+     * The head goes down whether or not the colour is still on it.
+     *
+     * This used to return early when unlit, along with the clock — and that
+     * left the lion frozen mid-stare with its head up for the rest of the
+     * session, because walking away is exactly what takes the colour off it.
+     * The pose is not animation; it is what the animal is doing, and what it is
+     * doing when you leave is going back to sleep.
+     *
+     * Out of the colour it settles quickly, since nobody is there to watch it
+     * happen and a pose still easing is a pose that will not hold still.
+     */
+    const near = awake && Math.hypot(walkerX - this.x, walkerY - this.y) < NOTICES;
+    // Up quickly, down slowly — it wakes with a start and settles reluctantly.
+    const rate = near ? 2.6 : awake ? 0.9 : 3;
+    this.alert += ((near ? 1 : 0) - this.alert) * Math.min(1, rate * dt);
+    if (this.alert < 0.004) this.alert = 0;
+    if (this.alert > 0.996) this.alert = 1;
   }
 }
 
 export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medium): void {
   const t = lion.clock;
+  const up = Math.max(0, Math.min(1, lion.alert));
+  /*
+   * Where the head goes when it puts it down.
+   *
+   * Onto the body — over and to the right, so it is lying with its chin on its
+   * own back the way a cat does. Two earlier tries had it sink straight down
+   * and roll onto its side, and a big round maned head tipped over in the grass
+   * with nothing under it stops reading as a lion at all: it reads as a daisy
+   * somebody has dropped. Resting it on the body is what makes it an animal
+   * asleep rather than a flower, so it does not tilt now, it moves.
+   */
+  const headX = -8 + (1 - up) * 6.5;
+  const headY = -24 + (1 - up) * 11;
+  const tilt = 0;
   // Slow, heavy blinks, and breathing you would miss if you were not waiting.
-  const lid = Math.min(1, Math.max(0, Math.sin(t * 0.42) - 0.972) * 50);
+  // Eyes shut altogether while the head is down.
+  const lid = Math.max(
+    1 - up * 1.6,
+    Math.min(1, Math.max(0, Math.sin(t * 0.42) - 0.972) * 50),
+  );
   const breath = 1 + Math.sin(t * 0.85) * 0.016;
   const tail = Math.sin(t * 0.55) * 5;
 
@@ -96,13 +145,14 @@ export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medi
       const a = (i / 22) * TAU + 0.14;
       ctx.strokeStyle = MANE[i % MANE.length];
       ctx.beginPath();
-      ctx.moveTo(-8 + Math.cos(a) * 13, -24 + Math.sin(a) * 12);
-      ctx.lineTo(-8 + Math.cos(a) * 24, -24 + Math.sin(a) * 22);
+      ctx.moveTo(headX + Math.cos(a) * 13, headY + Math.sin(a) * 12);
+      ctx.lineTo(headX + Math.cos(a) * 24, headY + Math.sin(a) * 22);
       ctx.stroke();
     }
 
     ctx.save();
-    ctx.translate(-8, -24);
+    ctx.translate(headX, headY);
+    ctx.rotate(tilt);
 
     // The face: a shield, wide across the brow and narrow at the chin.
     ctx.fillStyle = GOLD;
@@ -181,25 +231,35 @@ export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medi
   };
 
   /*
-   * The mane, in strokes of two lengths.
+   * The mane, as a ring of petals rather than a ring of spikes.
    *
-   * All the same length and evenly spaced, they read as the legs of a spider
-   * rather than as hair. Alternating long and short, and thicker than a hair
-   * line, gives it the raggedness the painting has.
+   * In colour it is the painting's own thrown strokes and that reads as hair.
+   * In graphite the same strokes came out as hard tapered points sticking out
+   * of the skull — the word for it was nails — and no amount of softening the
+   * line fixed that, because the shape itself was the problem. Rounded lobes
+   * laid round the head read as a mane, or at worst as a daisy, which is a very
+   * much better thing for a lion in a meadow to resemble.
    */
-  ink(ctx, 0.5, 1.5);
-  for (let i = 0; i < 22; i++) {
-    const a = (i / 22) * TAU + 0.14;
-    const out = i % 2 ? 24 : 20;
-    inkLine(
-      ctx,
-      -8 + Math.cos(a) * 12,
-      -24 + Math.sin(a) * 11,
-      -8 + Math.cos(a) * out,
-      -24 + Math.sin(a) * (out - 2),
-      k + 20 + i,
-    );
+  const petals = 13;
+  ctx.save();
+  ctx.translate(headX, headY);
+  for (let i = 0; i < petals; i++) {
+    const a = (i / petals) * TAU + 0.2;
+    ctx.save();
+    ctx.rotate(a);
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = PAPER;
+    ctx.beginPath();
+    ctx.ellipse(18, 0, 6.2, 4, 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ink(ctx, 0.46, 1.15);
+    ctx.beginPath();
+    ctx.ellipse(18 + jitter(k + 20 + i, 0.4), jitter(k + 40 + i, 0.4), 6.2, 4, 0, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
   }
+  ctx.restore();
 
   ctx.globalAlpha = 0.88;
   ctx.fillStyle = PAPER;
@@ -209,7 +269,8 @@ export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medi
   ctx.ellipse(15, -1.6, 5.2, 3, 0.05, 0, TAU);
   ctx.fill();
   ctx.save();
-  ctx.translate(-8, -24);
+  ctx.translate(headX, headY);
+  ctx.rotate(tilt);
   face();
   ctx.fill();
   ctx.restore();
@@ -229,7 +290,8 @@ export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medi
   inkArc(ctx, 15, -1.6, 5.2, k + 6);
 
   ctx.save();
-  ctx.translate(-8, -24);
+  ctx.translate(headX, headY);
+  ctx.rotate(tilt);
   ink(ctx, 0.62, 1.35);
   face();
   ctx.stroke();

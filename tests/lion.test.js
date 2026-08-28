@@ -71,6 +71,34 @@ export async function run(url) {
     suite.equal(seen.overlaps.length, 0, 'and nothing is drawn over it', seen.overlaps.join(' | '));
     suite.ok(seen.awake, 'and the colour reaches it');
 
+    /*
+     * Walk up to it and it lifts its head; walk off and it puts it down again.
+     *
+     * The second half of that is the part that was broken: the pose used to be
+     * updated only while the colour was on it, and leaving is precisely what
+     * takes the colour away — so it stayed sat up staring for good.
+     */
+    const pose = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      // A fresh world, so the colour is a small circle again and walking off
+      // really does take it off the lion.
+      game.restart();
+      const settle = (x, y, frames) => {
+        game.teleport(x, y);
+        for (let i = 0; i < frames; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        return { alert: +game.lion.alert.toFixed(2), awake: game.lion.awake };
+      };
+      const near = settle(game.lion.x + 40, game.lion.y + 60, 60 * 4);
+      const gone = settle(game.lion.x + 700, game.lion.y + 480, 60 * 6);
+      const back = settle(game.lion.x + 40, game.lion.y + 60, 60 * 4);
+      return { near, gone, back };
+    });
+
+    suite.equal(pose.near.alert, 1, 'come near and it lifts its head');
+    suite.equal(pose.gone.alert, 0, 'walk away and it puts it back down');
+    suite.ok(!pose.gone.awake, 'even though the colour has left it by then');
+    suite.equal(pose.back.alert, 1, 'and it looks up again when you return');
+
     // Out in the graphite it is a drawing, and drawings hold still.
     const far = await game.evaluate((pencil) => {
       const { game } = pencil;

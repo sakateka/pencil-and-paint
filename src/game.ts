@@ -310,7 +310,7 @@ export class Game {
     this.fishing.update(dt, this.walker.x, this.walker.y);
     this.rest.update(dt, this.won);
     this.owl.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.owl.x, this.owl.y, 10));
-    this.lion.update(dt, this.isAwakeAt(this.lion.x, this.lion.y, 14));
+    this.lion.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.lion.x, this.lion.y, 14));
     this.vigil.lit = this.isAwakeAt(this.vigil.elephantX, this.vigil.elephantY, 12);
     if (this.vigil.update(dt)) this.events.onElephant();
     this.treehouse.update(dt);
