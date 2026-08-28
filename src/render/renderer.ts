@@ -3,6 +3,7 @@ import type { Bounds } from '../core/geom';
 import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
+import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
 import { withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
@@ -34,6 +35,7 @@ export interface Scene {
   readonly fishing: Fishing;
   readonly rest: Rest;
   readonly owl: Owl;
+  readonly vigil: Vigil;
   readonly treehouse: Treehouse;
   /** The last thing drawn at the easel, if there is one. */
   readonly easelPicture: HTMLImageElement | undefined;
@@ -194,7 +196,7 @@ export class Renderer {
        * on `resting` rather than on the cloth still settling, or they stay
        * invisible for the second the hammock takes to lift.
        */
-      if (!scene.rest.resting && !scene.treehouse.inside) {
+      if (!scene.rest.resting && !scene.treehouse.inside && !scene.vigil.sitting) {
         drawWalker(ctx, walker, scene.elapsed);
       }
       scene.particles.draw(ctx, walker.x, walker.y, scene.litRadius, flooded);
@@ -279,6 +281,24 @@ export class Renderer {
     const { rest } = scene;
     if (camera.canSee(rest.x, rest.y, 130) && !hidden(rest.x, rest.y, 90)) {
       drawHammock(ctx, rest, medium);
+    }
+
+    /*
+     * The stump, and whoever is sitting on it, and whatever has come to look at
+     * them. Drawn live rather than baked: a `draw` in the scenery would put its
+     * strokes into the middle of the bake's sequence of random numbers and move
+     * every tree placed after it.
+     */
+    const { vigil } = scene;
+    if (camera.canSee(vigil.x, vigil.y, 90) && !hidden(vigil.x, vigil.y, 60)) {
+      drawStump(ctx, vigil, medium);
+    }
+    if (
+      vigil.elephant > 0 &&
+      camera.canSee(vigil.elephantX, vigil.elephantY, 120) &&
+      !hidden(vigil.elephantX, vigil.elephantY, 90)
+    ) {
+      drawElephant(ctx, vigil, medium);
     }
 
     // Yours, over the abandoned one baked into the board. Colour only: in

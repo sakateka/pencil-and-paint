@@ -24,7 +24,7 @@ import {
 } from './scenery';
 import { makePond, makeTuft, type Ellipse, type Path, type Tuft } from './terrain';
 import type { Point } from '../core/geom';
-import type { Scenery } from './types';
+import { circleCollider, type Scenery } from './types';
 
 export const WORLD_WIDTH = 2800;
 export const WORLD_HEIGHT = 2000;
@@ -62,6 +62,8 @@ export interface Layout {
   animals: AnimalSpawn[];
   /** Where the owl sits, in the crown of one of the northern trees. */
   owl: { x: number; y: number; scale: number };
+  /** The stump to sit on, and the clearing the elephant stands in. */
+  vigil: { x: number; y: number; elephantX: number; elephantY: number };
 }
 
 /**
@@ -497,5 +499,74 @@ export function buildLayout(): Layout {
     scale: Math.max(1, perch.scale * 0.7),
   };
 
-  return { scenery, tufts, paths, pond: pond.area, animals, owl };
+  /*
+   * The stump, in the same northern wood as the owl, and the clearing north of
+   * it that the elephant stands in.
+   *
+   * Both are looked for with `isFree`, which asks the same question the
+   * scattering does but takes no numbers from the world's generator — so this
+   * can run last and shift nothing. And nothing is baked for either of them:
+   * the stump is drawn live, because a `draw` added to the scenery would put
+   * its pencil strokes into the middle of the bake's sequence and move every
+   * tree placed after it.
+   */
+  const near = (ax: number, ay: number, pad: number) =>
+    sites.isFree(ax, ay, pad) &&
+    ay > 120 &&
+    ax > 120 &&
+    ax < WORLD_WIDTH - 120 &&
+    /*
+     * And well clear of the pond, which `isFree` alone does not give: the first
+     * spot this found was outside the water but inside casting distance of it,
+     * so standing at the stump offered to go fishing instead of to sit down.
+     */
+    !sites.inPond(ax, ay, 150);
+
+  let stump = { x: perch.x + 96, y: perch.y + 74 };
+  for (const [dx, dy] of [
+    [96, 74],
+    [-104, 66],
+    [118, -70],
+    [-92, -84],
+    [40, 132],
+    [-46, 138],
+  ] as const) {
+    if (near(perch.x + dx, perch.y + dy, 30)) {
+      stump = { x: perch.x + dx, y: perch.y + dy };
+      break;
+    }
+  }
+  // Somewhere with room for it, in front of the trees rather than among them.
+  let standing = { x: stump.x - 30, y: stump.y - 150 };
+  for (const [dx, dy] of [
+    [-30, -150],
+    [60, -155],
+    [-120, -130],
+    [130, -120],
+    [-20, 165],
+  ] as const) {
+    if (near(stump.x + dx, stump.y + dy, 56)) {
+      standing = { x: stump.x + dx, y: stump.y + dy };
+      break;
+    }
+  }
+
+  // A collider so you cannot stand inside the stump, and nothing drawn: see
+  // above. The bake calls `draw` on every piece of scenery, and this one has
+  // nothing to say.
+  scenery.push({
+    y: stump.y,
+    colliders: [circleCollider(stump.x, stump.y - 2, 13)],
+    draw() {},
+  });
+
+  return {
+    scenery,
+    tufts,
+    paths,
+    pond: pond.area,
+    animals,
+    owl,
+    vigil: { x: stump.x, y: stump.y, elephantX: standing.x, elephantY: standing.y },
+  };
 }

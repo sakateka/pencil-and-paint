@@ -5,6 +5,7 @@ import { Rest } from './entities/rest';
 import { Treehouse } from './entities/treehouse';
 import { Herd } from './entities/herd';
 import { Owl } from './entities/owl';
+import { Vigil } from './entities/vigil';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
 import { scatterPots, type Pot } from './entities/pots';
@@ -54,7 +55,7 @@ const PURR_EARSHOT = 200;
  * HUD should not have to learn about each of them separately.
  */
 export interface Interaction {
-  readonly kind: 'pet' | 'fish' | 'rest' | 'draw' | 'climb';
+  readonly kind: 'pet' | 'fish' | 'rest' | 'draw' | 'climb' | 'sit';
   /**
    * What to say, as a dictionary key rather than a phrase.
    *
@@ -63,6 +64,9 @@ export interface Interaction {
    */
   readonly say: string;
 }
+
+/** How near the stump you have to be to sit on it. */
+const STUMP_REACH = 44;
 
 /**
  * How far past the water's edge you can stand and still reach it.
@@ -91,6 +95,11 @@ export interface GameEvents {
   onPet(first: boolean): void;
   /** Camp has been pitched at the water's edge. */
   onFishingStart(): void;
+  /** Sat down on the stump in the wood, and got up again. */
+  onSitStart(): void;
+  onSitEnd(): void;
+  /** Two minutes of sitting still, rewarded. */
+  onElephant(): void;
   /** A fish has been landed; `total` counts them this playthrough. */
   onCatch(total: number): void;
   /** Somebody has got into the hammock. `birds` is false until the pots are in. */
@@ -120,6 +129,9 @@ export class Game {
 
   /** The one thing in the valley that looks back at you. */
   readonly owl: Owl;
+
+  /** The stump, the waiting, and what turns up at the end of it. */
+  readonly vigil: Vigil;
   readonly fishing = new Fishing();
   readonly rest = new Rest(HAMMOCK.x, HAMMOCK.y);
   readonly treehouse = new Treehouse();
@@ -170,6 +182,12 @@ export class Game {
     this.camera = new Camera(SPAWN.x, SPAWN.y, world.width, world.height);
     this.herd = new Herd(world.animalSpawns);
     this.owl = new Owl(world.owlPerch.x, world.owlPerch.y, world.owlPerch.scale);
+    this.vigil = new Vigil(
+      world.vigil.x,
+      world.vigil.y,
+      world.vigil.elephantX,
+      world.vigil.elephantY,
+    );
     this.cat = this.herd.animals.find((a) => a.kind === 'cat') ?? null;
     this.edges = { minX: 26, minY: 70, maxX: world.width - 26, maxY: world.height - 26 };
     this.restart();
@@ -190,6 +208,7 @@ export class Game {
     this.fishing.forget();
     this.rest.getUp();
     this.treehouse.climbOut();
+    this.vigil.reset();
     this.herd.scatter();
     this.pots = scatterPots(
       POT_COUNT,
@@ -286,6 +305,7 @@ export class Game {
     this.fishing.update(dt, this.walker.x, this.walker.y);
     this.rest.update(dt, this.won);
     this.owl.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.owl.x, this.owl.y, 10));
+    if (this.vigil.update(dt)) this.events.onElephant();
     this.treehouse.update(dt);
     if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.landed);
 
@@ -316,7 +336,8 @@ export class Game {
      * the button — so the input is dropped rather than the walker pinned, and
      * friction brings them to a stop as they settle.
      */
-    // Fishing or lying down, you are not going anywhere until you get up.
+    // Fishing, lying down or sat on the stump: you are not going anywhere
+    // until you get up.
     const pushed = input.direction(screenX, screenY);
     /*
      * Up in the treehouse the same keys walk you about the room instead. The
@@ -329,7 +350,7 @@ export class Game {
       w.vy = 0;
       return;
     }
-    const dir = this.fishing.active || this.rest.resting ? ZERO : pushed;
+    const dir = this.fishing.active || this.rest.resting || this.vigil.sitting ? ZERO : pushed;
     const pushing = dir.x !== 0 || dir.y !== 0;
 
     const responsiveness = Math.min(1, (pushing ? ACCELERATION : FRICTION) * dt);
@@ -417,6 +438,7 @@ export class Game {
    */
   get leaving(): string | null {
     if (this.treehouse.inside) return 'prompt.climbDown';
+    if (this.vigil.sitting) return 'prompt.standUp';
     if (this.rest.resting) return 'prompt.getUp';
     if (this.fishing.active) return 'prompt.packUp';
     return null;
@@ -432,7 +454,7 @@ export class Game {
      * to do, and a prompt saying so is an invitation to press a key that does
      * nothing — the way out is the button beside it, which is enough.
      */
-    if (this.rest.resting || this.treehouse.inside) return null;
+    if (this.rest.resting || this.treehouse.inside || this.vigil.sitting) return null;
     if (this.fishing.active) return { kind: 'fish', say: this.fishing.labelKey };
     if (this.atTheWater()) return { kind: 'fish', say: this.fishing.labelKey };
     // The easel first: it stands close enough to the hammock that both are in
@@ -440,6 +462,7 @@ export class Game {
     if (this.atTheEasel()) return { kind: 'draw', say: 'prompt.draw' };
     if (this.atTheTreehouse()) return { kind: 'climb', say: 'prompt.climb' };
     if (this.atTheHammock()) return { kind: 'rest', say: 'prompt.rest' };
+    if (this.atTheStump()) return { kind: 'sit', say: 'prompt.sit' };
     return null;
   }
 
@@ -451,6 +474,11 @@ export class Game {
    * convenience.
    */
   cancel(): boolean {
+    if (this.vigil.sitting) {
+      this.vigil.getUp();
+      this.events.onSitEnd();
+      return true;
+    }
     if (this.treehouse.inside) {
       this.treehouse.climbOut();
       this.events.onClimb(false);
@@ -458,7 +486,6 @@ export class Game {
     }
     if (this.rest.resting) {
       this.rest.getUp();
-    this.treehouse.climbOut();
       this.events.onRestEnd();
       return true;
     }
@@ -471,6 +498,17 @@ export class Game {
   /** Is the walker close enough to the hammock to lie down in it? */
   private atTheHammock(): boolean {
     return Math.hypot(this.walker.x - HAMMOCK.x, this.walker.y - HAMMOCK.y) < HAMMOCK_REACH;
+  }
+
+  /**
+   * Close enough to the stump to sit on it?
+   *
+   * Not gated on the pots. Sitting down and waiting is open from the first
+   * minute — it costs nothing but patience, and gating it would turn the one
+   * thing in the valley that asks you to be still into another reward.
+   */
+  private atTheStump(): boolean {
+    return Math.hypot(this.walker.x - this.vigil.x, this.walker.y - this.vigil.y) < STUMP_REACH;
   }
 
   /** Is the walker at the easel? */
@@ -527,6 +565,13 @@ export class Game {
       if (this.treehouse.inside) return false;
       this.treehouse.climbIn();
       this.events.onClimb(true);
+      return true;
+    }
+
+    if (this.atTheStump()) {
+      if (this.vigil.sitting) return false;
+      this.vigil.sitDown();
+      this.events.onSitStart();
       return true;
     }
 
@@ -625,6 +670,7 @@ export class Game {
       fishing: this.fishing,
       rest: this.rest,
       owl: this.owl,
+      vigil: this.vigil,
       easel: EASEL,
       treehouse: this.treehouse,
       easelPicture: this.easelPicture,

@@ -133,6 +133,12 @@ const en: Dictionary = {
   'done.open': 'read the note again',
   'done.tuck': 'put the note away',
 
+  'prompt.sit': 'sit for a while',
+  'prompt.standUp': 'get up',
+  'note.satDown': 'nothing to do here but wait',
+  'note.stoodUp': 'you stretch, and the wood is a wood again',
+  'note.elephant': 'something enormous is standing in the trees',
+
   'corner.sourceTitle': 'View the source on GitHub',
   'corner.stats': 'Show performance diagnostics',
   'corner.lang': 'Language',
@@ -223,6 +229,12 @@ const es: Dictionary = {
   'done.open': 'volver a leer la nota',
   'done.tuck': 'guardar la nota',
 
+  'prompt.sit': 'sentarte un rato',
+  'prompt.standUp': 'levantarte',
+  'note.satDown': 'aquí no hay nada que hacer salvo esperar',
+  'note.stoodUp': 'te estiras, y el bosque vuelve a ser un bosque',
+  'note.elephant': 'algo enorme está de pie entre los árboles',
+
   'corner.sourceTitle': 'Ver el código en GitHub',
   'corner.stats': 'Mostrar datos de rendimiento',
   'corner.lang': 'Idioma',
@@ -312,6 +324,12 @@ const pt: Dictionary = {
   'done.again': 'Começar um mundo novo',
   'done.open': 'voltar a ler a nota',
   'done.tuck': 'guardar a nota',
+
+  'prompt.sit': 'sentar um bocado',
+  'prompt.standUp': 'levantar-te',
+  'note.satDown': 'aqui não há nada a fazer senão esperar',
+  'note.stoodUp': 'espreguiças-te, e o bosque volta a ser um bosque',
+  'note.elephant': 'algo enorme está parado entre as árvores',
 
   'corner.sourceTitle': 'Ver o código no GitHub',
   'corner.stats': 'Mostrar dados de desempenho',
@@ -439,6 +457,12 @@ const ru: Dictionary = {
   'done.open': 'перечитать записку',
   'done.tuck': 'убрать записку',
 
+  'prompt.sit': 'посидеть немного',
+  'prompt.standUp': 'встать',
+  'note.satDown': 'здесь нечего делать — только ждать',
+  'note.stoodUp': 'ты потягиваешься, и лес снова просто лес',
+  'note.elephant': 'что-то огромное стоит между деревьев',
+
   'corner.sourceTitle': 'Посмотреть исходники на GitHub',
   'corner.stats': 'Показать диагностику производительности',
   'corner.lang': 'Язык',
@@ -524,6 +548,12 @@ const zh: Dictionary = {
   'done.again': '开启新世界',
   'done.open': '再读一遍那张字条',
   'done.tuck': '把字条收起来',
+
+  'prompt.sit': '坐一会儿',
+  'prompt.standUp': '站起来',
+  'note.satDown': '这里没别的事可做，只能等',
+  'note.stoodUp': '你伸了个懒腰，林子又只是林子了',
+  'note.elephant': '有个庞然大物站在树林里',
 
   'corner.sourceTitle': '在 GitHub 上查看源码',
   'corner.stats': '显示性能数据',

@@ -270,6 +270,13 @@ async function boot(): Promise<void> {
       if (birds) birdsong.play();
     },
     onRestEnd: () => birdsong.stop(),
+    onSitStart: () => ui.note('note.satDown'),
+    onSitEnd: () => ui.note('note.stoodUp'),
+    /*
+     * Two minutes of sitting still. No chime and no fanfare — a noise would
+     * make it an achievement, and it is meant to be something you notice.
+     */
+    onElephant: () => ui.note('note.elephant', 7000),
     onDraw: () => openStudio(),
     onClimb: (inside) => ui.note(inside ? 'note.climbedIn' : 'note.climbedDown'),
     onCatch: (total) => {
