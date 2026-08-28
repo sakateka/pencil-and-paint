@@ -46,12 +46,47 @@ const clouds = (() => {
   }));
 })();
 
+/**
+ * The sun's outline: one closed path all the way round, in flames.
+ *
+ * Not a ring of triangles. Every ray leans and hooks the same way, so the whole
+ * thing looks like it is turning even when it is still — which is what the
+ * shape does in the two drawings this is copied from, and what a sun scribbled
+ * by hand always does. Twenty-two of them rather than the fourteen spikes it
+ * had, because at this size a sparse ring reads as a cog.
+ */
+function sunFlames(ctx: CanvasRenderingContext2D, t: number): void {
+  const spikes = 22;
+  // Turn the whole outline as one rigid drawing. Changing each flame's reach
+  // over time makes the edge flap rather than shine.
+  const spin = t * 0.035;
+  ctx.beginPath();
+  for (let i = 0; i < spikes; i++) {
+    const a0 = (i / spikes) * TAU + spin;
+    const a1 = ((i + 1) / spikes) * TAU + spin;
+    const reach = SUN.r * (1.27 + Math.sin(i * 2.7) * 0.055);
+    // The tip sits past the middle of the gap, which is the hook.
+    const tip = (a0 + a1) / 2 + 0.1;
+    const at = (a: number, r: number): [number, number] => [
+      SUN.x + Math.cos(a) * r,
+      SUN.y + Math.sin(a) * r,
+    ];
+    if (i === 0) ctx.moveTo(...at(a0, SUN.r));
+    // Fat control points, so each ray is a rounded lick rather than a blade.
+    ctx.quadraticCurveTo(...at(a0 + 0.04, reach * 1.02), ...at(tip, reach));
+    ctx.quadraticCurveTo(...at(a1 - 0.1, reach * 0.86), ...at(a1, SUN.r * 0.99));
+  }
+  ctx.closePath();
+}
+
 export function drawSky(
   ctx: CanvasRenderingContext2D,
   viewX: number,
   viewY: number,
   viewWidth: number,
   medium: Medium,
+  /** Seconds since the world began, for the shine. */
+  t: number,
 ): void {
   // Nothing to draw until the camera has actually risen above the top edge.
   if (viewY >= 0) return;
@@ -84,18 +119,8 @@ export function drawSky(
 
     if (SUN.x + SUN.r * 2.4 > left && SUN.x - SUN.r * 2.4 < left + width) {
       ctx.fillStyle = '#f6d64a';
-      // Rays, uneven, the way they are painted rather than the way a compass
-      // would put them.
-      for (let i = 0; i < 14; i++) {
-        const a = (i / 14) * TAU + 0.18;
-        const long = i % 3 === 0 ? 1.34 : 1.06;
-        ctx.beginPath();
-        ctx.moveTo(SUN.x + Math.cos(a - 0.08) * SUN.r * 0.94, SUN.y + Math.sin(a - 0.11) * SUN.r * 0.92);
-        ctx.lineTo(SUN.x + Math.cos(a) * SUN.r * (1.24 + long * 0.22), SUN.y + Math.sin(a) * SUN.r * (1.24 + long * 0.22));
-        ctx.lineTo(SUN.x + Math.cos(a + 0.08) * SUN.r * 0.94, SUN.y + Math.sin(a + 0.08) * SUN.r * 0.94);
-        ctx.closePath();
-        ctx.fill();
-      }
+      sunFlames(ctx, t);
+      ctx.fill();
       ctx.fillStyle = '#f8de5c';
       ctx.beginPath();
       ctx.arc(SUN.x, SUN.y, SUN.r, 0, TAU);
@@ -151,24 +176,16 @@ export function drawSky(
     ctx.stroke();
   }
 
-  // The sun, as an outline and its rays.
+  // The sun, as an outline only.
   if (SUN.x + SUN.r * 2.4 > left && SUN.x - SUN.r * 2.4 < left + width) {
-    ink(ctx, 0.3, 1);
+    // At rest in graphite: out of the colour nothing in this world moves.
+    ink(ctx, 0.26, 1);
+    sunFlames(ctx, 0);
+    ctx.stroke();
+    ink(ctx, 0.2, 0.9);
     ctx.beginPath();
     ctx.arc(SUN.x, SUN.y, SUN.r, 0, TAU);
     ctx.stroke();
-    ink(ctx, 0.24, 0.95);
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * TAU + 0.18;
-      const long = i % 3 === 0 ? 1.34 : 1.06;
-      ctx.beginPath();
-      ctx.moveTo(SUN.x + Math.cos(a) * SUN.r * 1.04, SUN.y + Math.sin(a) * SUN.r * 1.04);
-      ctx.lineTo(
-        SUN.x + Math.cos(a) * SUN.r * (1.24 + long * 0.22),
-        SUN.y + Math.sin(a) * SUN.r * (1.24 + long * 0.22),
-      );
-      ctx.stroke();
-    }
   }
 
   // Clouds as outlines only.
