@@ -30,7 +30,45 @@ export async function run(url) {
 
     suite.ok(there.x < there.width * 0.3, 'over on the left of the map', `x ${there.x}`);
     suite.ok(there.y < there.height * 0.3, 'and up at the top of it', `y ${there.y}`);
-    suite.equal(there.solid, 0, 'in the open, not inside a tree');
+    suite.ok(there.solid >= 2, 'and it is something you bump into', `${there.solid} colliders`);
+
+    /*
+     * You cannot walk through it. Pushed straight at it from three sides, the
+     * walker should end up against it rather than inside it — a lion asleep in
+     * the grass that you stroll through is a decal, not an animal.
+     */
+    const bumped = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      game.collectAll();
+      let deepest = -Infinity;
+      for (const [dx, dy, px, py] of [
+        [0, 70, 0, -1],
+        [-90, 5, 1, 0],
+        [90, 5, -1, 0],
+        [0, -70, 0, 1],
+      ]) {
+        game.teleport(game.lion.x + dx, game.lion.y + dy);
+        for (let i = 0; i < 240; i++) {
+          game.advance(1 / 60, { direction: () => ({ x: px, y: py }) });
+          /*
+           * Measured every frame, not at the end.
+           *
+           * Walking into it does not stop you — you slide round it and carry
+           * on, which is what colliding with something small looks like. So
+           * the final position says nothing; what matters is that at no point
+           * on the way past were you standing inside the animal.
+           */
+          deepest = Math.max(
+            deepest,
+            15 - Math.hypot(game.walker.x - (game.lion.x - 8), game.walker.y - (game.lion.y - 5)),
+            11 - Math.hypot(game.walker.x - (game.lion.x + 9), game.walker.y - (game.lion.y - 4)),
+          );
+        }
+      }
+      return +deepest.toFixed(1);
+    });
+
+    suite.ok(bumped < 1, 'and you never end up standing inside it', `deepest ${bumped}px in`);
 
     /*
      * Walk into the very corner — as far as the camera will go — and check the

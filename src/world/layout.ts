@@ -586,6 +586,25 @@ export function buildLayout(): Layout {
    * behind the HUD and might as well not be drawn.
    */
   const lion = scan(240, 620, 190, 430, 34) ?? { x: 300, y: 260 };
+  /*
+   * And it is something you bump into.
+   *
+   * Two circles rather than one: it is lying down, so its footprint is a long
+   * low shape — the maned head at one end and the haunch at the other — and a
+   * single circle round the pair of them would stop you a stride short of it.
+   *
+   * Colliders only and nothing drawn, like the stump: the bake calls `draw` on
+   * every piece of scenery, and putting pencil strokes into the middle of that
+   * sequence would move every tree placed after them.
+   */
+  scenery.push({
+    y: lion.y,
+    colliders: [
+      circleCollider(lion.x - 8, lion.y - 5, 15),
+      circleCollider(lion.x + 9, lion.y - 4, 11),
+    ],
+    draw() {},
+  });
 
   return {
     scenery,
