@@ -295,17 +295,34 @@ export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medi
   ink(ctx, 0.62, 1.35);
   face();
   ctx.stroke();
-  // Eyes: a light rim and a small solid pupil. Drawn as two rings they stared.
-  ink(ctx, 0.4, 0.95);
-  for (const side of [-1, 1]) inkArc(ctx, side * 6.4, -3.4, 4, k + 60 + side);
-  ctx.globalAlpha = 0.8;
-  ctx.fillStyle = PENCIL;
-  for (const side of [-1, 1]) {
-    ctx.beginPath();
-    ctx.arc(side * 6.4 + jitter(k + 64 + side, 0.3), -3, 1.5, 0, TAU);
-    ctx.fill();
+  /*
+   * Eyes, open or shut, and in graphite they are nearly always shut.
+   *
+   * The pencil version ignored the lid altogether and drew a staring eye
+   * whatever the animal was doing — so the lion lay there with its head down,
+   * fast asleep, gazing at you. Out of the colour it is far away, and far away
+   * means its head is down, so this is the pose it is almost always in.
+   */
+  if (lid > 0.5) {
+    ink(ctx, 0.5, 1.15);
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(side * 6.4 + jitter(k + 60 + side, 0.3), -4.8, 3.6, 0.3, Math.PI - 0.3);
+      ctx.stroke();
+    }
+  } else {
+    // Open: a light rim and a small solid pupil. Two rings and it stared.
+    ink(ctx, 0.4, 0.95);
+    for (const side of [-1, 1]) inkArc(ctx, side * 6.4, -3.4, 4, k + 60 + side);
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = PENCIL;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(side * 6.4 + jitter(k + 64 + side, 0.3), -3, 1.5, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
-  ctx.globalAlpha = 1;
   ink(ctx, 0.4, 0.95);
   inkArc(ctx, 0, 6.4, 5, k + 70);
   ink(ctx, 0.6, 1.2);
