@@ -2,7 +2,7 @@ import { roundRectPath } from '../core/geom';
 import { clamp, TAU } from '../core/math';
 import { rnd, rr } from '../core/rng';
 import { ink, inkArc, inkArcs, inkLine, inkLines, inkPoly, jitter } from '../media/ink';
-import type { Medium } from '../media/medium';
+import { PENCIL, type Medium } from '../media/medium';
 import { movingShadow } from '../media/sprites';
 import type { AnimalKind } from './animalKinds';
 
@@ -60,6 +60,20 @@ export interface Animal {
    * in the valley you can reach out and touch, and this is how she answers.
    */
   purr: number;
+
+  /**
+   * Whether a frog wants to be under the water. Only frogs ever do.
+   *
+   * Separate from `dive` because taking fright is instant and getting under is
+   * not: this is the decision, `dive` is how far along it has got.
+   */
+  diving: boolean;
+
+  /**
+   * How far under it is: 0 sitting on its leaf, 1 gone, and the leap in
+   * between. Held at 1 for as long as somebody is fishing over its head.
+   */
+  dive: number;
 
   /** Its reserved slot in the herd's sprite atlas. */
   slot: number;
@@ -174,6 +188,8 @@ export function makeAnimal(
     clock: rnd() * 20,
     awake: false,
     purr: 0,
+    diving: false,
+    dive: 0,
     slot: 0,
     frozen: false,
   };
@@ -478,6 +494,28 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
   ctx.restore();
 }
 
+/** The ring left on the water where something went in. */
+function splash(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  spread: number,
+  size: number,
+  medium: Medium,
+): void {
+  ctx.save();
+  for (let i = 0; i < 2; i++) {
+    const r = size * (0.4 + spread * (1.1 + i * 0.7));
+    ctx.globalAlpha = Math.max(0, (1 - spread) * (i ? 0.3 : 0.55));
+    ctx.strokeStyle = medium === 'color' ? '#eaf5fb' : PENCIL;
+    ctx.lineWidth = medium === 'color' ? 1.5 : 0.9;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.42, 0, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 /**
  * A frog on a lily pad, out on the pond.
  *
@@ -495,9 +533,33 @@ function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: n
   const lid = Math.min(1, blink);
   const throat = 1 + Math.sin(t * 3.1 + a.phase) * 0.06;
 
+  // Gone under. The leaf is left empty, which is the whole effect.
+  if (a.dive >= 1) return;
+
+  /*
+   * The leap in.
+   *
+   * It goes up before it goes down — a frog does not sink, it launches — so the
+   * height is a half sine over the dive, while the sideways travel and the
+   * shrinking run straight through it. It leaps the way it is facing, which is
+   * set away from whatever startled it.
+   */
+  const d = a.dive;
+  const hop = Math.sin(d * Math.PI) * 13 * a.scale;
+  const shrink = 1 - d * 0.55;
+  const landX = a.x + a.face * 13 * a.scale;
+
+  // The ring it leaves on the water, opening as it goes under and closing again
+  // as it comes back up.
+  if (d > 0.45) {
+    const ring = (d - 0.45) / 0.55;
+    splash(ctx, landX, a.y + 1, ring, 9 * a.scale, medium);
+  }
+
   ctx.save();
-  ctx.translate(a.x, a.y);
-  ctx.scale(a.face * a.scale, a.scale * breath);
+  ctx.globalAlpha *= 1 - d * 0.35;
+  ctx.translate(a.x + a.face * 13 * a.scale * d, a.y - hop);
+  ctx.scale(a.face * a.scale * shrink, a.scale * breath * shrink);
   const k = a.phase * 510;
 
   if (medium === 'color') {
@@ -534,10 +596,17 @@ function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: n
     ctx.ellipse(0, -5, 11, 7.5, 0, 0, TAU);
     ctx.fill();
     ctx.stroke();
-    // The throat, which is the bit you notice first in the painting.
-    ctx.fillStyle = '#eda93c';
+    /*
+     * The belly, low and wide.
+     *
+     * It used to be a tall oval in the middle of the face, which is exactly
+     * where a beak goes — and that is what it looked like. Dropped to the
+     * bottom of the dome and flattened out, it goes back to being the pale
+     * front of a frog, and the smile above it has room to be a smile.
+     */
+    ctx.fillStyle = '#f2c463';
     ctx.beginPath();
-    ctx.ellipse(0, -3.4, 4.6 * throat, 4.2 * throat, 0, 0, TAU);
+    ctx.ellipse(0, -0.8, 6.2 * throat, 3.4 * throat, 0, 0, TAU);
     ctx.fill();
     // Eyes: a pale ring and a dark pupil, with the lid coming down over both.
     for (const ex of [-5.4, 5.4]) {
@@ -556,12 +625,12 @@ function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: n
         ctx.fill();
       }
     }
-    // The line of the mouth.
+    // A wide smile across the face, well clear of the belly.
     ctx.strokeStyle = '#186b5a';
-    ctx.lineWidth = 0.9;
+    ctx.lineWidth = 1;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(0, -6.2, 5.2, 0.4, Math.PI - 0.4);
+    ctx.arc(0, -7.4, 6.2, 0.32, Math.PI - 0.32);
     ctx.stroke();
     ctx.restore();
     return;

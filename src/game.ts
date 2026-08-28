@@ -282,6 +282,17 @@ export class Game {
     this.rest.update(dt, this.won);
     this.treehouse.update(dt);
     if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.landed);
+
+    /*
+     * The frogs want no part of a float landing on their pond.
+     *
+     * Asked every frame rather than fired on the cast, because both of these
+     * are cheap and idempotent, and because there are three ways a session can
+     * end — Q, the restart, and the camp coming down on its own — and this way
+     * none of them has to remember to put the frogs back.
+     */
+    if (this.fishing.active) this.herd.startle(this.fishing.floatX, this.fishing.floatY);
+    else this.herd.calm();
     this.camera.follow(this.walker.x, this.walker.y, dt);
   }
 

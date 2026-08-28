@@ -30,6 +30,21 @@ const SPRITE_ORIGIN_Y = 88;
 /** Slots per row in the atlas. */
 const ATLAS_COLUMNS = 5;
 
+/**
+ * How near the float has to land for a frog to want no part of it.
+ *
+ * Whatever is nearest goes regardless of this, so a cast always startles
+ * something; the radius is only for how many of its neighbours go with it.
+ */
+const FROG_SCARE = 150;
+
+/** How long a frog stays down after the rod is packed away. */
+const FROG_SURFACE_DELAY = [0.8, 3.2] as const;
+
+/** Seconds to get under, and the slower seconds to come back up. */
+const DIVE_SECONDS = 0.34;
+const SURFACE_SECONDS = 0.7;
+
 /** How close the walker can get before an animal moves off. */
 const SHY_DISTANCE: Record<AnimalKind, number> = {
   chicken: 78,
@@ -86,6 +101,8 @@ export class Herd {
       a.moving = false;
       a.frozen = false;
       a.purr = 0;
+      a.diving = false;
+      a.dive = 0;
     }
   }
 
@@ -108,14 +125,65 @@ export class Herd {
        * A frog stays on its lily pad, and must not be asked to resolve
        * collisions to do it: the pond is a solid collider as far as walking is
        * concerned, so one step of that would shove every frog onto the bank.
+       *
+       * All it does is get under the water and come back out again.
        */
-      if (a.kind === 'frog') continue;
+      if (a.kind === 'frog') {
+        if (a.diving) {
+          a.dive = Math.min(1, a.dive + dt / DIVE_SECONDS);
+        } else if (a.timer > 0) {
+          // Waiting it out down there. They do not all reappear together.
+          a.timer -= dt;
+        } else if (a.dive > 0) {
+          a.dive = Math.max(0, a.dive - dt / SURFACE_SECONDS);
+        }
+        continue;
+      }
 
       this.step(a, dt, ctx);
       ctx.resolveCollisions(a, 11 * a.scale);
     }
     // Painter's algorithm among themselves.
     this.animals.sort((p, q) => p.y - q.y);
+  }
+
+  /**
+   * Something has landed on the water: send the frogs near it under.
+   *
+   * The nearest one always goes, near or not. A cast that startled nothing
+   * because the float happened to come down in an empty corner would read as
+   * the feature being broken rather than as the pond being big.
+   *
+   * Safe to call every frame — a frog already diving is left alone, so this can
+   * simply track whether anybody is fishing rather than being fired once on the
+   * cast and having to be unfired on all three ways of stopping.
+   */
+  startle(x: number, y: number): void {
+    const frogs = this.animals.filter((a) => a.kind === 'frog');
+    if (frogs.length === 0) return;
+    let nearest = frogs[0];
+    for (const f of frogs) {
+      if (Math.hypot(f.x - x, f.y - y) < Math.hypot(nearest.x - x, nearest.y - y)) nearest = f;
+    }
+    for (const f of frogs) {
+      if (f.diving) continue;
+      if (f !== nearest && Math.hypot(f.x - x, f.y - y) > FROG_SCARE) continue;
+      f.diving = true;
+      // It leaps away from whatever gave it the fright.
+      f.face = f.x < x ? -1 : 1;
+      // Its cached still is of a frog sitting still, which it no longer is.
+      f.frozen = false;
+    }
+  }
+
+  /** Nobody is fishing any more. Let them back up, raggedly. */
+  calm(): void {
+    for (const a of this.animals) {
+      if (a.kind !== 'frog' || !a.diving) continue;
+      a.diving = false;
+      a.timer = rr(FROG_SURFACE_DELAY[0], FROG_SURFACE_DELAY[1]);
+      a.frozen = false;
+    }
   }
 
   private step(a: Animal, dt: number, ctx: HerdContext): void {

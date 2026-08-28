@@ -101,6 +101,65 @@ export async function run(url) {
 
     suite.ok(restarted < 0.8, 'and a new world does not scatter them ashore', `${restarted}`);
 
+    /*
+     * A float landing on the pond. Whatever is nearest goes under, near or not:
+     * a cast that startled nothing because the float came down in an empty
+     * corner would read as the feature being broken rather than as a big pond.
+     */
+    const cast = await game.evaluate((pencil, at) => {
+      const { game } = pencil;
+      game.collectAll();
+      game.teleport(at.x, at.y + 190);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      const started = game.interact();
+      const float = { x: game.fishing.floatX, y: game.fishing.floatY };
+      for (let i = 0; i < 60; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      pencil.renderOnce(); // a frog in mid-leap must draw cleanly
+      const frogs = game.herd.animals.filter((a) => a.kind === 'frog');
+      return {
+        started,
+        fishing: game.fishing.active,
+        under: frogs.filter((f) => f.dive >= 1).length,
+        of: frogs.length,
+        // The ones that went, and how far from the float they were.
+        gone: frogs
+          .filter((f) => f.diving)
+          .map((f) => Math.round(Math.hypot(f.x - float.x, f.y - float.y))),
+        stayed: frogs
+          .filter((f) => !f.diving)
+          .map((f) => Math.round(Math.hypot(f.x - float.x, f.y - float.y))),
+      };
+    }, POND);
+
+    suite.ok(cast.started, 'a line goes in the water');
+    suite.ok(cast.under > 0, 'and frogs go under it', `${cast.under}/${cast.of}`);
+    suite.ok(cast.stayed.length > 0, 'while the far side of the pond carries on');
+    suite.ok(
+      Math.min(...cast.gone) <= Math.min(...cast.stayed),
+      'the ones that went were the ones nearest the float',
+      `gone ${cast.gone.join(',')} — stayed ${cast.stayed.join(',')}`,
+    );
+
+    // Pack the rod away and they come back up, in their own time.
+    const after = await game.evaluate((pencil) => {
+      dispatchEvent(new KeyboardEvent('keydown', { key: 'q', code: 'KeyQ', bubbles: true }));
+      const { game } = pencil;
+      const frogs = game.herd.animals.filter((a) => a.kind === 'frog');
+      const stillUnder = frogs.filter((f) => f.dive >= 1).length;
+      // Long enough for the longest of the ragged delays plus the climb back.
+      for (let i = 0; i < 420; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      return {
+        fishing: game.fishing.active,
+        stillUnder,
+        back: frogs.filter((f) => f.dive === 0).length,
+        of: frogs.length,
+      };
+    });
+
+    suite.ok(!after.fishing, 'Q packs the rod away');
+    suite.ok(after.stillUnder > 0, 'they are not back the instant you stand up');
+    suite.equal(after.back, after.of, 'but they all come back to their leaves');
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();
