@@ -277,7 +277,15 @@ export class Renderer {
      * until now — that the camera is inside the map and so every pixel has a
      * tile under it. Above the top edge there are no tiles at all.
      */
-    drawSky(ctx, camera.viewX, camera.viewY, camera.viewWidth, medium, scene.elapsed);
+    drawSky(
+      ctx,
+      camera.viewX,
+      camera.viewY,
+      camera.viewWidth,
+      medium,
+      scene.elapsed,
+      scene.vigil.elephantX,
+    );
 
     for (const pot of scene.pots) {
       if (pot.found || !camera.canSee(pot.x, pot.y, 60)) continue;

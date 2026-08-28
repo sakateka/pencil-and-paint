@@ -1,7 +1,7 @@
 import { Rng } from '../core/rng';
 import { TAU } from '../core/math';
 import { ink, jitter } from '../media/ink';
-import { PAPER, type Medium } from '../media/medium';
+import { PAPER, PENCIL, type Medium } from '../media/medium';
 
 /**
  * The sky, above the top edge of the map.
@@ -87,6 +87,15 @@ export function drawSky(
   medium: Medium,
   /** Seconds since the world began, for the shine. */
   t: number,
+  /*
+   * A stretch of sky to leave empty, in world x.
+   *
+   * There is one cloud up here that is not weather — the elephant-shaped one
+   * that the animal comes out of — and an ordinary cloud drifting across the
+   * same patch buries it. Nothing else is reserved; this is the one place where
+   * something is meant to be noticed.
+   */
+  clearAt: number,
 ): void {
   // Nothing to draw until the camera has actually risen above the top edge.
   if (viewY >= 0) return;
@@ -129,6 +138,7 @@ export function drawSky(
 
     for (const c of clouds) {
       if (c.x + c.r * 2 < left || c.x - c.r * 2 > left + width) continue;
+      if (Math.abs(c.x - clearAt) < 170) continue;
       ctx.fillStyle = c.pale ? 'rgba(255,255,255,.72)' : 'rgba(255,255,255,.5)';
       for (let i = 0; i < c.lobes; i++) {
         const t = i / (c.lobes - 1 || 1) - 0.5;
@@ -188,17 +198,32 @@ export function drawSky(
     ctx.stroke();
   }
 
-  // Clouds as outlines only.
-  ink(ctx, 0.22, 0.9);
+  /*
+   * Clouds as soft masses, rubbed in with the side of the pencil.
+   *
+   * Drawn as outlines they came out as rows of linked rings: every lobe's whole
+   * circumference is stroked, so you see all the arcs inside the cloud as well
+   * as its edge. One fill of the union gives the silhouette and nothing else,
+   * and a smudge is what a cloud is in a pencil drawing.
+   */
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = PENCIL;
   for (const c of clouds) {
     if (c.x + c.r * 2 < left || c.x - c.r * 2 > left + width) continue;
+    if (Math.abs(c.x - clearAt) < 170) continue;
     ctx.beginPath();
     for (let i = 0; i < c.lobes; i++) {
       const t = i / (c.lobes - 1 || 1) - 0.5;
-      ctx.ellipse(c.x + t * c.r * 1.5, c.y, c.r * 0.52, c.r * 0.3, 0, 0, TAU);
+      const cx = c.x + t * c.r * 1.5;
+      // `moveTo` first: `ellipse` continues the current subpath, so without it
+      // the lobes are strung together by chords and the non-zero rule cuts
+      // holes where they overlap.
+      ctx.moveTo(cx + c.r * 0.55, c.y);
+      ctx.ellipse(cx, c.y, c.r * 0.55, c.r * 0.32, 0, 0, TAU);
     }
-    ctx.stroke();
+    ctx.fill();
   }
+  ctx.globalAlpha = 1;
 
   // The horizon, drawn firmly, because it is the edge of the paper.
   ink(ctx, 0.4, 1.2);

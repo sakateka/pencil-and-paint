@@ -1,5 +1,6 @@
 import { clamp, TAU } from '../core/math';
 import { ink, inkArc, inkLine, inkLines, jitter, withInkFade } from '../media/ink';
+import { PENCIL } from '../media/medium';
 import type { Medium } from '../media/medium';
 import { groundShadow } from '../media/pencil';
 
@@ -29,11 +30,17 @@ import { groundShadow } from '../media/pencil';
  */
 export const VIGIL_SECONDS = 10;
 
-/** The quicker seconds it takes to come apart again when you stand up. */
-const LEAVING = 2;
+/**
+ * Seconds it takes to come apart again when you stand up.
+ *
+ * Nearly as long as it took to arrive. Two seconds was a light going out — you
+ * stood up and it was simply gone, which made ten seconds of watching it gather
+ * feel like it had been wasted.
+ */
+const LEAVING = 7;
 
 /** How much of the cloud is there when nothing else is. Barely anything. */
-const RESTING_CLOUD = 0.3;
+const RESTING_CLOUD = 0.34;
 
 /** How much bigger than life it is. Nothing about it is to scale anyway. */
 const ELEPHANT_SCALE = 2;
@@ -360,22 +367,22 @@ function drawMirageCloud(
    * do. Deliberately loose: it should be arguable, not obvious.
    */
   const lobes = [
-    [-2, -30, 19],
-    [16, -28, 15],
-    [-19, -29, 15],
-    [24, -23, 12],
-    [-6, -20, 17],
-    [12, -19, 13],
+    [-2, -29, 15],
+    [16, -27, 12],
+    [-18, -28, 12],
+    [24, -23, 10],
+    [-6, -20, 13],
+    [12, -19, 11],
     // Head, ears and the trunk hanging off the front.
-    [-29, -36, 13],
-    [-25, -45, 9],
-    [-33, -22, 8],
-    [-32, -11, 7],
+    [-30, -35, 11],
+    [-26, -44, 8],
+    [-33, -22, 7],
+    [-32, -11, 6],
     // Four legs.
-    [-20, -11, 7],
-    [-10, -10, 6],
-    [13, -11, 6],
-    [23, -10, 7],
+    [-20, -11, 6],
+    [-10, -10, 5],
+    [13, -11, 5],
+    [23, -10, 6],
   ] as const;
 
   ctx.save();
@@ -425,13 +432,19 @@ function drawMirageCloud(
     shape();
     ctx.fill();
   } else {
-    // `ink` sets the alpha itself, so the fade has to be a multiplier — setting
-    // globalAlpha here would be thrown away by the first stroke.
-    withInkFade(Math.min(1, amount), () => {
-      ink(ctx, 0.28, 1);
-      shape();
-      ctx.stroke();
-    });
+    /*
+     * Rubbed in with the side of the pencil, not drawn round.
+     *
+     * Stroking every lobe put fourteen overlapping circles on the paper — a
+     * tangle of rings with no elephant anywhere in it, which is worse than
+     * drawing nothing. Filling the union once gives the silhouette and only the
+     * silhouette, and a soft grey mass is what a cloud looks like in a pencil
+     * drawing anyway.
+     */
+    ctx.globalAlpha = 0.08 + Math.min(1, amount) * 0.14;
+    ctx.fillStyle = PENCIL;
+    shape();
+    ctx.fill();
   }
   ctx.restore();
 }

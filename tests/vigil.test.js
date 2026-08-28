@@ -117,11 +117,16 @@ export async function run(url) {
       const { game } = pencil;
       dispatchEvent(new KeyboardEvent('keydown', { key: 'q', code: 'KeyQ', bubbles: true }));
       const standing = { sitting: game.vigil.sitting, clock: game.vigil.clock };
-      for (let i = 0; i < 60 * 4; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      // Part way through coming apart — it takes its time going, the same as
+      // it took its time arriving.
+      for (let i = 0; i < 60 * 3; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      const halfGone = +game.vigil.elephant.toFixed(2);
+      for (let i = 0; i < 60 * 6; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       const from = { x: game.walker.x, y: game.walker.y };
       for (let i = 0; i < 40; i++) game.advance(1 / 60, { direction: () => ({ x: 1, y: 0 }) });
       return {
         ...standing,
+        halfGone,
         elephant: game.vigil.elephant,
         moved: +Math.hypot(game.walker.x - from.x, game.walker.y - from.y).toFixed(1),
       };
@@ -129,7 +134,12 @@ export async function run(url) {
 
     suite.ok(!left.sitting, 'Q gets you up');
     suite.equal(left.clock, 0, 'and the wait starts over');
-    suite.equal(left.elephant, 0, 'the elephant is gone');
+    suite.ok(
+      left.halfGone > 0.1 && left.halfGone < 0.9,
+      'it comes apart slowly rather than switching off',
+      `${left.halfGone} three seconds after standing`,
+    );
+    suite.equal(left.elephant, 0, 'and is gone once it has');
     suite.ok(left.moved > 5, 'and you can walk again', `${left.moved}px`);
 
     // A new world has no elephant in it and no memory of one.
