@@ -1,7 +1,7 @@
 import { isolate } from '../core/canvas';
 import { circlePoly, ellipsePoly, tracePoly, type Point } from '../core/geom';
 import { lerp, TAU } from '../core/math';
-import { pick, rnd, rr } from '../core/rng';
+import { pick, rnd, rr, Rng } from '../core/rng';
 import { PAPER, PENCIL, type Medium } from '../media/medium';
 import { paint, sketchOutline } from '../media/pencil';
 import { GRAIN } from '../media/sprites';
@@ -55,7 +55,7 @@ export function makePond(
   rx: number,
   ry: number,
 ): Scenery & { area: Ellipse; pads: Pad[] } {
-  const outer = ellipsePoly(x, y, rx, ry, 30, 0.055);
+  const outer = ellipsePoly(x, y, rx, ry, 30, 0.085);
   const water = waterArea({ x, y, rx, ry });
   const inner = ellipsePoly(water.x, water.y, water.rx, water.ry, 26, 0.06);
 
@@ -69,6 +69,66 @@ export function makePond(
       r: rr(9, 15),
       flower: rnd() < 0.4,
     });
+  }
+
+  /*
+   * Reeds, in one corner of the pond.
+   *
+   * Without something growing across it the pond is a blue shape butted
+   * against a green one, and no amount of shading fixes that — what makes a
+   * shore read as a shore is that the line is broken. But run the whole way
+   * round it is a fringe, and a fringe is a hairbrush. One patch, thinning out
+   * at both ends into open bank, reads as a place reeds happen to grow.
+   *
+   * The north-west corner: the far side from the path, so it is something seen
+   * across the water rather than something stood in.
+   *
+   * Drawn from their own generator, seeded off the pond's position. The world's
+   * shared sequence runs through every stroke of the bake, so taking even a few
+   * numbers out of it would move every tree in the valley; this way the reeds
+   * are just as repeatable and cost the rest of the map nothing.
+   */
+  const REEDS_AT = -2.42;
+  const REEDS_WIDE = 0.58;
+  const reedRng = new Rng((Math.imul(x | 0, 73856093) ^ Math.imul(y | 0, 19349663)) >>> 0);
+  const reeds: { x: number; y: number; blades: Point[]; dark: boolean }[] = [];
+  for (let i = 0; i < outer.length; i++) {
+    const [ax, ay] = outer[i];
+    const [bx2, by2] = outer[(i + 1) % outer.length];
+    // Three candidate spots per segment of the rim: one clump every forty-odd
+    // pixels is a few tufts, not a stand of reeds.
+    for (let sub = 0; sub < 3; sub++) {
+      const t = (sub + reedRng.range(0.1, 0.9)) / 3;
+      const px = ax + (bx2 - ax) * t;
+      const py = ay + (by2 - ay) * t;
+
+      // How far round the rim this is from the middle of the patch.
+      let off = Math.atan2(py - y, px - x) - REEDS_AT;
+      while (off > Math.PI) off -= TAU;
+      while (off < -Math.PI) off += TAU;
+      const into = Math.abs(off) / REEDS_WIDE;
+      if (into >= 1) continue;
+      // Thick in the middle of the patch, thinning to nothing at its ends, so
+      // it has no edge to it.
+      if (reedRng.next() > 1 - into * into) continue;
+
+      /*
+       * Some standing in the shallows, some up on the bank. Straddling the
+       * line is the point: reeds that all stop at the water are the same edge
+       * again, drawn in green.
+       */
+      const k = reedRng.range(0.955, 1.045);
+      const blades: Point[] = [];
+      for (let b = reedRng.int(4, 7); b > 0; b--) {
+        blades.push([reedRng.range(-6.5, 6.5), -reedRng.range(9, 23)]);
+      }
+      reeds.push({
+        x: x + (px - x) * k,
+        y: y + (py - y) * k,
+        blades,
+        dark: reedRng.next() < 0.45,
+      });
+    }
   }
 
   return {
@@ -91,19 +151,33 @@ export function makePond(
         ctx.fillStyle = g;
         ctx.fill();
         /*
-         * Deeper towards the middle, so the pond has some shape to it.
+         * Deep in the middle, shallow at the edge, on one gradient.
          *
-         * A radial fade rather than a second, smaller ellipse laid on top: any
-         * shape with an edge to it reads as a ring around the pond, which is
-         * exactly the thing that had to go.
+         * Drawn in a space squashed to the pond's own proportions, which is the
+         * whole trick: a plain radial gradient is a circle, so on a pond half
+         * again as wide as it is tall the shallows appear along the left and
+         * right shores and nowhere near the top or bottom. Scaling y first
+         * makes the rings elliptical, so the pale water follows the shore the
+         * whole way round.
+         *
+         * One gradient rather than a shape laid on top, so there is no edge
+         * anywhere — it was a hard-edged band of grey-green that made the old
+         * pond look like it had a shelf around it.
          */
-        const depth = ctx.createRadialGradient(x, y, 0, x, y, rx);
-        depth.addColorStop(0, 'rgba(37,99,142,.30)');
-        depth.addColorStop(0.55, 'rgba(37,99,142,.15)');
-        depth.addColorStop(1, 'rgba(37,99,142,0)');
-        tracePoly(ctx, outer);
-        ctx.fillStyle = depth;
-        ctx.fill();
+        isolate(ctx, () => {
+          tracePoly(ctx, outer);
+          ctx.clip();
+          ctx.translate(x, y);
+          ctx.scale(1, ry / rx);
+          const water = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+          water.addColorStop(0, 'rgba(37,99,142,.30)');
+          water.addColorStop(0.5, 'rgba(37,99,142,.13)');
+          water.addColorStop(0.72, 'rgba(37,99,142,0)');
+          water.addColorStop(0.88, 'rgba(188,227,240,.30)');
+          water.addColorStop(1, 'rgba(208,237,246,.68)');
+          ctx.fillStyle = water;
+          ctx.fillRect(-rx * 1.2, -rx * 1.2, rx * 2.4, rx * 2.4);
+        });
         isolate(ctx, () => {
           tracePoly(ctx, outer);
           ctx.clip();
@@ -174,6 +248,27 @@ export function makePond(
           });
         }
       }
+
+      isolate(ctx, () => {
+        ctx.lineCap = 'round';
+        for (const clump of reeds) {
+          ctx.strokeStyle = medium === 'color' ? (clump.dark ? '#3f7a46' : '#5c9c4c') : PENCIL;
+          ctx.lineWidth = medium === 'color' ? 1.7 : 0.85;
+          ctx.globalAlpha = medium === 'color' ? 1 : 0.42;
+          for (const [lean, rise] of clump.blades) {
+            ctx.beginPath();
+            ctx.moveTo(clump.x, clump.y);
+            // Bowed, not straight: a reed bends away under its own weight.
+            ctx.quadraticCurveTo(
+              clump.x + lean * 0.3,
+              clump.y + rise * 0.6,
+              clump.x + lean,
+              clump.y + rise,
+            );
+            ctx.stroke();
+          }
+        }
+      });
     },
   };
 }
