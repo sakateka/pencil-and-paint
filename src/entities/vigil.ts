@@ -358,7 +358,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * field. So it hovers here too, drifting very slowly, with its shadow left
    * behind on the grass to say that the gap is real and not a mistake.
    */
-  ctx.translate(0, -(7 + Math.sin(clock * 0.45) * 2.6));
+  ctx.translate(0, -(8 + Math.sin(clock * 0.62) * 4.6));
 
   /*
    * The shape, measured off the painting rather than remembered.
@@ -371,7 +371,6 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * outline, so nobody ever saw it.
    */
   const body = () => {
-    ctx.beginPath();
     ctx.moveTo(-27, -15);
     ctx.quadraticCurveTo(-29, -33, -16, -37);
     ctx.quadraticCurveTo(2, -41, 18, -37);
@@ -389,7 +388,6 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * had a gap in it.
    */
   const head = () => {
-    ctx.beginPath();
     ctx.moveTo(-22, -24);
     ctx.quadraticCurveTo(-40, -26, -38, -38);
     ctx.quadraticCurveTo(-36, -47, -27, -46);
@@ -397,14 +395,20 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     ctx.closePath();
   };
 
-  /** Wide at the top, barely tapering, hanging almost to the ground. */
+  /**
+   * Wide at the top, barely tapering, hanging almost to the ground.
+   *
+   * Wound the same way round as everything else, deliberately. All of these go
+   * into one path and are filled in one go — see `hide` below — and the
+   * non-zero rule cuts a hole wherever two overlapping loops disagree about
+   * their direction. This one used to run the other way, which is what put a
+   * hole through the face.
+   */
   const trunk = () => {
-    ctx.beginPath();
-    // From well up inside the head, and down nearly to the feet.
-    ctx.moveTo(-37, -34);
-    ctx.quadraticCurveTo(-38, -18, -35, -3);
-    ctx.quadraticCurveTo(-31.5, -0.8, -28, -3.4);
-    ctx.quadraticCurveTo(-27.5, -19, -26, -33);
+    ctx.moveTo(-26, -33);
+    ctx.quadraticCurveTo(-27.5, -19, -28, -3.4);
+    ctx.quadraticCurveTo(-31.5, -0.8, -35, -3);
+    ctx.quadraticCurveTo(-38, -18, -37, -34);
     ctx.closePath();
   };
 
@@ -443,28 +447,26 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
 
   if (medium === 'color') {
     /*
-     * Measured off the painting: `srgb(66,58,45)` over the whole flank.
+     * Elephant grey with a dirty blue in it.
      *
-     * Two earlier goes at this were wrong in opposite directions. The first
-     * sampled a washed-out copy and came out a yellow-olive that went green
-     * against the grass; the second corrected for that by warming it, which
-     * made a mid-brown carthorse. The paint is actually much darker than either
-     * and very nearly neutral — the channels are only twenty apart — and at
-     * that value it reads as dark brown against anything — nudged a few points
-     * towards red, because neutral at this value goes grey-green on grass.
+     * Not what the paint measures. Inside the outline it is `#40392C` — a
+     * desaturated dark grey-olive, only twenty points between the channels —
+     * and rendered at exactly that value it still read as a brown animal,
+     * because the painting only makes it look cool by setting it against a blue
+     * sky and this sets it on green grass. So it is pulled to where the eye
+     * expects an elephant to be: grey, with the blue left dirty rather than
+     * clean, which is roughly where a real one sits too.
      */
-    const hide = '#46362a';
+    const hideColour = '#4a4f56';
 
-    // Tail first only in the sense that it must not be buried: it hangs clear
-    // of the rump, so it is drawn after the body below.
-    ctx.fillStyle = '#ec6052';
     /*
-     * Toenails: three to a foot, sat at the bottom of each leg.
+     * Toenails under the feet, so the legs cover their tops.
      *
-     * Sampled off the painting rather than guessed: the paint is a coral,
-     * `srgb(236,96,82)`, which reads far pinker than the flat red I first put
-     * here and rather redder than the pink I replaced it with.
+     * Sampled off the painting: the paint is a coral, `srgb(236,96,82)`, which
+     * reads far pinker than the flat red I first put here and rather redder
+     * than the pink I replaced it with.
      */
+    ctx.fillStyle = '#ec6052';
     for (const [fx, w, foot] of legs) {
       for (const n of [-1, 0, 1]) {
         ctx.beginPath();
@@ -475,50 +477,43 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
       }
     }
 
-    ctx.fillStyle = hide;
-    for (const [fx, w, foot] of legs) {
-      ctx.beginPath();
-      ctx.rect(fx - w / 2, -18, w, 18 + foot);
-      ctx.fill();
-    }
-
-    // The far ear, behind the head.
-    ctx.fillStyle = '#372f25';
-    ctx.beginPath();
-    ctx.ellipse(-33, -43, 7.4, 8.4, -0.2, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = hide;
-
-    body();
-    ctx.fill();
     /*
-     * Head and trunk in one colour, so they read as one mass.
+     * The whole animal as one path, filled once.
      *
-     * A darker trunk left a seam across the face where the two shapes met, and
-     * in the painting there is no seam: the head runs straight down into the
-     * trunk and the whole front of the animal is one continuous fall of dark.
+     * This is the difference between it fading in and it *materialising*. Drawn
+     * as separate shapes it looked fine at full opacity and horrible at every
+     * value in between: each leg, the head, the trunk and both ears composited
+     * against the body separately, so half way through the arrival you could
+     * see straight through the body to the outline of everything inside it. One
+     * path means one fill, and one fill means every pixel is painted exactly
+     * once whatever the opacity happens to be.
      */
-    head();
-    ctx.fill();
-    trunk();
-    ctx.fill();
-
-    // The near ear, over the head, leaning as it listens.
-    ctx.save();
-    ctx.translate(-25.5, -44);
-    ctx.rotate(ear);
-    ctx.fillStyle = '#4b4234';
     ctx.beginPath();
-    ctx.ellipse(0, 0, 8.2, 8.8, 0.18, 0, TAU);
+    for (const [fx, w, foot] of legs) ctx.rect(fx - w / 2, -18, w, 18 + foot);
+    // The far ear, behind everything.
+    ctx.ellipse(-33, -43, 7.4, 8.4, -0.2, 0, TAU);
+    body();
+    head();
+    trunk();
+    // The near ear, leaning as it listens. Rotated in the path rather than by
+    // the canvas, so that it can join the rest of it.
+    ctx.ellipse(-25.5, -44, 8.2, 8.8, 0.18 + ear, 0, TAU);
+    ctx.fillStyle = hideColour;
     ctx.fill();
-    ctx.restore();
 
-    ctx.strokeStyle = hide;
+    // A line between the ears, since they are now the same one shape.
+    ctx.strokeStyle = '#3a3f45';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(-25.5, -44, 8.2, 8.8, 0.18 + ear, Math.PI * 0.72, Math.PI * 1.5);
+    ctx.stroke();
+
+    ctx.strokeStyle = hideColour;
     ctx.lineCap = 'round';
     tail(2.6);
 
     // The stripes down the trunk.
-    ctx.fillStyle = '#1a140e';
+    ctx.fillStyle = '#20242a';
     for (const i of [0, 1, 2, 3, 4, 5]) {
       ctx.beginPath();
       ctx.ellipse(-32.8 + i * 0.6, -27 + i * 4.6, 2.5, 1.6, 0.1, 0, TAU);
@@ -539,11 +534,14 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
 
   const k = 6100;
   ink(ctx, 0.5, 1.3);
+  ctx.beginPath();
   body();
   ctx.stroke();
   ink(ctx, 0.5, 1.2);
+  ctx.beginPath();
   head();
   ctx.stroke();
+  ctx.beginPath();
   trunk();
   ctx.stroke();
   for (const [fx, w, foot] of legs) {
