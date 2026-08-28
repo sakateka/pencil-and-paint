@@ -28,13 +28,13 @@ export interface Tuft {
 export type Path = Point[];
 
 /**
- * The blue part, inside the marshy rim.
+ * The open water, well clear of the edge.
  *
- * The pond's own ellipse is its bank — the reeds and the wet ground — and the
- * water sits well inside it. Anything that has to land *on the water* rather
- * than merely near the pond has to ask for this, which is why it is a function
- * both the drawing and the rest of the game go through: put a float in the
- * pond's ellipse and it lands in the reeds.
+ * The pond used to be drawn as a grey-green marshy bank with a smaller blue
+ * pond inside it, and this returned the blue. The bank is gone — it read as a
+ * ring of shallow water and looked wrong — so the whole ellipse is water now
+ * and this is the deep middle of it: where a float belongs, and where the lily
+ * pads sit, rather than right up against the rim.
  */
 export function waterArea(pond: Ellipse): Ellipse {
   return { x: pond.x + 6, y: pond.y + 4, rx: pond.rx * 0.74, ry: pond.ry * 0.7 };
@@ -79,17 +79,33 @@ export function makePond(
     pads,
     colliders: [ellipseCollider(x, y, rx * 0.97, ry * 0.97)],
     draw(ctx, medium) {
-      paint(ctx, outer, '#5f7f6a', medium, { angle: 0, outlineAlpha: 0.45, darkScale: 0.5 });
+      // Water all the way out to its own edge. There is no bank: a ring of
+      // grey-green around the blue read as shallows and looked like a mistake.
+      paint(ctx, outer, '#5aa0c4', medium, { angle: 0, outlineAlpha: 0.45, darkScale: 0.5 });
 
       if (medium === 'color') {
         const g = ctx.createLinearGradient(x, y - ry, x, y + ry);
         g.addColorStop(0, '#6fb3d2');
         g.addColorStop(1, '#3d7fa8');
-        tracePoly(ctx, inner);
+        tracePoly(ctx, outer);
         ctx.fillStyle = g;
         ctx.fill();
+        /*
+         * Deeper towards the middle, so the pond has some shape to it.
+         *
+         * A radial fade rather than a second, smaller ellipse laid on top: any
+         * shape with an edge to it reads as a ring around the pond, which is
+         * exactly the thing that had to go.
+         */
+        const depth = ctx.createRadialGradient(x, y, 0, x, y, rx);
+        depth.addColorStop(0, 'rgba(37,99,142,.30)');
+        depth.addColorStop(0.55, 'rgba(37,99,142,.15)');
+        depth.addColorStop(1, 'rgba(37,99,142,0)');
+        tracePoly(ctx, outer);
+        ctx.fillStyle = depth;
+        ctx.fill();
         isolate(ctx, () => {
-          tracePoly(ctx, inner);
+          tracePoly(ctx, outer);
           ctx.clip();
           ctx.strokeStyle = 'rgba(255,255,255,.45)';
           ctx.lineCap = 'round';
@@ -109,7 +125,7 @@ export function makePond(
         // Water reads as horizontal ripple lines. Hatching it like a solid
         // would make the pond look like a rock.
         isolate(ctx, () => {
-          tracePoly(ctx, inner);
+          tracePoly(ctx, outer);
           ctx.clip();
           ctx.strokeStyle = PENCIL;
           ctx.lineCap = 'round';
@@ -124,7 +140,15 @@ export function makePond(
             ctx.stroke();
           }
         });
-        sketchOutline(ctx, inner, 0.35, 1);
+        /*
+         * A ghost of the deep water, and no more than that.
+         *
+         * It used to be drawn at the strength of a real edge, which gave the
+         * pond two outlines and read as a shelf running round it — the pencil
+         * version of the grey rim. Faint, it does what the radial fade does in
+         * colour: says the middle is deeper without drawing a ring.
+         */
+        sketchOutline(ctx, inner, 0.11, 1);
       }
 
       for (const pad of pads) {
