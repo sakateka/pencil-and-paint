@@ -113,12 +113,12 @@ export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medi
     ctx.strokeStyle = GOLD_DARK;
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(25, -9);
-    ctx.quadraticCurveTo(34, -7, 31 + tail, 0.5);
+    ctx.moveTo(20, -9);
+    ctx.quadraticCurveTo(28, -7, 25 + tail, 0.5);
     ctx.stroke();
     ctx.fillStyle = '#b8761c';
     ctx.beginPath();
-    ctx.ellipse(31 + tail, 1.8, 2.4, 3, 0, 0, TAU);
+    ctx.ellipse(25 + tail, 1.8, 2.3, 2.9, 0, 0, TAU);
     ctx.fill();
 
     /*
@@ -134,9 +134,9 @@ export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medi
      */
     ctx.fillStyle = GOLD_DARK;
     ctx.beginPath();
-    ctx.ellipse(14, -7, 14, 7.5, 0, 0, TAU);
-    ctx.ellipse(6, -2, 5.2, 3, -0.1, 0, TAU);
-    ctx.ellipse(15, -1.6, 5.2, 3, 0.05, 0, TAU);
+    ctx.ellipse(9, -8, 12.5, 7, 0, 0, TAU);
+    ctx.ellipse(2, -2.4, 5, 2.9, -0.1, 0, TAU);
+    ctx.ellipse(10, -2, 5, 2.9, 0.05, 0, TAU);
     ctx.fill();
 
     // The mane: strokes thrown outward all the way round the head.
@@ -264,9 +264,9 @@ export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medi
   ctx.globalAlpha = 0.88;
   ctx.fillStyle = PAPER;
   ctx.beginPath();
-  ctx.ellipse(14, -7, 14, 7.5, 0, 0, TAU);
-  ctx.ellipse(6, -2, 5.2, 3, -0.1, 0, TAU);
-  ctx.ellipse(15, -1.6, 5.2, 3, 0.05, 0, TAU);
+  ctx.ellipse(9, -8, 12.5, 7, 0, 0, TAU);
+  ctx.ellipse(2, -2.4, 5, 2.9, -0.1, 0, TAU);
+  ctx.ellipse(10, -2, 5, 2.9, 0.05, 0, TAU);
   ctx.fill();
   ctx.save();
   ctx.translate(headX, headY);
@@ -278,16 +278,16 @@ export function drawLion(ctx: CanvasRenderingContext2D, lion: Lion, medium: Medi
 
   ink(ctx, 0.42, 1.1);
   ctx.beginPath();
-  ctx.moveTo(25, -9);
-  ctx.quadraticCurveTo(34, -7, 31 + tail + jitter(k, 0.5), 0.5);
+  ctx.moveTo(20, -9);
+  ctx.quadraticCurveTo(28, -7, 25 + tail + jitter(k, 0.5), 0.5);
   ctx.stroke();
   ink(ctx, 0.5, 1.2);
   ctx.beginPath();
-  ctx.ellipse(14 + jitter(k + 1, 0.6), -7, 14, 7.5, 0, 0, TAU);
+  ctx.ellipse(9 + jitter(k + 1, 0.6), -8, 12.5, 7, 0, 0, TAU);
   ctx.stroke();
   ink(ctx, 0.42, 1);
-  inkArc(ctx, 6, -2, 5.2, k + 4);
-  inkArc(ctx, 15, -1.6, 5.2, k + 6);
+  inkArc(ctx, 2, -2.4, 5, k + 4);
+  inkArc(ctx, 10, -2, 5, k + 6);
 
   ctx.save();
   ctx.translate(headX, headY);
