@@ -484,10 +484,17 @@ export function buildLayout(): Layout {
    * the leaves are behind it rather than over it.
    */
   const owl = {
-    x: perch.x - 17 * perch.scale,
-    y: perch.y - 46 * perch.scale,
-    // Given a floor, because an owl you cannot see the face of is not an owl.
-    scale: Math.max(0.95, perch.scale * 0.8),
+    x: perch.x - 20 * perch.scale,
+    y: perch.y - 42 * perch.scale,
+    /*
+     * A little larger than life, but not by much.
+     *
+     * It went up to half again this size while I was trying to make claws and
+     * sweeping horns legible; the answer was to stop drawing those rather than
+     * to inflate the bird. What has to read is the shape: two small pointed
+     * ears, two big eyes and the wings down its sides.
+     */
+    scale: Math.max(1, perch.scale * 0.7),
   };
 
   return { scenery, tufts, paths, pond: pond.area, animals, owl };
