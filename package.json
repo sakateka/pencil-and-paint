@@ -8,9 +8,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:tmp": "tsc --noEmit && vite build --outDir tmp/dist --emptyOutDir",
     "preview": "vite preview --port 4173",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/run.js"
+    "test": "node tests/run.js",
+    "test:tmp": "PENCIL_DIST=tmp/dist node tests/run.js"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",

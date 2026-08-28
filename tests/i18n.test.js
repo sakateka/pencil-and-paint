@@ -158,6 +158,47 @@ export async function run(url) {
     const remembered = await game.page.$eval('#startBtn', (el) => el.textContent);
     suite.equal(remembered, 'Echar a andar', 'and it is still there after a reload');
 
+    /*
+     * The title card, which is the screen everybody sees first and the only one
+     * where the picker is the sole thing to interact with.
+     *
+     * This is here because it was broken and nothing caught it: the picker was
+     * listened to by the Ui, and the Ui is not built until Start has been
+     * pressed and the valley has finished baking. Every test in this file had
+     * pressed Start before looking.
+     */
+    const card = await openGame(url, { start: false });
+    try {
+      const before = await card.page.$eval('#startBtn', (e) => e.textContent);
+      await card.page.selectOption('#lang', 'ru');
+      await card.page.waitForTimeout(200);
+      const picked = await card.page.evaluate(() => ({
+        start: document.getElementById('startBtn').textContent,
+        tagline: document.querySelector('[data-i18n="intro.tagline1"]').textContent,
+        gather: document.querySelector('[data-i18n="intro.gather"]').textContent,
+        doc: document.documentElement.lang,
+        running: globalThis.pencil !== undefined,
+      }));
+
+      suite.ok(!picked.running, 'the game has not been started');
+      suite.ok(before !== picked.start, 'the title card answers the picker', picked.start);
+      suite.equal(picked.doc, 'ru', 'and the page says which language it is in');
+      suite.ok(
+        /[\u0400-\u04FF]/.test(picked.tagline) && /[\u0400-\u04FF]/.test(picked.gather),
+        'every line of the card, not just the button',
+        picked.tagline.slice(0, 40),
+      );
+
+      // And back, so it is a picker rather than a one-way door.
+      await card.page.selectOption('#lang', 'en');
+      await card.page.waitForTimeout(200);
+      const back = await card.page.$eval('#startBtn', (e) => e.textContent);
+      suite.equal(back, before, 'and changes back again');
+      suite.equal(card.errors.length, 0, 'no errors on the title card', card.errors.join(' | '));
+    } finally {
+      await card.close();
+    }
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();

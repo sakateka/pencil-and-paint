@@ -7,7 +7,7 @@
  * reader.
  */
 
-import { list, setLanguage, t, translateDom, type Lang } from './i18n';
+import { list, onLanguageChange, t, translateDom } from './i18n';
 
 function element<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -33,7 +33,6 @@ export class Ui {
   private readonly creelList = element('creelList');
   private readonly reachLine = element('reachLine');
   private readonly doneSub = element('doneSub');
-  private readonly picker = element<HTMLSelectElement>('lang');
 
   private doneTimer: number | undefined;
   private tuckTimer: number | undefined;
@@ -82,13 +81,11 @@ export class Ui {
       this.doneTab.blur();
     });
 
-    // The picker's options are filled by `translateDom` before any of this
-    // exists; all that is left is to listen to it.
-    this.picker.addEventListener('change', () => {
-      setLanguage(this.picker.value as Lang);
-      this.retranslate();
-      this.picker.blur();
-    });
+    // The picker is filled *and listened to* by `translateDom`, long before any
+    // of this exists — it has to be, or the title card's picker would be dead.
+    // All that is wanted here is to be told, so the parts of the screen only
+    // the Ui knows about get said again too.
+    onLanguageChange(() => this.retranslate());
 
     // The language was chosen and the card translated before the world was
     // built; this only catches up the parts that did not exist yet.

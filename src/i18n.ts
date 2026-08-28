@@ -610,6 +610,19 @@ export function t(key: string, params: Record<string, string | number> = {}): st
  * anything is built — the card is on screen for the whole bake, and until this
  * ran there it sat in English while the valley was drawn.
  */
+/**
+ * Things wanting to hear that the language changed.
+ *
+ * The Ui subscribes; it cannot own the picker's `change` handler itself,
+ * because it does not exist while the title card is on screen — which is
+ * precisely when somebody is looking for the language picker.
+ */
+const listeners = new Set<() => void>();
+
+export function onLanguageChange(fn: () => void): void {
+  listeners.add(fn);
+}
+
 export function translateDom(): void {
   for (const el of document.querySelectorAll<HTMLElement>('[data-i18n]')) {
     const key = el.dataset.i18n;
@@ -633,6 +646,20 @@ export function translateDom(): void {
         option.textContent = name;
         picker.append(option);
       }
+      /*
+       * Listened to here, the first time the options are filled.
+       *
+       * This used to be the Ui's, and the Ui is not built until somebody has
+       * pressed Start and the valley has finished baking — so for the whole
+       * time the title card was up, the one screen where the picker is the
+       * only thing to interact with, choosing a language did nothing at all.
+       */
+      picker.addEventListener('change', () => {
+        setLanguage(picker.value as Lang);
+        translateDom();
+        picker.blur();
+        for (const fn of listeners) fn();
+      });
     }
     picker.value = current;
   }

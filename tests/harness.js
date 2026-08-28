@@ -3,8 +3,15 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 
-// Defaults to dist/, overridable so a build can be verified without clobbering
-// someone else's output in a shared checkout, and for CI variants.
+/*
+ * Defaults to dist/, overridable via PENCIL_DIST.
+ *
+ * This checkout is shared by two accounts and `dist/` grants write only to its
+ * owner, so whoever builds second cannot empty the other's output. Rather than
+ * fight over it: `npm run build:tmp` and `npm run test:tmp` work entirely in
+ * `tmp/dist`, leaving `dist/` to whoever runs plain `npm run build` — which is
+ * also what `npm run preview` serves.
+ */
 const ROOT = process.env.PENCIL_DIST
   ? `${process.env.PENCIL_DIST.replace(/\/?$/, '/')}`
   : new URL('../dist/', import.meta.url).pathname;
@@ -59,9 +66,19 @@ export async function openGame(url, { viewport = { width: 1280, height: 800 }, s
   // Nothing heavy runs until the page is touched — see `firstGesture` in
   // main.ts — so the click comes first and the game appears after it.
   await page.waitForSelector('#startBtn');
-  await page.click('#startBtn');
-  await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 30000 });
-  if (start) await page.waitForTimeout(300);
+  /*
+   * `start: false` means the title card is left up, untouched.
+   *
+   * It used to click Start regardless and only skip a settle delay, which made
+   * it impossible to test the one screen every player sees first — and hid a
+   * real fault for a while: the language picker on the title card did nothing,
+   * because the only thing listening to it was built after Start was pressed.
+   */
+  if (start) {
+    await page.click('#startBtn');
+    await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 30000 });
+    await page.waitForTimeout(300);
+  }
 
   return {
     page,
