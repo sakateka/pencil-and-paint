@@ -109,7 +109,15 @@ const en: Dictionary = {
   'said.shoe': "somebody's shoe",
   'said.treasure': 'something gold…',
 
-  'creel.title': 'you packed up',
+  /*
+   * The heading on the card that goes up when a session ends.
+   *
+   * It used to say "you packed up", which is a fact about the camp rather than
+   * about the fishing, and the card is only ever a ledger of what came out of
+   * the water. With nothing caught it reads "the catch — nothing but weed,
+   * this time", which is still a sentence about fishing.
+   */
+  'creel.title': 'the catch',
   'creel.empty': 'nothing but weed, this time',
   'creel.roach': { one: 'a roach', other: '{n} roach' },
   'creel.crucian': { one: 'a crucian carp', other: '{n} crucian carp' },
@@ -200,7 +208,7 @@ const es: Dictionary = {
   'said.shoe': 'el zapato de alguien',
   'said.treasure': 'algo dorado…',
 
-  'creel.title': 'recogiste el campamento',
+  'creel.title': 'la captura',
   'creel.empty': 'sólo algas, esta vez',
   'creel.roach': { one: 'una bermejuela', many: '{n} bermejuelas', other: '{n} bermejuelas' },
   'creel.crucian': { one: 'un carpín', many: '{n} carpines', other: '{n} carpines' },
@@ -291,7 +299,7 @@ const pt: Dictionary = {
   'said.shoe': 'o sapato de alguém',
   'said.treasure': 'algo dourado…',
 
-  'creel.title': 'arrumaste o campo',
+  'creel.title': 'a captura',
   'creel.empty': 'só ervas, desta vez',
   'creel.roach': { one: 'um ruivaco', many: '{n} ruivacos', other: '{n} ruivacos' },
   'creel.crucian': { one: 'um pimpão', many: '{n} pimpões', other: '{n} pimpões' },
@@ -383,7 +391,7 @@ const ru: Dictionary = {
   'said.shoe': 'чей-то ботинок',
   'said.treasure': 'что-то золотое…',
 
-  'creel.title': 'ты собрал лагерь',
+  'creel.title': 'улов',
   'creel.empty': 'в этот раз одни водоросли',
   /*
    * The tally uses the plain nominative after a number — "5 плотва", not
@@ -479,7 +487,7 @@ const zh: Dictionary = {
   'said.shoe': '谁的鞋子',
   'said.treasure': '金色的东西…',
 
-  'creel.title': '你收拾好了',
+  'creel.title': '渔获',
   'creel.empty': '这回只有水草',
   'creel.roach': { other: '{n} 条稣鱼' },
   'creel.crucian': { other: '{n} 条鲫鱼' },
