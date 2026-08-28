@@ -3,6 +3,7 @@ import type { Bounds } from '../core/geom';
 import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
+import { withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
 import { drawWalker, type Walker } from '../entities/player';
@@ -210,8 +211,15 @@ export class Renderer {
        * occluders. Its medium is its own — this is past the colour mask, so
        * nothing here is masked, and an owl out in the graphite has to be drawn
        * as a drawing rather than simply appearing in colour on a grey hillside.
+       *
+       * And under `withBoil`, which everything drawn in pencil needs and which
+       * this went without at first: outside it the hand keeps moving at seven
+       * ticks a second, so a frozen owl sat there with its eyes darting about.
+       * Asleep is asleep — pencil on paper, and paper does not move.
        */
-      drawOwl(ctx, scene.owl, scene.owl.awake ? 'color' : 'sketch');
+      withBoil(scene.owl.awake, () =>
+        drawOwl(ctx, scene.owl, scene.owl.awake ? 'color' : 'sketch'),
+      );
       const house = scene.treehouse;
       if (house.inside) {
         drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving);

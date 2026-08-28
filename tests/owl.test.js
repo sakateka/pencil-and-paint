@@ -37,7 +37,12 @@ export async function run(url) {
     // From across the valley it is a drawing, and drawings hold still.
     const far = await game.evaluate((pencil) => {
       const { game } = pencil;
-      game.teleport(game.owl.x + 900, game.owl.y + 600);
+      /*
+       * Far enough out of the colour to be asleep, near enough to still be on
+       * screen — the stillness check below reads pixels where it is drawn, and
+       * an owl over the horizon samples a rectangle of nothing.
+       */
+      game.teleport(game.owl.x + 360, game.owl.y + 170);
       for (let i = 0; i < 60; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       const clock = game.owl.clock;
       for (let i = 0; i < 60; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
@@ -47,6 +52,49 @@ export async function run(url) {
 
     suite.ok(!far.awake, 'from across the valley it is asleep');
     suite.equal(far.ran, 0, 'and its clock does not advance');
+
+    /*
+     * And it is drawn perfectly still, which is a separate thing from its clock
+     * being stopped.
+     *
+     * Pencil strokes are jittered against a "boil" counter that ticks seven
+     * times a second, and anything drawn outside `withBoil` gets the live one —
+     * so the frozen owl was re-inked continuously and sat in its tree with its
+     * eyes darting about.
+     *
+     * The wait is real time, not simulated. The boil is advanced by the page's
+     * own animation loop, so stepping the simulation two hundred frames in a
+     * microsecond leaves it exactly where it was — the first version of this
+     * test did that and passed happily with the bug still in place.
+     */
+    const sample = (pencil) => {
+      const { game } = pencil;
+      const ctx = document.querySelector('#game').getContext('2d');
+      const sx = Math.round(game.camera.toScreenX(game.owl.x) * pencil.renderer.scale);
+      const sy = Math.round(game.camera.toScreenY(game.owl.y) * pencil.renderer.scale);
+      const R = 44;
+      const data = ctx.getImageData(sx - R, sy - R * 1.7, R * 2, R * 2).data;
+      let hash = 0;
+      let opaque = 0;
+      for (let i = 0; i < data.length; i++) hash = (hash * 31 + data[i]) | 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 200) opaque++;
+      return { hash, opaque, awake: game.owl.awake, sx, sy };
+    };
+
+    const first = await game.evaluate(sample);
+    // Three boil ticks' worth, wall clock.
+    await game.page.waitForTimeout(450);
+    const second = await game.evaluate(sample);
+
+    suite.ok(!first.awake, 'still out in the graphite');
+    // Guard against the assertion below passing on a rectangle of nothing,
+    // which is exactly what it did when the vantage point was off the map.
+    suite.ok(
+      first.opaque > 1000,
+      'and the sample is actually looking at the page',
+      `${first.opaque} opaque pixels at ${first.sx},${first.sy}`,
+    );
+    suite.equal(second.hash, first.hash, 'and it does not move a hair between boil ticks');
 
     /*
      * The head turn. Stand to one side and then the other: it should end up
