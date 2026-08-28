@@ -120,6 +120,20 @@ export class Herd {
       a.diving = false;
       a.dive = 0;
     }
+
+    /*
+     * Except the chick, which is put back beside its mother.
+     *
+     * Everything else here is scattered to a random spot in its own patch of
+     * ground, and for a moment that is what the chick got too — its own corner
+     * of the run, a hen's width away from her, which it then had to run across
+     * the field to fix. A new world should open on the pair of them together.
+     */
+    const chick = this.animals.find((a) => a.kind === 'chick');
+    if (chick && this.hen) {
+      chick.x = this.hen.x + (Math.random() < 0.5 ? -12 : 12);
+      chick.y = this.hen.y + 5;
+    }
   }
 
   update(dt: number, ctx: HerdContext): void {
