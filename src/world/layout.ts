@@ -381,6 +381,23 @@ export function buildLayout(): Layout {
   animals.push({ kind: 'cat', x: 640, y: 1498, homeRadius: 0, scale: 1.05 });
   sites.reserve(640, 1498, 40);
 
+  /*
+   * Frogs, on the biggest lily pads. Each is scaled to the leaf it sits on, so
+   * none of them is balanced on something the size of itself.
+   *
+   * A frog takes the whole leaf: its flower is cleared rather than drawn under
+   * it. This happens before anything is baked — the pond's draw closure reads
+   * these same pads when the bake runs — and it costs the world generator no
+   * randomness, so the rest of the valley falls exactly where it did.
+   *
+   * Nothing is reserved for them. They are out on the water, where nothing else
+   * is placed and nobody can walk.
+   */
+  for (const pad of [...pond.pads].sort((p, q) => q.r - p.r).slice(0, 5)) {
+    pad.flower = false;
+    animals.push({ kind: 'frog', x: pad.x, y: pad.y - 2, homeRadius: 0, scale: pad.r / 21 });
+  }
+
   // --- scattered nature, wherever there is room left ---
   for (let i = 0; i < 34; i++) {
     const spot = sites.findFree(46, 60, 40);

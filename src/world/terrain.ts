@@ -40,12 +40,26 @@ export function waterArea(pond: Ellipse): Ellipse {
   return { x: pond.x + 6, y: pond.y + 4, rx: pond.rx * 0.74, ry: pond.ry * 0.7 };
 }
 
-export function makePond(x: number, y: number, rx: number, ry: number): Scenery & { area: Ellipse } {
+/** A lily pad: somewhere for a frog to sit. */
+export interface Pad {
+  x: number;
+  y: number;
+  r: number;
+  /** Cleared if something comes to sit on the leaf. */
+  flower: boolean;
+}
+
+export function makePond(
+  x: number,
+  y: number,
+  rx: number,
+  ry: number,
+): Scenery & { area: Ellipse; pads: Pad[] } {
   const outer = ellipsePoly(x, y, rx, ry, 30, 0.055);
   const water = waterArea({ x, y, rx, ry });
   const inner = ellipsePoly(water.x, water.y, water.rx, water.ry, 26, 0.06);
 
-  const pads: { x: number; y: number; r: number; flower: boolean }[] = [];
+  const pads: Pad[] = [];
   for (let i = 0; i < 7; i++) {
     const a = rnd() * TAU;
     const d = Math.sqrt(rnd()) * 0.72;
@@ -61,6 +75,8 @@ export function makePond(x: number, y: number, rx: number, ry: number): Scenery 
     // Sorted by its top edge: the pond is a hole in the ground, drawn early.
     y: y - ry,
     area: { x, y, rx, ry },
+    // Handed back so that things which sit on lily pads can be put on them.
+    pads,
     colliders: [ellipseCollider(x, y, rx * 0.97, ry * 0.97)],
     draw(ctx, medium) {
       paint(ctx, outer, '#5f7f6a', medium, { angle: 0, outlineAlpha: 0.45, darkScale: 0.5 });

@@ -36,6 +36,7 @@ const SHY_DISTANCE: Record<AnimalKind, number> = {
   sheep: 66,
   cow: 66,
   cat: 0,
+  frog: 0,
 };
 
 export class Herd {
@@ -102,6 +103,13 @@ export class Herd {
         a.purr = Math.max(0, a.purr - dt);
         continue;
       }
+
+      /*
+       * A frog stays on its lily pad, and must not be asked to resolve
+       * collisions to do it: the pond is a solid collider as far as walking is
+       * concerned, so one step of that would shove every frog onto the bank.
+       */
+      if (a.kind === 'frog') continue;
 
       this.step(a, dt, ctx);
       ctx.resolveCollisions(a, 11 * a.scale);

@@ -140,6 +140,8 @@ const SPEEDS: Record<AnimalKind, number> = {
   sheep: 26,
   cow: 19,
   cat: 0,
+  // A frog on a lily pad has arrived. Where would it go?
+  frog: 0,
 };
 
 export function makeAnimal(
@@ -476,6 +478,121 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
   ctx.restore();
 }
 
+/**
+ * A frog on a lily pad, out on the pond.
+ *
+ * Painted from one of the paintings on the easel — the same teal back, the same
+ * yellow throat, the same two eyes stuck on top like buttons. Five of them sit
+ * out there, and at the end you get to see the picture they came from.
+ *
+ * It does not move, and that is the joke: a frog on a pad is the stillest thing
+ * in the valley until the moment it is not. All it does is breathe and blink.
+ */
+function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
+  const breath = 1 + Math.sin(t * 1.9 + a.phase) * 0.045;
+  // Blinks are rare and quick, and never in time with the one next to it.
+  const blink = Math.max(0, Math.sin(t * 0.7 + a.phase * 3) - 0.985) * 60;
+  const lid = Math.min(1, blink);
+  const throat = 1 + Math.sin(t * 3.1 + a.phase) * 0.06;
+
+  ctx.save();
+  ctx.translate(a.x, a.y);
+  ctx.scale(a.face * a.scale, a.scale * breath);
+  const k = a.phase * 510;
+
+  if (medium === 'color') {
+    /*
+     * Bright against the pad, and outlined.
+     *
+     * In the painting the pads are a deep blue-green and the frogs sit on them
+     * like lamps; here the pads are already grass-coloured, so the separation
+     * has to come from the frog being brighter than its leaf and having an edge
+     * drawn round it. Matched to the frog's own green rather than to the pad's.
+     */
+    ctx.strokeStyle = '#186b5a';
+    ctx.lineWidth = 1.1;
+    ctx.lineJoin = 'round';
+
+    // Front legs tucked under, drawn first so the body overlaps them.
+    ctx.fillStyle = '#2a9c7c';
+    for (const lx of [-7.8, 7.8]) {
+      ctx.beginPath();
+      ctx.ellipse(lx, 0.5, 3.6, 2.1, lx < 0 ? 0.4 : -0.4, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // Eye mounds, also behind the body: two bumps on the skull.
+    ctx.fillStyle = '#37bd95';
+    for (const ex of [-5.4, 5.4]) {
+      ctx.beginPath();
+      ctx.arc(ex, -10.4, 3.6, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // Back: a wide low dome, the way a frog sits.
+    ctx.beginPath();
+    ctx.ellipse(0, -5, 11, 7.5, 0, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    // The throat, which is the bit you notice first in the painting.
+    ctx.fillStyle = '#eda93c';
+    ctx.beginPath();
+    ctx.ellipse(0, -3.4, 4.6 * throat, 4.2 * throat, 0, 0, TAU);
+    ctx.fill();
+    // Eyes: a pale ring and a dark pupil, with the lid coming down over both.
+    for (const ex of [-5.4, 5.4]) {
+      ctx.fillStyle = '#f6f1e4';
+      ctx.beginPath();
+      ctx.arc(ex, -10.8, 2.2, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#1d2e28';
+      ctx.beginPath();
+      ctx.arc(ex, -10.8, 1.15, 0, TAU);
+      ctx.fill();
+      if (lid > 0.02) {
+        ctx.fillStyle = '#37bd95';
+        ctx.beginPath();
+        ctx.ellipse(ex, -12.2 + lid * 1.4, 2.4, 2.4 * lid, 0, 0, TAU);
+        ctx.fill();
+      }
+    }
+    // The line of the mouth.
+    ctx.strokeStyle = '#186b5a';
+    ctx.lineWidth = 0.9;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(0, -6.2, 5.2, 0.4, Math.PI - 0.4);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  /*
+   * Fewer strokes than the colour version, deliberately.
+   *
+   * A frog is a fifth the size of a sheep, and everything that reads on a sheep
+   * — hatched shading, tucked legs, a hatched throat — turns into one dark
+   * scribble on something twenty pixels across sitting on an already-outlined
+   * lily pad. What survives at this size is the dome, two eyes and the mouth,
+   * so that is all that is drawn.
+   */
+  ink(ctx, 0.5, 1.1);
+  ctx.beginPath();
+  ctx.ellipse(jitter(k, 0.6), -5 + jitter(k + 1, 0.6), 11, 7.5, 0, 0, TAU);
+  ctx.stroke();
+  ink(ctx, 0.5, 1.05);
+  for (const ex of [-5.4, 5.4]) inkArc(ctx, ex, -10.4, 3.2, k + 30 + ex);
+  // Pupils: dots rather than circles, which at this scale fill in anyway.
+  ink(ctx, 0.62, 1.5);
+  ctx.lineCap = 'round';
+  for (const ex of [-5.4, 5.4]) inkLine(ctx, ex, -10.6, ex, -10.2, k + 40 + ex);
+  ink(ctx, 0.45, 0.95);
+  ctx.beginPath();
+  ctx.arc(0, -6.2, 5.2, 0.5, Math.PI - 0.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** Dispatch to the right animal. */
 export function drawAnimalLive(
   ctx: CanvasRenderingContext2D,
@@ -491,5 +608,7 @@ export function drawAnimalLive(
       return drawChicken(ctx, a, medium, a.clock);
     case 'cat':
       return drawCat(ctx, a, medium, a.clock);
+    case 'frog':
+      return drawFrog(ctx, a, medium, a.clock);
   }
 }
