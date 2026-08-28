@@ -663,15 +663,19 @@ function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: n
      *
      * In the painting the pads are a deep blue-green and the frogs sit on them
      * like lamps; here the pads are already grass-coloured, so the separation
-     * has to come from the frog being brighter than its leaf and having an edge
-     * drawn round it. Matched to the frog's own green rather than to the pad's.
+     * has to come from tone rather than hue — the frog is a darker green than
+     * its leaf, with a dark edge drawn round it.
+     *
+     * It was a bright mint green to begin with, which separated from the pad
+     * well enough but went strange once the pond was repainted paler: a minty
+     * frog on pale blue water reads as a sweet rather than an animal.
      */
-    ctx.strokeStyle = '#186b5a';
+    ctx.strokeStyle = '#17482a';
     ctx.lineWidth = 1.1;
     ctx.lineJoin = 'round';
 
     // Front legs tucked under, drawn first so the body overlaps them.
-    ctx.fillStyle = '#2a9c7c';
+    ctx.fillStyle = '#276b3b';
     for (const lx of [-7.8, 7.8]) {
       ctx.beginPath();
       ctx.ellipse(lx, 0.5, 3.6, 2.1, lx < 0 ? 0.4 : -0.4, 0, TAU);
@@ -679,7 +683,7 @@ function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: n
       ctx.stroke();
     }
     // Eye mounds, also behind the body: two bumps on the skull.
-    ctx.fillStyle = '#37bd95';
+    ctx.fillStyle = '#347f47';
     for (const ex of [-5.4, 5.4]) {
       ctx.beginPath();
       ctx.arc(ex, -10.4, 3.6, 0, TAU);
@@ -699,7 +703,7 @@ function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: n
      * bottom of the dome and flattened out, it goes back to being the pale
      * front of a frog, and the smile above it has room to be a smile.
      */
-    ctx.fillStyle = '#f2c463';
+    ctx.fillStyle = '#f0c257';
     ctx.beginPath();
     ctx.ellipse(0, -0.8, 6.2 * throat, 3.4 * throat, 0, 0, TAU);
     ctx.fill();
@@ -714,14 +718,14 @@ function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: n
       ctx.arc(ex, -10.8, 1.15, 0, TAU);
       ctx.fill();
       if (lid > 0.02) {
-        ctx.fillStyle = '#37bd95';
+        ctx.fillStyle = '#347f47';
         ctx.beginPath();
         ctx.ellipse(ex, -12.2 + lid * 1.4, 2.4, 2.4 * lid, 0, 0, TAU);
         ctx.fill();
       }
     }
     // A wide smile across the face, well clear of the belly.
-    ctx.strokeStyle = '#186b5a';
+    ctx.strokeStyle = '#17482a';
     ctx.lineWidth = 1;
     ctx.lineCap = 'round';
     ctx.beginPath();
