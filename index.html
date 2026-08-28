@@ -78,19 +78,17 @@
   }
   #ghlink {
     position:static;
-    display:flex; align-items:center; gap:8px;
-    padding:7px 12px 7px 10px;
+    display:flex; align-items:center;
+    padding:7px 10px;
     text-decoration:none; color:#332f28;
     transform:rotate(-1.5deg);
     transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease;
     opacity:.8;
   }
   #ghlink svg { width:19px; height:19px; fill:currentColor; display:block; }
-  #ghlink span { font-size:15px; }
   #ghlink:hover  { opacity:1; transform:rotate(0deg) translateY(-1px); box-shadow:3px 5px 0 rgba(60,55,45,.22); }
   #ghlink:active { transform:rotate(0deg) translate(1px,2px); box-shadow:none; }
   #ghlink:focus-visible { outline:2px solid rgba(60,55,45,.6); outline-offset:3px; }
-  @media (max-width:520px) { #ghlink span { display:none; } }
 
   /* Diagnostics. The F key does this on a keyboard; a phone needs something to
      press, and the numbers are only ever wanted on the device that is slow. */
@@ -310,7 +308,6 @@
              0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286
              0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
   </svg>
-  <span data-i18n="corner.source">source</span>
 </a>
 <select id="lang" class="panel" aria-label="Language"></select>
 <button id="stats" class="panel" type="button" aria-pressed="false"

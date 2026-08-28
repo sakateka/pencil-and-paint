@@ -133,7 +133,6 @@ const en: Dictionary = {
   'done.open': 'read the note again',
   'done.tuck': 'put the note away',
 
-  'corner.source': 'source',
   'corner.sourceTitle': 'View the source on GitHub',
   'corner.stats': 'Show performance diagnostics',
   'corner.lang': 'Language',
@@ -224,7 +223,6 @@ const es: Dictionary = {
   'done.open': 'volver a leer la nota',
   'done.tuck': 'guardar la nota',
 
-  'corner.source': 'código',
   'corner.sourceTitle': 'Ver el código en GitHub',
   'corner.stats': 'Mostrar datos de rendimiento',
   'corner.lang': 'Idioma',
@@ -315,7 +313,6 @@ const pt: Dictionary = {
   'done.open': 'voltar a ler a nota',
   'done.tuck': 'guardar a nota',
 
-  'corner.source': 'código',
   'corner.sourceTitle': 'Ver o código no GitHub',
   'corner.stats': 'Mostrar dados de desempenho',
   'corner.lang': 'Idioma',
@@ -442,7 +439,6 @@ const ru: Dictionary = {
   'done.open': 'перечитать записку',
   'done.tuck': 'убрать записку',
 
-  'corner.source': 'исходники',
   'corner.sourceTitle': 'Посмотреть исходники на GitHub',
   'corner.stats': 'Показать диагностику производительности',
   'corner.lang': 'Язык',
@@ -529,7 +525,6 @@ const zh: Dictionary = {
   'done.open': '再读一遍那张字条',
   'done.tuck': '把字条收起来',
 
-  'corner.source': '源码',
   'corner.sourceTitle': '在 GitHub 上查看源码',
   'corner.stats': '显示性能数据',
   'corner.lang': '语言',
