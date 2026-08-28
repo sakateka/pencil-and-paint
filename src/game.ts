@@ -4,6 +4,7 @@ import { Fishing, type CatchKind } from './entities/fishing';
 import { Rest } from './entities/rest';
 import { Treehouse } from './entities/treehouse';
 import { Herd } from './entities/herd';
+import { Owl } from './entities/owl';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
 import { scatterPots, type Pot } from './entities/pots';
@@ -116,6 +117,9 @@ export class Game {
   readonly field = new ColorField();
   readonly particles = new Particles();
   readonly herd: Herd;
+
+  /** The one thing in the valley that looks back at you. */
+  readonly owl: Owl;
   readonly fishing = new Fishing();
   readonly rest = new Rest(HAMMOCK.x, HAMMOCK.y);
   readonly treehouse = new Treehouse();
@@ -165,6 +169,7 @@ export class Game {
   ) {
     this.camera = new Camera(SPAWN.x, SPAWN.y, world.width, world.height);
     this.herd = new Herd(world.animalSpawns);
+    this.owl = new Owl(world.owlPerch.x, world.owlPerch.y, world.owlPerch.scale);
     this.cat = this.herd.animals.find((a) => a.kind === 'cat') ?? null;
     this.edges = { minX: 26, minY: 70, maxX: world.width - 26, maxY: world.height - 26 };
     this.restart();
@@ -280,6 +285,7 @@ export class Game {
     const wasFishing = this.fishing.active;
     this.fishing.update(dt, this.walker.x, this.walker.y);
     this.rest.update(dt, this.won);
+    this.owl.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.owl.x, this.owl.y, 10));
     this.treehouse.update(dt);
     if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.landed);
 
@@ -618,6 +624,7 @@ export class Game {
       herd: this.herd,
       fishing: this.fishing,
       rest: this.rest,
+      owl: this.owl,
       easel: EASEL,
       treehouse: this.treehouse,
       easelPicture: this.easelPicture,

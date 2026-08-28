@@ -2,6 +2,7 @@ import { context2d, createSurface, isolate, type Surface } from '../core/canvas'
 import type { Bounds } from '../core/geom';
 import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities/rest';
+import { drawOwl, type Owl } from '../entities/owl';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
 import { drawWalker, type Walker } from '../entities/player';
@@ -31,6 +32,7 @@ export interface Scene {
   readonly herd: Herd;
   readonly fishing: Fishing;
   readonly rest: Rest;
+  readonly owl: Owl;
   readonly treehouse: Treehouse;
   /** The last thing drawn at the easel, if there is one. */
   readonly easelPicture: HTMLImageElement | undefined;
@@ -203,6 +205,13 @@ export class Renderer {
        * supposed to be in.
        */
       drawBirds(ctx, scene.rest);
+      /*
+       * And the owl, for the same reason: it is up a tree, and the trees are
+       * occluders. Its medium is its own — this is past the colour mask, so
+       * nothing here is masked, and an owl out in the graphite has to be drawn
+       * as a drawing rather than simply appearing in colour on a grey hillside.
+       */
+      drawOwl(ctx, scene.owl, scene.owl.awake ? 'color' : 'sketch');
       const house = scene.treehouse;
       if (house.inside) {
         drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving);

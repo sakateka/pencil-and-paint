@@ -15,8 +15,9 @@ import { run as studio } from './studio.test.js';
 import { run as treehouse } from './treehouse.test.js';
 import { run as frogs } from './frogs.test.js';
 import { run as hen } from './hen.test.js';
+import { run as owl } from './owl.test.js';
 
-const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, i18n];
+const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, owl, i18n];
 
 /**
  * Runs every suite against the production build, served over HTTP the way a

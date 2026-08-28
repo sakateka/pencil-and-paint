@@ -60,6 +60,8 @@ export interface Layout {
   paths: Path[];
   pond: Ellipse;
   animals: AnimalSpawn[];
+  /** Where the owl sits, in the crown of one of the northern trees. */
+  owl: { x: number; y: number; scale: number };
 }
 
 /**
@@ -418,12 +420,22 @@ export function buildLayout(): Layout {
   }
 
   // --- scattered nature, wherever there is room left ---
+  /*
+   * Noted as they go up, so the owl can be given one of them.
+   *
+   * It has to be an existing tree rather than one planted for it. Every stroke
+   * of the bake draws from the world's shared randomness, so adding a tree here
+   * would move everything placed afterwards — and half the point of this valley
+   * is that it is the same one each time you come back to it.
+   */
+  const trees: { x: number; y: number; scale: number }[] = [];
   for (let i = 0; i < 34; i++) {
     const spot = sites.findFree(46, 60, 40);
     if (!spot) continue;
     const scale = rr(0.85, 1.55);
     scenery.push(makeTree(spot.x, spot.y, scale));
     sites.reserve(spot.x, spot.y, 40 * scale);
+    trees.push({ x: spot.x, y: spot.y, scale });
   }
   for (let i = 0; i < 30; i++) {
     const spot = sites.findFree(26, 50);
@@ -452,5 +464,31 @@ export function buildLayout(): Layout {
     tufts.push(makeTuft(x, y));
   }
 
-  return { scenery, tufts, paths, pond: pond.area, animals };
+  /*
+   * The owl's tree: the biggest one in the northern half of the map.
+   *
+   * Biggest because a small tree puts it at knee height, and northern because
+   * that is away from the cottages and the farm — up where the walking is all
+   * trees, which is as near to a wood as this valley has. Deterministic, so it
+   * is the same tree every time; the fallback is only there because a `Layout`
+   * has to be complete even in the impossible case of no trees at all.
+   */
+  const wood = trees.filter((tree) => tree.y < WORLD_HEIGHT * 0.42);
+  const perch = (wood.length ? wood : trees).reduce(
+    (best, tree) => (tree.scale > best.scale ? tree : best),
+    (wood.length ? wood : trees)[0] ?? { x: 300, y: 300, scale: 1 },
+  );
+  /*
+   * Sitting on a branch on the left of the trunk, below the middle of the
+   * crown: high enough to be up the tree rather than under it, low enough that
+   * the leaves are behind it rather than over it.
+   */
+  const owl = {
+    x: perch.x - 17 * perch.scale,
+    y: perch.y - 46 * perch.scale,
+    // Given a floor, because an owl you cannot see the face of is not an owl.
+    scale: Math.max(0.95, perch.scale * 0.8),
+  };
+
+  return { scenery, tufts, paths, pond: pond.area, animals, owl };
 }

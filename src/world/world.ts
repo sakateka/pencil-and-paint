@@ -102,6 +102,8 @@ export class World {
   readonly bakeScale: number;
   readonly pond: Ellipse;
   readonly animalSpawns: readonly AnimalSpawn[];
+  /** The branch the owl sits on, chosen from the trees the bake put up. */
+  readonly owlPerch: { x: number; y: number; scale: number };
 
   private readonly occluders: Occluder[];
   /** Set once the canvases have been handed back; nothing may draw after. */
@@ -140,6 +142,7 @@ export class World {
     occluders: Occluder[],
     pond: Ellipse,
     animalSpawns: AnimalSpawn[],
+    owlPerch: { x: number; y: number; scale: number },
   ) {
     this.layers = layers;
     this.bakeScale = layers.color.scale;
@@ -147,6 +150,7 @@ export class World {
     this.occluders = occluders;
     this.pond = pond;
     this.animalSpawns = animalSpawns;
+    this.owlPerch = owlPerch;
   }
 
   /**
@@ -299,7 +303,7 @@ export class World {
       occluders.push({ scenery: piece, bounds: piece.bounds, seed: seeds[i], sprites: new Map() });
     });
 
-    const world = new World(layers, colliders, occluders, layout.pond, layout.animals);
+    const world = new World(layers, colliders, occluders, layout.pond, layout.animals, layout.owl);
     world.longestSliceMs = longestSlice;
     world.bakePhases = phases;
     world.bakeYields = yields;
