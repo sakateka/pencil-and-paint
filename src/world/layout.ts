@@ -395,7 +395,15 @@ export function buildLayout(): Layout {
    */
   for (const pad of [...pond.pads].sort((p, q) => q.r - p.r).slice(0, 5)) {
     pad.flower = false;
-    animals.push({ kind: 'frog', x: pad.x, y: pad.y - 2, homeRadius: 0, scale: pad.r / 21 });
+    /*
+     * Bigger than the leaf, on purpose. Sized to fit, a frog was a smudge you
+     * had to already know about; this is a cosy game rather than a survey of
+     * pond wildlife, and a frog you can see the face of is worth more than one
+     * in scale. Set left of centre for the same reason: at this size a centred
+     * frog hides its leaf completely, and off to one side the pad still shows.
+     */
+    const scale = pad.r / 10.5;
+    animals.push({ kind: 'frog', x: pad.x - 4 * scale, y: pad.y - 2, homeRadius: 0, scale });
   }
 
   // --- scattered nature, wherever there is room left ---

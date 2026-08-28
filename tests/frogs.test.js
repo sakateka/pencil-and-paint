@@ -43,9 +43,11 @@ export async function run(url) {
       there.out.join(' '),
     );
     suite.equal(there.spread, there.count, 'each on its own pad, not stacked on one');
+    // Deliberately larger than their leaf — see the note in the layout. What is
+    // worth asserting is that they are all of a size with each other.
     suite.ok(
-      there.scales.every((s) => s > 0.35 && s < 0.9),
-      'sized to the leaf they sit on',
+      there.scales.every((s) => s > 0.8 && s < 1.7),
+      'big enough to have a face',
       there.scales.join(' '),
     );
 
