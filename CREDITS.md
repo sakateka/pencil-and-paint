@@ -1,26 +1,17 @@
 # Credits
 
-Everything in *Pencil & Paint* is drawn at runtime and there are no image files.
-Almost everything it makes a noise with is a handful of oscillators, too — the
-pot chimes still are. Three sounds are recordings.
+Everything in *Pencil & Paint* is drawn at runtime; the only pictures in it are
+the ones on the easel. Almost everything it makes a noise with is a handful of
+oscillators, too — the pot chimes still are. Three sounds are recordings.
 
 ## Paintings
 
-`src/assets/paintings/` — paintings by a friend of the author's, included here
-at the author's request and with their say-so. They are not mine and they are
-not free for reuse; if you fork this game, take them out.
-
-Some of them also stand somewhere in the valley — the frogs really are on the
-pond — which is the point of showing the whole set at the end. Somebody who
-walked past them gets to put the two together.
-
-They arrive as photographs, and the only thing done to them here is a resize.
-A painting shot flat, square to the page and in daylight needs nothing else —
-no sharpening, no saturation, no lifting of the contrast. All of that makes it
-look more like a photograph of a painting, not less. One shot at an angle on a
-lit table needs straightening and its lighting flattened before it is usable at
-all, and even then it tends to read as a picture of a painting. The first way
-is worth the trouble of asking for.
+`src/assets/paintings/` — our own drawings, photographed and resized. Nothing
+here is stock artwork or taken from the internet. They may be saved, shared,
+and adapted for noncommercial purposes under
+[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); commercial use
+requires separate written permission from their copyright holders. See
+[`LICENSE`](LICENSE) for the attribution requested by the artists.
 
 ## Sound
 
