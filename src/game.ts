@@ -194,7 +194,15 @@ export class Game {
       world.vigil.elephantY,
     );
     this.cat = this.herd.animals.find((a) => a.kind === 'cat') ?? null;
-    this.edges = { minX: 26, minY: 70, maxX: world.width - 26, maxY: world.height - 26 };
+    /*
+     * Right up to the top edge, where the other three keep their distance.
+     *
+     * The top used to hold the walker seventy units back, which was invisible
+     * until the sky opened over it — and then it meant you could see the edge
+     * of the world and never quite reach it. The far edge of the paper is the
+     * one place worth being able to stand.
+     */
+    this.edges = { minX: 26, minY: 12, maxX: world.width - 26, maxY: world.height - 26 };
     this.restart();
     this.camera.snapTo(this.walker.x, this.walker.y);
   }

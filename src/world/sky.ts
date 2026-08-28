@@ -1,0 +1,193 @@
+import { Rng } from '../core/rng';
+import { TAU } from '../core/math';
+import { ink, jitter } from '../media/ink';
+import { PAPER, type Medium } from '../media/medium';
+
+/**
+ * The sky, above the top edge of the map.
+ *
+ * Everywhere else the world is a sheet of paper seen from above, and the camera
+ * stops at its edge. Walk to the very top and the camera is allowed to keep
+ * going, and what comes up over the edge is sky — the one place in the valley
+ * where you are looking *out* rather than down, and the only hint that the
+ * paper has a horizon at all.
+ *
+ * In graphite it is bare paper with a few ruled strokes and a horizon line,
+ * because that is what an unfinished drawing of a sky is: the part the artist
+ * had not got to yet.
+ */
+
+/** How far above the map the camera may rise, in world units. */
+export const SKY_DEPTH = 320;
+
+/**
+ * The sun, over towards the right, with the spiky rays it has in the painting.
+ *
+ * Fixed in the world rather than fixed on screen: it is a thing hanging in the
+ * sky above one end of the valley, so walking west leaves it behind, which is
+ * what makes it feel like it is out there rather than painted on the lens.
+ *
+ * Big, and mostly outside the world: its centre sits just past the top-right
+ * corner of the sky, so only the near quarter of it is ever in view. A sun you
+ * can see all of is a sticker on the page; a quarter of an enormous one coming
+ * over the corner is the sky carrying on past the edge of the paper.
+ */
+const SUN = { x: 2792, y: -336, r: 150 };
+
+/** Clouds, at fixed places along the top of the world. */
+const clouds = (() => {
+  const rng = new Rng(0x5c1b7a3d);
+  return Array.from({ length: 26 }, (_, i) => ({
+    x: i * 190 + rng.range(-60, 60),
+    y: -rng.range(40, 280),
+    r: rng.range(26, 62),
+    lobes: rng.int(3, 5),
+    pale: rng.next() < 0.45,
+  }));
+})();
+
+export function drawSky(
+  ctx: CanvasRenderingContext2D,
+  viewX: number,
+  viewY: number,
+  viewWidth: number,
+  medium: Medium,
+): void {
+  // Nothing to draw until the camera has actually risen above the top edge.
+  if (viewY >= 0) return;
+
+  const left = viewX - 8;
+  const width = viewWidth + 16;
+  /*
+   * A whisker past the horizon, not exactly to it.
+   *
+   * The camera's origin is snapped to whole device pixels and the sky's lower
+   * edge is not, so at exactly y = 0 the seam between sky and grass fell on
+   * either side of a pixel boundary depending on where the camera happened to
+   * be, and flickered as you walked. Overlapping the world by a pixel and a
+   * half costs a sliver of the topmost grass and holds still.
+   */
+  const height = -viewY + 1.5;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, viewY, width, height);
+  ctx.clip();
+
+  if (medium === 'color') {
+    const g = ctx.createLinearGradient(0, -SKY_DEPTH, 0, 0);
+    g.addColorStop(0, '#7cb6de');
+    g.addColorStop(0.62, '#b6dcee');
+    g.addColorStop(1, '#e6f2f6');
+    ctx.fillStyle = g;
+    ctx.fillRect(left, viewY, width, height);
+
+    if (SUN.x + SUN.r * 2.4 > left && SUN.x - SUN.r * 2.4 < left + width) {
+      ctx.fillStyle = '#f6d64a';
+      // Rays, uneven, the way they are painted rather than the way a compass
+      // would put them.
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * TAU + 0.18;
+        const long = i % 3 === 0 ? 1.34 : 1.06;
+        ctx.beginPath();
+        ctx.moveTo(SUN.x + Math.cos(a - 0.08) * SUN.r * 0.94, SUN.y + Math.sin(a - 0.11) * SUN.r * 0.92);
+        ctx.lineTo(SUN.x + Math.cos(a) * SUN.r * (1.24 + long * 0.22), SUN.y + Math.sin(a) * SUN.r * (1.24 + long * 0.22));
+        ctx.lineTo(SUN.x + Math.cos(a + 0.08) * SUN.r * 0.94, SUN.y + Math.sin(a + 0.08) * SUN.r * 0.94);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#f8de5c';
+      ctx.beginPath();
+      ctx.arc(SUN.x, SUN.y, SUN.r, 0, TAU);
+      ctx.fill();
+    }
+
+    for (const c of clouds) {
+      if (c.x + c.r * 2 < left || c.x - c.r * 2 > left + width) continue;
+      ctx.fillStyle = c.pale ? 'rgba(255,255,255,.72)' : 'rgba(255,255,255,.5)';
+      for (let i = 0; i < c.lobes; i++) {
+        const t = i / (c.lobes - 1 || 1) - 0.5;
+        ctx.beginPath();
+        ctx.ellipse(
+          c.x + t * c.r * 1.5,
+          c.y - Math.abs(t) * c.r * 0.22,
+          c.r * (0.5 + (0.5 - Math.abs(t)) * 0.7),
+          c.r * 0.34,
+          0,
+          0,
+          TAU,
+        );
+        ctx.fill();
+      }
+    }
+
+    /*
+     * A soft haze along the horizon.
+     *
+     * Without it the sky stops dead against the grass in a hard line, and the
+     * world looks cut out and pasted onto a backdrop rather than going on into
+     * the distance.
+     */
+    const haze = ctx.createLinearGradient(0, -70, 0, 0);
+    haze.addColorStop(0, 'rgba(232,244,238,0)');
+    haze.addColorStop(1, 'rgba(232,244,238,.85)');
+    ctx.fillStyle = haze;
+    ctx.fillRect(left, -70, width, 70);
+    ctx.restore();
+    return;
+  }
+
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(left, viewY, width, height);
+
+  // Ruled strokes, thinning out towards the top: a sky begun and left.
+  const step = 26;
+  for (let y = -step; y > viewY; y -= step) {
+    const depth = 1 - y / viewY;
+    ink(ctx, 0.05 + depth * 0.12, 0.8);
+    ctx.beginPath();
+    ctx.moveTo(left + 10, y + jitter(9100 + y, 1.2));
+    ctx.lineTo(left + width - 10, y + jitter(9200 + y, 1.2));
+    ctx.stroke();
+  }
+
+  // The sun, as an outline and its rays.
+  if (SUN.x + SUN.r * 2.4 > left && SUN.x - SUN.r * 2.4 < left + width) {
+    ink(ctx, 0.3, 1);
+    ctx.beginPath();
+    ctx.arc(SUN.x, SUN.y, SUN.r, 0, TAU);
+    ctx.stroke();
+    ink(ctx, 0.24, 0.95);
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * TAU + 0.18;
+      const long = i % 3 === 0 ? 1.34 : 1.06;
+      ctx.beginPath();
+      ctx.moveTo(SUN.x + Math.cos(a) * SUN.r * 1.04, SUN.y + Math.sin(a) * SUN.r * 1.04);
+      ctx.lineTo(
+        SUN.x + Math.cos(a) * SUN.r * (1.24 + long * 0.22),
+        SUN.y + Math.sin(a) * SUN.r * (1.24 + long * 0.22),
+      );
+      ctx.stroke();
+    }
+  }
+
+  // Clouds as outlines only.
+  ink(ctx, 0.22, 0.9);
+  for (const c of clouds) {
+    if (c.x + c.r * 2 < left || c.x - c.r * 2 > left + width) continue;
+    ctx.beginPath();
+    for (let i = 0; i < c.lobes; i++) {
+      const t = i / (c.lobes - 1 || 1) - 0.5;
+      ctx.ellipse(c.x + t * c.r * 1.5, c.y, c.r * 0.52, c.r * 0.3, 0, 0, TAU);
+    }
+    ctx.stroke();
+  }
+
+  // The horizon, drawn firmly, because it is the edge of the paper.
+  ink(ctx, 0.4, 1.2);
+  ctx.beginPath();
+  ctx.moveTo(left, jitter(9300, 1));
+  ctx.lineTo(left + width, jitter(9301, 1));
+  ctx.stroke();
+  ctx.restore();
+}

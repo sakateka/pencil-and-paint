@@ -1,4 +1,5 @@
 import { clamp, lerp } from '../core/math';
+import { SKY_DEPTH } from '../world/sky';
 
 /**
  * Follows the walker, stays inside the map, and never lets the viewport show
@@ -54,7 +55,21 @@ export class Camera {
     this.viewWidth = viewportWidth / this.zoom;
     this.viewHeight = viewportHeight / this.zoom;
     const cx = clamp(this.x, this.viewWidth / 2, this.worldWidth - this.viewWidth / 2);
-    const cy = clamp(this.y, this.viewHeight / 2, this.worldHeight - this.viewHeight / 2);
+    /*
+     * The top is the one edge the camera may pass.
+     *
+     * Everywhere else it stops dead at the paper, because there is nothing out
+     * there to show. Above the top there is: walk up to the head of the valley
+     * and the view keeps rising, and what comes over the edge is sky. It opens
+     * gradually rather than all at once — the allowance is a limit, not a jump,
+     * so the sky appears as a band a few hundred units before you reach the end
+     * and is fully open only when you are against it.
+     */
+    const cy = clamp(
+      this.y,
+      this.viewHeight / 2 - SKY_DEPTH,
+      this.worldHeight - this.viewHeight / 2,
+    );
     const quantum = 1 / (this.zoom * pixelScale);
     this.viewX = Math.round((cx - this.viewWidth / 2) / quantum) * quantum;
     this.viewY = Math.round((cy - this.viewHeight / 2) / quantum) * quantum;

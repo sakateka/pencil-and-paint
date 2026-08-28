@@ -343,20 +343,29 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * walks up to you is an event, and this should feel like something that was
    * there all along and which you only now happen to be still enough to see.
    */
-  ctx.globalAlpha = here;
+  /*
+   * Never quite solid.
+   *
+   * It hangs in the sky over the top of the world, and a thing in the sky that
+   * is as opaque as the grass reads as a cut-out pasted onto it. A fifth of the
+   * blue coming through is enough to say that it is not altogether there.
+   *
+   * This is only bearable because the whole animal is one path filled once —
+   * see below. Drawn as separate shapes, every leg and ear would composite
+   * against the body and show its seams the whole time rather than only while
+   * it arrived.
+   */
+  ctx.globalAlpha = here * 0.8;
   ctx.translate(v.elephantX, v.elephantY);
   ctx.scale(ELEPHANT_SCALE, ELEPHANT_SCALE);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // The shadow stays on the ground while the animal does not — see below.
-  groundShadow(ctx, 0, 5, 30, 7, medium, true);
   /*
-   * Off the ground.
+   * Off the ground, and with nothing under it.
    *
-   * In the painting it floats: its feet are well above the strip of grass at
-   * the bottom, and the whole thing hangs in the sky rather than standing in a
-   * field. So it hovers here too, drifting very slowly, with its shadow left
-   * behind on the grass to say that the gap is real and not a mistake.
+   * It used to cast a shadow on the grass to say the gap was real. Now that it
+   * stands in the sky above the top edge of the world there is no grass beneath
+   * it to cast one on, and the shadow was just a dark smudge hanging in mid-air.
    */
   ctx.translate(0, -(8 + Math.sin(clock * 0.62) * 4.6));
 
@@ -420,13 +429,17 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * it is what makes the animal look as though it is barely touching the
    * ground, which is the whole character of the drawing.
    *
+   * Set well apart, too, with daylight between each pair. Butted together they
+   * read as two slabs rather than four legs, and in the painting you can see
+   * the sky between them.
+   *
    * Each entry is the leg's centre, its width, and how far down its foot goes.
    */
   const legs = [
-    [-16, 9, -1.5],
-    [-8, 8, -2.4],
-    [14, 8, -7],
-    [22, 9, -6.2],
+    [-21, 8, -1.5],
+    [-11, 7.5, -2.4],
+    [13, 7.5, -7],
+    [23, 8, -6.2],
   ] as const;
 
   /** Off the rump, down and out, ending in a splayed brush. */

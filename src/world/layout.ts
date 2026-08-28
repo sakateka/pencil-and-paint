@@ -547,25 +547,35 @@ export function buildLayout(): Layout {
     return null;
   };
 
-  const stump = scan(1680, WORLD_WIDTH - 200, 200, 620, 30) ??
+  /*
+   * As near the top edge as there is room for.
+   *
+   * Sitting on it is what lifts the camera over the paper, and how far it rises
+   * depends on how far up the field you are — from two hundred down the sky
+   * only half opened. Against the top edge the whole of it comes up, sun and
+   * all, which is the view the waiting is for.
+   */
+  const stump = scan(1680, WORLD_WIDTH - 200, 60, 620, 30) ??
     scan(200, WORLD_WIDTH - 200, 200, 900, 30) ?? { x: perch.x + 96, y: perch.y + 74 };
   /*
    * Off to one side and a little further away, so it is something you look
    * across at from the stump rather than something standing over you.
    */
-  let standing = { x: stump.x - 190, y: stump.y - 40 };
-  for (const [dx, dy] of [
-    [-190, -40],
-    [-190, 60],
-    [190, -40],
-    [-120, 150],
-    [150, 140],
-  ] as const) {
-    if (near(stump.x + dx, stump.y + dy, 95)) {
-      standing = { x: stump.x + dx, y: stump.y + dy };
-      break;
-    }
-  }
+  /*
+   * Up in the sky, over the top edge of the world.
+   *
+   * Not on the ground at all. The stump is at the head of the valley, so
+   * sitting on it lifts the camera over the paper's edge — and what you have
+   * been waiting two minutes for turns up in the air above the horizon,
+   * floating, exactly as it does in the painting. There is nothing to explain
+   * it and it does not need explaining.
+   *
+   * `near` is not consulted: there is nothing up there to be free of. Held
+   * down from the very top of the sky, too — the camera only rises three
+   * hundred units and the animal is a hundred and forty tall, so any higher and
+   * its ears are cut off by the edge of the screen.
+   */
+  const standing = { x: stump.x - 210, y: -34 };
 
   // A collider so you cannot stand inside the stump, and nothing drawn: see
   // above. The bake calls `draw` on every piece of scenery, and this one has

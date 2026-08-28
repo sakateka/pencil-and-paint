@@ -30,14 +30,16 @@ export async function run(url) {
         // Far enough from the water that the pond does not answer instead.
         fromPond: Math.round(Math.hypot(v.x - game.world.pond.x, v.y - game.world.pond.y)),
         gap: Math.round(Math.hypot(v.x - v.elephantX, v.y - v.elephantY)),
+        elephantY: Math.round(v.elephantY),
         solid,
       };
     });
 
-    suite.ok(there.y < there.height * 0.55, 'the stump is in the north', `y ${there.y}`);
+    suite.ok(there.y < there.height * 0.2, 'the stump is at the head of the valley', `y ${there.y}`);
     suite.ok(there.solid > 0, 'and you cannot stand inside it');
     suite.ok(there.fromPond > 330, 'well clear of the pond', `${there.fromPond}px`);
-    suite.ok(there.gap > 90 && there.gap < 260, 'with room in front of it', `${there.gap}px`);
+    suite.ok(there.elephantY < 0, 'and the elephant stands in the sky', `y ${there.elephantY}`);
+    suite.ok(there.gap > 90 && there.gap < 420, 'across the sky from it', `${there.gap}px`);
 
     // Walking up to it offers a sit, before any pot has been found.
     const offered = await game.evaluate((pencil) => {

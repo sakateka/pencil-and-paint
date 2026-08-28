@@ -5,6 +5,7 @@ import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities
 import { drawOwl, type Owl } from '../entities/owl';
 import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
 import { drawLion, type Lion } from '../entities/lion';
+import { drawSky } from '../world/sky';
 import { withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
@@ -266,6 +267,17 @@ export class Renderer {
     const { camera } = scene;
     const hidden = (x: number, y: number, margin: number) =>
       medium === 'sketch' && scene.isBuriedInColour(x, y, margin);
+
+    /*
+     * The sky first, before anything standing in front of it.
+     *
+     * Drawn here rather than beside the world blit so that both passes get it:
+     * the composite builds the coloured version by blitting the world into a
+     * scratch surface and running this again, and it assumes — reasonably,
+     * until now — that the camera is inside the map and so every pixel has a
+     * tile under it. Above the top edge there are no tiles at all.
+     */
+    drawSky(ctx, camera.viewX, camera.viewY, camera.viewWidth, medium);
 
     for (const pot of scene.pots) {
       if (pot.found || !camera.canSee(pot.x, pot.y, 60)) continue;
