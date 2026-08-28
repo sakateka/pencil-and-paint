@@ -52,12 +52,14 @@ export async function run(url) {
       nibs: document.querySelectorAll('#nibs .nib').length,
       gallery: document.querySelectorAll('#gallery img').length,
       emptyShown: getComputedStyle(document.getElementById('galleryEmpty')).display !== 'none',
+      collectionHidden: document.getElementById('collection').classList.contains('hidden'),
     }));
 
     suite.equal(empty.swatches.length, 2, 'a pencil and a rubber, and nothing else');
     suite.equal(empty.nibs, 3, 'three nibs');
     suite.equal(empty.gallery, 0, 'nothing kept yet');
     suite.ok(empty.emptyShown, 'and it says so');
+    suite.ok(empty.collectionHidden, 'and the collection is not shown yet either');
 
     // The walker must not wander off while somebody is drawing.
     const held = await game.evaluate((pencil) => {
@@ -147,6 +149,43 @@ export async function run(url) {
 
     suite.equal(armed.length, 14, 'every pot found is every colour collected');
     suite.equal(full, 16, 'and the palette is the pencil, the fourteen, and the rubber');
+
+    /*
+     * The collection: every painting at once, and only once the valley is done.
+     *
+     * The point of it is recognition — somebody who walked past the frogs on the
+     * pond and the owl up its tree gets to see, at the end, what they were drawn
+     * from. So they all appear together rather than one at a time, and they do
+     * not appear at all while there are still pots out there.
+     */
+    const shown = await game.page.evaluate(() => ({
+      count: document.querySelectorAll('#collection img').length,
+      hidden: document.getElementById('collection').classList.contains('hidden'),
+      titled: document.getElementById('collectionTitle').textContent,
+      named: [...document.querySelectorAll('#collection img')].map((i) => i.alt),
+    }));
+
+    suite.ok(!shown.hidden, 'with every pot found, the collection appears');
+    // Not a fixed number: which paintings are in is a decision that keeps
+    // changing, and a test that has to be edited every time one arrives is a
+    // test that stops meaning anything.
+    suite.ok(shown.count >= 1, 'with the paintings in it', `${shown.count}`);
+    suite.ok(shown.titled.length > 0, 'under a line of its own', shown.titled);
+    suite.equal(new Set(shown.named).size, shown.count, 'each named, and named differently');
+    suite.ok(
+      shown.named.every((n) => !n.includes('.')),
+      'in words rather than keys',
+      shown.named.join(' / '),
+    );
+
+    // Tapping one puts it up on the board, at its own shape.
+    const looked = await game.page.evaluate(async () => {
+      const before = document.getElementById('paper').toDataURL().length;
+      document.querySelectorAll('#collection img')[0].click();
+      await new Promise((r) => setTimeout(r, 800));
+      return { before, after: document.getElementById('paper').toDataURL().length };
+    });
+    suite.ok(looked.after > looked.before * 1.2, 'and tapping one puts it on the board');
 
     await game.page.click('#studioClose');
 

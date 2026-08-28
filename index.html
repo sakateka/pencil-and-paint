@@ -140,6 +140,9 @@
     width:min(94vw, 1040px, calc((100vh - 300px) * 4 / 3));
     height:auto; aspect-ratio:4 / 3;
   }
+  /* With the collection showing there is another row to fit, so the board gives
+     up the height for it rather than pushing it off the bottom. */
+  #studio.collected #paper { width:min(94vw, 1040px, calc((100vh - 410px) * 4 / 3)); }
   .studio-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
   .swatch {
     width:30px; height:30px; padding:0; margin:0; border-radius:50%;
@@ -169,6 +172,21 @@
     border:1.5px solid rgba(60,55,45,.5); box-shadow:none; cursor:pointer;
   }
   #galleryEmpty { font-size:14px; opacity:.55; }
+
+  /* The collection: every painting at once, once the valley is finished. The
+     point is recognising them, so they are shown a little larger than the
+     things you drew yourself. */
+  #collectionTitle { font-size:15px; opacity:.7; }
+  #collection {
+    display:flex; gap:9px; overflow-x:auto; max-width:min(96vw,820px);
+    padding:4px 2px; align-items:center;
+  }
+  #collection img {
+    height:62px; border:1.5px solid rgba(60,55,45,.5); border-radius:5px;
+    background:#fdfaf2; display:block; cursor:pointer;
+    transition:transform .16s ease;
+  }
+  #collection img:hover { transform:translateY(-3px); }
 
   /* No backdrop-filter here. It is a full-screen element sitting over an
      animating canvas: the compositor would re-blur the whole canvas every
@@ -314,6 +332,8 @@
   </div>
   <div id="gallery"></div>
   <div id="galleryEmpty" data-i18n="studio.empty">nothing kept yet</div>
+  <div id="collectionTitle" class="hidden" data-i18n="studio.collection">and these were here all along</div>
+  <div id="collection" class="hidden"></div>
 </div>
 
 <div id="intro" class="overlay">

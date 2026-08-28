@@ -309,7 +309,7 @@ async function boot(): Promise<void> {
   });
 
   function openStudio(): void {
-    studio.show(game.collectedHues);
+    studio.show(game.collectedHues, game.won);
     input.suspended = true;
   }
 

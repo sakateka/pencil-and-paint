@@ -1,3 +1,4 @@
+import { PAINTINGS } from './assets/paintings/index';
 import { t } from './i18n';
 
 /**
@@ -89,6 +90,8 @@ export class Studio {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly gallery = element('gallery');
   private readonly galleryEmpty = element('galleryEmpty');
+  private readonly collection = element('collection');
+  private readonly collectionTitle = element('collectionTitle');
 
   private ink: string = GRAPHITE;
 
@@ -294,12 +297,16 @@ export class Studio {
     }
   }
 
-  /** Put a kept drawing back on the paper, to carry on with it. */
+  /** Put a drawing back on the paper — one of yours, or one of theirs. */
   private load(data: string): void {
     const image = new Image();
     image.addEventListener('load', () => {
       this.blank();
-      this.ctx.drawImage(image, 0, 0, PAPER_W, PAPER_H);
+      // Fitted, not stretched: the portraits among them are not this shape.
+      const scale = Math.min(PAPER_W / image.width, PAPER_H / image.height);
+      const w = image.width * scale;
+      const h = image.height * scale;
+      this.ctx.drawImage(image, (PAPER_W - w) / 2, (PAPER_H - h) / 2, w, h);
       // Loaded, not drawn: keeping it again without a mark would only make a
       // second copy of something already kept.
       this.touched = false;
@@ -307,9 +314,35 @@ export class Studio {
     image.src = data;
   }
 
-  show(inks: string[]): void {
+  /**
+   * Everything at once, once the valley is finished.
+   *
+   * Not a picker. Somebody who has walked past the frogs on the pond and the owl
+   * up its tree should get to see, at the end, the paintings they came out of —
+   * and the connecting of the two is the whole point, so they all appear
+   * together rather than one at a time.
+   */
+  private showCollection(showing: boolean): void {
+    this.collection.classList.toggle('hidden', !showing);
+    this.collectionTitle.classList.toggle('hidden', !showing);
+    // The board gives up the height the extra row needs.
+    this.root.classList.toggle('collected', showing);
+    if (!showing || this.collection.childElementCount > 0) return;
+    for (const painting of PAINTINGS) {
+      const img = document.createElement('img');
+      img.src = painting.thumb;
+      img.alt = t(`painting.${painting.id}`);
+      img.title = t(`painting.${painting.id}`);
+      // The full one is only fetched when somebody wants to look at it.
+      img.addEventListener('click', () => this.load(painting.full));
+      this.collection.append(img);
+    }
+  }
+
+  show(inks: string[], collected: boolean): void {
     this.open = true;
     this.inks = inks;
+    this.showCollection(collected);
     // A colour you had selected and have since restarted away from should not
     // stay on the brush.
     if (this.ink !== GRAPHITE && this.ink !== PAPER_INK && !inks.includes(this.ink)) {

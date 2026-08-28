@@ -16,6 +16,7 @@ const MIME = {
   '.map': 'application/json',
   '.svg': 'image/svg+xml',
   '.mp3': 'audio/mpeg',
+  '.webp': 'image/webp',
 };
 
 /** Serve `dist/` the way a static host would, so tests exercise the real build. */
