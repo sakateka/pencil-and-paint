@@ -454,10 +454,11 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
      * and rendered at exactly that value it still read as a brown animal,
      * because the painting only makes it look cool by setting it against a blue
      * sky and this sets it on green grass. So it is pulled to where the eye
-     * expects an elephant to be: grey, with the blue left dirty rather than
-     * clean, which is roughly where a real one sits too.
+     * expects an elephant to be: a dirty grey. Barely any blue in the end —
+     * a properly blue-grey came out looking like slate roofing, and what reads
+     * as elephant is a muddy near-neutral with the faintest cool cast.
      */
-    const hideColour = '#4a4f56';
+    const hideColour = '#4e4e48';
 
     /*
      * Toenails under the feet, so the legs cover their tops.
@@ -502,7 +503,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     ctx.fill();
 
     // A line between the ears, since they are now the same one shape.
-    ctx.strokeStyle = '#3a3f45';
+    ctx.strokeStyle = '#3d3d38';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.ellipse(-25.5, -44, 8.2, 8.8, 0.18 + ear, Math.PI * 0.72, Math.PI * 1.5);
@@ -513,7 +514,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     tail(2.6);
 
     // The stripes down the trunk.
-    ctx.fillStyle = '#20242a';
+    ctx.fillStyle = '#23231e';
     for (const i of [0, 1, 2, 3, 4, 5]) {
       ctx.beginPath();
       ctx.ellipse(-32.8 + i * 0.6, -27 + i * 4.6, 2.5, 1.6, 0.1, 0, TAU);
