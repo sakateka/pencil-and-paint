@@ -38,6 +38,9 @@ const ATLAS_COLUMNS = 5;
  */
 const FROG_SCARE = 150;
 
+/** How far behind its mother a chick will tolerate being before it hurries. */
+const CHICK_LEASH = 9;
+
 /** How long a frog stays down after the rod is packed away. */
 const FROG_SURFACE_DELAY = [0.8, 3.2] as const;
 
@@ -48,6 +51,15 @@ const SURFACE_SECONDS = 0.7;
 /** How close the walker can get before an animal moves off. */
 const SHY_DISTANCE: Record<AnimalKind, number> = {
   chicken: 78,
+  hen: 74,
+  /*
+   * Zero, and not because it is brave.
+   *
+   * A chick that fled the walker on its own account would scatter away from its
+   * mother, which is the one thing it must never do. It runs when she runs,
+   * because it follows her.
+   */
+  chick: 0,
   sheep: 66,
   cow: 66,
   cat: 0,
@@ -67,6 +79,9 @@ export class Herd {
    */
   private readonly atlas: Surface;
 
+  /** The chick's mother, and the only thing it steers by. */
+  private readonly hen: Animal | undefined;
+
   constructor(
     spawns: readonly {
       kind: AnimalKind;
@@ -77,6 +92,7 @@ export class Herd {
     }[],
   ) {
     this.animals = spawns.map((s) => makeAnimal(s.kind, s.x, s.y, s.homeRadius, s.scale));
+    this.hen = this.animals.find((a) => a.kind === 'hen');
     this.animals.forEach((a, i) => (a.slot = i));
     const rows = Math.ceil(this.animals.length / ATLAS_COLUMNS);
     this.atlas = createSurface(ATLAS_COLUMNS * SPRITE_WIDTH, rows * SPRITE_HEIGHT);
@@ -140,6 +156,11 @@ export class Herd {
         continue;
       }
 
+      if (a.kind === 'chick') {
+        this.stepChick(a, dt, ctx);
+        continue;
+      }
+
       this.step(a, dt, ctx);
       ctx.resolveCollisions(a, 11 * a.scale);
     }
@@ -184,6 +205,52 @@ export class Herd {
       a.timer = rr(FROG_SURFACE_DELAY[0], FROG_SURFACE_DELAY[1]);
       a.frozen = false;
     }
+  }
+
+  /**
+   * The chick, which does not keep to a field. It keeps to its mother.
+   *
+   * Everything else here picks a spot within its patch of ground and ambles to
+   * it. This picks the ground beside the hen, which moves, so the chick is
+   * always either catching up or pottering — and it hurries if she has got
+   * properly ahead, which is the bit that reads as a chick rather than as a
+   * very small chicken.
+   *
+   * If there is no hen it simply stands there, which cannot happen: the layout
+   * places the two of them together or neither of them.
+   */
+  private stepChick(a: Animal, dt: number, ctx: HerdContext): void {
+    const mum = this.hen;
+    if (!mum) return;
+    a.timer -= dt;
+
+    // Beside her, on whichever side it already is, and a little downhill so it
+    // does not stand on her feet.
+    const side = a.x < mum.x ? -1 : 1;
+    const vx = mum.x + side * 12 - a.x;
+    const vy = mum.y + 5 - a.y;
+    const gap = Math.hypot(vx, vy);
+
+    if (gap > CHICK_LEASH) {
+      const speed = a.speed * (gap > 40 ? 1.7 : 0.8);
+      a.x += (vx / gap) * speed * dt;
+      a.y += (vy / gap) * speed * dt;
+      if (Math.abs(vx) > 2) a.face = vx < 0 ? -1 : 1;
+      a.state = 'walk';
+      a.moving = true;
+      a.walkPhase += speed * dt * 0.55;
+    } else {
+      a.moving = false;
+      // Caught up. Peck at the ground until she wanders off again.
+      if (a.timer <= 0) {
+        a.state = a.state === 'graze' ? 'idle' : 'graze';
+        a.timer = rr(0.8, 2.4);
+      }
+    }
+
+    const wanted = a.state === 'graze' ? 1 : 0;
+    a.headDown += (wanted - a.headDown) * Math.min(1, 3.2 * dt);
+    ctx.resolveCollisions(a, 4 * a.scale);
   }
 
   private step(a: Animal, dt: number, ctx: HerdContext): void {

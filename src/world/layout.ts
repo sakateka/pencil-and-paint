@@ -377,6 +377,17 @@ export function buildLayout(): Layout {
       });
     }
   }
+  /*
+   * The hen and her chick, in the run with the other five.
+   *
+   * From the painting, and placed where somebody will actually come across
+   * them: the run is tucked against the south-east cottage, on the way to
+   * everything else. She is half again the size of the other birds, which is
+   * what makes her read as somebody's mother rather than as a sixth chicken.
+   */
+  animals.push({ kind: 'hen', x: 2286, y: 1352, homeRadius: 44, scale: 1.5 });
+  animals.push({ kind: 'chick', x: 2302, y: 1358, homeRadius: 44, scale: 0.82 });
+
   // a cat asleep by the cottage door
   animals.push({ kind: 'cat', x: 640, y: 1498, homeRadius: 0, scale: 1.05 });
   sites.reserve(640, 1498, 40);

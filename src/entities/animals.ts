@@ -101,6 +101,11 @@ const CHICKEN_LEGS: readonly (readonly [number, number])[] = [
   [2, -1],
 ];
 
+const CHICK_LEGS: readonly (readonly [number, number])[] = [
+  [-1, 1],
+  [1.4, -1],
+];
+
 const SHEEP_FLUFF: readonly (readonly [number, number, number])[] = [
   [-12, -16, 7.5],
   [-4, -20, 8.5],
@@ -151,6 +156,10 @@ export function purrStrength(age: number): number {
 
 const SPEEDS: Record<AnimalKind, number> = {
   chicken: 38,
+  // She has somebody to keep an eye on, and does not go far.
+  hen: 29,
+  // Faster than its mother, which is the only way it ever catches her up.
+  chick: 47,
   sheep: 26,
   cow: 19,
   cat: 0,
@@ -392,6 +401,92 @@ function drawChicken(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t
     ctx.stroke();
     ink(ctx, 0.6, 1.3);
     ctx.beginPath(); ctx.arc(1.9, -0.9, 0.7, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/**
+ * Her chick, from the same painting: a yellow puff with a beak on it.
+ *
+ * There is only one, and it never strays — see `Herd.stepChick`. Everything
+ * else in the field keeps to a patch of ground; this keeps to its mother, which
+ * is a different thing and the whole reason it is worth having.
+ */
+function drawChick(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
+  const peck = a.state === 'graze' ? 0.5 + 0.5 * Math.sin(t * 6.5 + a.phase) : 0;
+  const sw = a.moving ? Math.sin(a.walkPhase * 2.1) : 0;
+  movingShadow(ctx, a.x, a.y + 1, 5 * a.scale, 2 * a.scale, medium, a.phase * 70);
+  ctx.save();
+  ctx.translate(a.x, a.y);
+  ctx.scale(a.face * a.scale, a.scale);
+  const k = a.phase * 710;
+
+  if (medium === 'color') {
+    ctx.strokeStyle = '#e0982f';
+    ctx.lineWidth = 1.1;
+    ctx.lineCap = 'round';
+    for (const [lx, ph] of CHICK_LEGS) {
+      ctx.beginPath();
+      ctx.moveTo(lx, -3.4);
+      ctx.lineTo(lx + sw * ph * 1.2, -0.3);
+      ctx.stroke();
+    }
+    // Body and head are both just circles. A chick is a circle with a smaller
+    // circle on it, and drawing it as anything cleverer loses it.
+    ctx.fillStyle = '#f5d24e';
+    ctx.beginPath();
+    ctx.ellipse(0, -5.6, 4.4, 3.9, 0.1, 0, TAU);
+    ctx.fill();
+    // A stub of a wing, so it is not a plain oval.
+    ctx.fillStyle = '#e8bf37';
+    ctx.beginPath();
+    ctx.ellipse(-0.6, -5.2, 2.2, 1.5, 0.3, 0, TAU);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(2.9, -8.6);
+    ctx.rotate(peck * 0.95);
+    ctx.fillStyle = '#f5d24e';
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.9, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#e0982f';
+    ctx.beginPath();
+    ctx.moveTo(2.4, -0.2);
+    ctx.lineTo(5, 0.7);
+    ctx.lineTo(2.4, 1.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#2e2b26';
+    ctx.beginPath();
+    ctx.arc(1.3, -0.8, 0.7, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  } else {
+    ink(ctx, 0.45, 0.85);
+    for (const [lx, ph] of CHICK_LEGS) inkLine(ctx, lx, -3.4, lx + sw * ph * 1.2, -0.3, k + lx);
+    ink(ctx, 0.5, 1);
+    ctx.beginPath();
+    ctx.ellipse(jitter(k + 12, 0.4), -5.6 + jitter(k + 13, 0.4), 4.4, 3.9, 0.1, 0, TAU);
+    ctx.stroke();
+    ink(ctx, 0.35, 0.8);
+    inkArc(ctx, -0.6, -5.2, 2, k + 18);
+    ctx.save();
+    ctx.translate(2.9, -8.6);
+    ctx.rotate(peck * 0.95);
+    ink(ctx, 0.5, 1);
+    inkArc(ctx, 0, 0, 2.9, k + 24);
+    ink(ctx, 0.45, 0.9);
+    ctx.beginPath();
+    ctx.moveTo(2.4, -0.2);
+    ctx.lineTo(5, 0.7);
+    ctx.lineTo(2.4, 1.5);
+    ctx.closePath();
+    ctx.stroke();
+    ink(ctx, 0.6, 1.2);
+    ctx.beginPath();
+    ctx.arc(1.3, -0.8, 0.6, 0, TAU);
+    ctx.stroke();
     ctx.restore();
   }
   ctx.restore();
@@ -673,8 +768,13 @@ export function drawAnimalLive(
       return drawSheep(ctx, a, medium, a.clock);
     case 'cow':
       return drawCow(ctx, a, medium, a.clock);
+    // A hen is a chicken. She is simply a bigger one, in white, and the layout
+    // is what makes her the size she is.
     case 'chicken':
+    case 'hen':
       return drawChicken(ctx, a, medium, a.clock);
+    case 'chick':
+      return drawChick(ctx, a, medium, a.clock);
     case 'cat':
       return drawCat(ctx, a, medium, a.clock);
     case 'frog':
