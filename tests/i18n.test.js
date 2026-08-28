@@ -58,10 +58,9 @@ export async function run(url) {
     /*
      * Counting, where the languages genuinely differ.
      *
-     * The prose declines: Russian "осталось 5 банок" is a real sentence and
-     * takes the genitive. The tally does not: it reads "5 плотва", the plain
-     * nominative after a number, the way a scoreboard names a thing and counts
-     * it rather than describing it.
+     * Russian declines both prose and tally entries. `Intl.PluralRules` picks
+     * the form for one, a few or many, including numbers such as 21 whose last
+     * digit alone is not enough to choose correctly.
      */
     const counting = await game.evaluate((pencil) => {
       const forms = (lang, key, ns) => {
@@ -81,15 +80,15 @@ export async function run(url) {
 
     suite.equal(counting.enPots[0], '1 pot still in graphite', 'English has a singular');
     suite.equal(counting.enPots[2], '5 pots still in graphite', 'and a plural');
-    suite.equal(counting.ruPots[0], 'осталась 1 банка в графите', 'Russian declines for one');
-    suite.equal(counting.ruPots[1], 'осталось 2 банки в графите', 'differently for a few');
-    suite.equal(counting.ruPots[2], 'осталось 5 банок в графите', 'and differently again for many');
+    suite.equal(counting.ruPots[0], 'осталась 1 нераскрашенная банка', 'Russian declines for one');
+    suite.equal(counting.ruPots[1], 'осталось 2 нераскрашенные банки', 'differently for a few');
+    suite.equal(counting.ruPots[2], 'осталось 5 нераскрашенных банок', 'and differently again for many');
 
     suite.equal(counting.enRoach[0], 'a roach', 'a single fish is named, not counted');
     suite.equal(counting.enRoach[2], '5 roach', 'and roach do not take an s');
-    suite.equal(counting.ruRoach[0], 'плотва', 'the Russian tally names one');
-    suite.equal(counting.ruRoach[1], '2 плотва', 'and counts the rest in the nominative');
-    suite.equal(counting.ruRoach[2], '5 плотва', 'however many there are');
+    suite.equal(counting.ruRoach[0], '1 плотва', 'the Russian tally names one');
+    suite.equal(counting.ruRoach[1], '2 плотвы', 'and declines a few');
+    suite.equal(counting.ruRoach[2], '5 плотв', 'and many');
     suite.equal(counting.zhRoach[0], counting.zhRoach[1].replace('5', '1'),
       'Chinese counts without changing the noun');
 
