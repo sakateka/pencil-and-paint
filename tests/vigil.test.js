@@ -55,23 +55,30 @@ export async function run(url) {
     suite.equal(offered.leaving, null, 'with nothing to get up from yet');
 
     /*
-     * Sit, and then most of the wait. Nothing may appear early: the whole point
-     * is the length of it, and an elephant that turns up after twenty seconds
-     * is a different feature entirely.
+     * Sit, and watch it come. The ten seconds are the arrival, not a wait in
+     * front of one — a second in should already be more elephant than it was.
      */
     const waiting = await game.evaluate((pencil) => {
       const { game } = pencil;
       const v = game.vigil;
       const sat = game.interact();
       const from = { x: game.walker.x, y: game.walker.y };
-      // Push hard the whole time: sitting still means sitting still.
-      for (let i = 0; i < 60 * 8; i++) {
-        game.advance(1 / 60, { direction: () => ({ x: 1, y: 1 }) });
-      }
+      const run = (seconds) => {
+        // Push hard the whole time: sitting still means sitting still.
+        for (let i = 0; i < 60 * seconds; i++) {
+          game.advance(1 / 60, { direction: () => ({ x: 1, y: 1 }) });
+        }
+        return +v.elephant.toFixed(2);
+      };
+      const early = run(2);
+      const half = run(3);
+      const nearly = run(3);
       return {
         sat,
+        early,
+        half,
+        nearly,
         sitting: v.sitting,
-        elephant: v.elephant,
         seen: v.seen,
         clock: Math.round(v.clock),
         moved: +Math.hypot(game.walker.x - from.x, game.walker.y - from.y).toFixed(1),
@@ -83,23 +90,25 @@ export async function run(url) {
     suite.ok(waiting.sat, 'you can sit down on it');
     suite.ok(waiting.sitting, 'and you are sitting');
     suite.equal(waiting.moved, 0, 'and cannot walk off while you are');
-    suite.ok(waiting.clock >= 7.5, 'most of the way through the wait', `${waiting.clock}s`);
-    suite.equal(waiting.elephant, 0, 'and there is still nothing there');
-    suite.ok(!waiting.seen, 'nothing has been seen');
+    suite.ok(waiting.early > 0.1 && waiting.early < 0.4, 'it starts turning up at once', `${waiting.early}`);
+    suite.ok(waiting.half > waiting.early, 'and keeps coming', `${waiting.early} → ${waiting.half}`);
+    suite.ok(waiting.nearly > waiting.half, 'the whole time you sit', `${waiting.half} → ${waiting.nearly}`);
+    suite.ok(waiting.nearly < 1, 'without being finished early', `${waiting.nearly}`);
+    suite.ok(!waiting.seen, 'and it does not count as seen until it is all there');
     suite.equal(waiting.prompt, null, 'nothing on offer while you sit');
     suite.equal(waiting.leaving, 'prompt.standUp', 'and the way out says get up');
 
-    // The rest of the wait.
+    // The last of it.
     const arrived = await game.evaluate((pencil) => {
       const { game } = pencil;
-      for (let i = 0; i < 60 * 8; i++) {
+      for (let i = 0; i < 60 * 4; i++) {
         game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       }
       pencil.renderOnce(); // something enormous must draw cleanly
       return { elephant: +game.vigil.elephant.toFixed(2), seen: game.vigil.seen };
     });
 
-    suite.equal(arrived.elephant, 1, 'wait it out and it is there');
+    suite.equal(arrived.elephant, 1, 'stay put and it is all there');
     suite.ok(arrived.seen, 'and it has been seen');
 
     // Stand up and it goes. It is here because you were still, not because you

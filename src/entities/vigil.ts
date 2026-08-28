@@ -17,24 +17,19 @@ import { groundShadow } from '../media/pencil';
  */
 
 /**
- * How long you have to sit before anything happens.
+ * How long the cloud takes to become an elephant.
  *
- * Two minutes to begin with, which is what the note asked for and is far too
- * long — long enough that most people would stand up before finding out there
- * was anything to wait for. Ten seconds is still plainly a wait rather than a
- * button press, and it is short enough that somebody idly sitting down will
- * actually see the end of it.
+ * Not a wait followed by an arrival — the ten seconds *are* the arrival. Sit
+ * down and the shape in the sky begins resolving that instant and goes on
+ * resolving the whole time you stay put, so there is never a stretch where
+ * nothing is happening and you are simply being made to hold still.
+ *
+ * It was two minutes of nothing and then a three-second fade, which is the same
+ * feature with all the pleasure taken out of it.
  */
 export const VIGIL_SECONDS = 10;
 
-/**
- * Seconds it takes to arrive, and the quicker seconds it takes to melt away.
- *
- * Shortened along with the wait: six seconds of fading was fine against two
- * minutes and is most of a ten-second wait, which made the whole thing feel
- * like it was still loading.
- */
-const ARRIVING = 3.5;
+/** The quicker seconds it takes to come apart again when you stand up. */
 const LEAVING = 2;
 
 /** How much of the cloud is there when nothing else is. Barely anything. */
@@ -117,13 +112,14 @@ export class Vigil {
       return false;
     }
 
+    // Straight off the clock: every second sitting there is a second more of
+    // elephant and a second less of cloud.
     this.clock += dt;
-    if (this.clock < VIGIL_SECONDS) return false;
-
-    const first = this.elephant === 0;
-    this.elephant = Math.min(1, this.elephant + dt / ARRIVING);
-    if (first) this.seen = true;
-    return first;
+    const before = this.elephant;
+    this.elephant = Math.min(1, this.clock / VIGIL_SECONDS);
+    const arrived = before < 1 && this.elephant >= 1;
+    if (arrived) this.seen = true;
+    return arrived;
   }
 }
 
