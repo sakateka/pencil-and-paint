@@ -1,5 +1,5 @@
 import { clamp, TAU } from '../core/math';
-import { ink, inkArc, inkLine, inkLines, jitter } from '../media/ink';
+import { ink, inkArc, inkLine, inkLines, jitter, withInkFade } from '../media/ink';
 import type { Medium } from '../media/medium';
 import { groundShadow } from '../media/pencil';
 
@@ -36,6 +36,9 @@ export const VIGIL_SECONDS = 10;
  */
 const ARRIVING = 3.5;
 const LEAVING = 2;
+
+/** How much of the cloud is there when nothing else is. Barely anything. */
+const RESTING_CLOUD = 0.3;
 
 /** How much bigger than life it is. Nothing about it is to scale anyway. */
 const ELEPHANT_SCALE = 2;
@@ -102,9 +105,15 @@ export class Vigil {
 
   /** Steps the wait on, and answers true on the frame it first shows itself. */
   update(dt: number): boolean {
+    /*
+     * The beast's clock runs whenever the colour is on that patch of sky, not
+     * only when the animal is there: the cloud it comes out of is always there
+     * and drifts on the same clock. Frozen out of the colour, like everything.
+     */
+    if (this.lit) this.beastClock += dt;
+
     if (!this.sitting) {
       this.elephant = Math.max(0, this.elephant - dt / LEAVING);
-      if (this.elephant > 0 && this.lit) this.beastClock += dt;
       return false;
     }
 
@@ -113,7 +122,6 @@ export class Vigil {
 
     const first = this.elephant === 0;
     this.elephant = Math.min(1, this.elephant + dt / ARRIVING);
-    if (this.lit) this.beastClock += dt;
     if (first) this.seen = true;
     return first;
   }
@@ -347,14 +355,31 @@ function drawMirageCloud(
   clock: number,
   medium: Medium,
 ): void {
+  /*
+   * Lobes laid along the animal rather than heaped in a pile.
+   *
+   * A generic puff said "something is happening here". Tracing the body, the
+   * head, the trunk and the four legs says "an elephant is happening here" —
+   * which is the better hint, and is the kind of thing anybody has seen a cloud
+   * do. Deliberately loose: it should be arguable, not obvious.
+   */
   const lobes = [
-    [-26, -30, 15],
-    [-6, -36, 19],
-    [14, -31, 17],
-    [26, -22, 12],
-    [-18, -18, 15],
-    [4, -16, 17],
-    [20, -13, 12],
+    [-2, -30, 19],
+    [16, -28, 15],
+    [-19, -29, 15],
+    [24, -23, 12],
+    [-6, -20, 17],
+    [12, -19, 13],
+    // Head, ears and the trunk hanging off the front.
+    [-29, -36, 13],
+    [-25, -45, 9],
+    [-33, -22, 8],
+    [-32, -11, 7],
+    // Four legs.
+    [-20, -11, 7],
+    [-10, -10, 6],
+    [13, -11, 6],
+    [23, -10, 7],
   ] as const;
 
   ctx.save();
@@ -364,30 +389,53 @@ function drawMirageCloud(
   // Swelling as it forms, so it does not simply switch on at full size.
   const grow = 0.72 + amount * 0.28;
 
-  if (medium === 'color') {
-    ctx.globalAlpha = amount * 0.8;
-    ctx.fillStyle = '#ffffff';
+  /*
+   * All the lobes in one path, filled once.
+   *
+   * Separately, each lobe composites against its neighbours: the body — where
+   * six of them overlap — comes out bright while the trunk and the legs, which
+   * are one lobe thick, all but vanish. At this opacity that left a bright
+   * smudge with no elephant in it. One fill and every part of the shape is the
+   * same weight, which is the only reason the silhouette reads at all.
+   */
+  const shape = () => {
+    ctx.beginPath();
     for (const [lx, ly, r] of lobes) {
-      ctx.beginPath();
+      /*
+       * A `moveTo` before each one, which is not optional.
+       *
+       * `ellipse` continues the current subpath — it draws a line from wherever
+       * the pen is to where the arc starts. Without this the lobes were strung
+       * together by chords, and the non-zero rule then cancelled the overlaps
+       * into holes, so the "single fill" came out as a ring of circle edges.
+       */
+      const cx = lx * grow + Math.sin(clock * 1.3 + lx) * 1.8;
+      ctx.moveTo(cx + r * grow, ly * grow);
       ctx.ellipse(
-        lx * grow + Math.sin(clock * 1.3 + lx) * 1.8,
+        cx,
         ly * grow,
         r * grow,
-        r * 0.72 * grow,
+        r * 0.78 * grow,
         0,
         0,
         TAU,
       );
-      ctx.fill();
     }
+  };
+
+  if (medium === 'color') {
+    ctx.globalAlpha = Math.min(1, amount);
+    ctx.fillStyle = '#ffffff';
+    shape();
+    ctx.fill();
   } else {
-    ctx.globalAlpha = amount;
-    ink(ctx, 0.3, 1);
-    for (const [lx, ly, r] of lobes) {
-      ctx.beginPath();
-      ctx.ellipse(lx * grow, ly * grow, r * grow, r * 0.72 * grow, 0, 0, TAU);
+    // `ink` sets the alpha itself, so the fade has to be a multiplier — setting
+    // globalAlpha here would be thrown away by the first stroke.
+    withInkFade(Math.min(1, amount), () => {
+      ink(ctx, 0.28, 1);
+      shape();
       ctx.stroke();
-    }
+    });
   }
   ctx.restore();
 }
@@ -401,7 +449,6 @@ function drawMirageCloud(
  * true of the painting too.
  */
 export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Medium): void {
-  if (v.elephant <= 0) return;
   const here = clamp(v.elephant, 0, 1);
   // An ear, and the tail, and nothing else. It stands there.
   const clock = v.beastClock;
@@ -417,9 +464,18 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * seen across hot air actually turns up. Run backwards it comes apart into
    * cloud again when you stand up, which is a better exit than a dimmer.
    */
-  const cloud = Math.min(here / 0.22, 1) * clamp((0.92 - here) / 0.46, 0, 1);
+  const gathering = Math.min(here / 0.22, 1) * clamp((0.92 - here) / 0.46, 0, 1);
   const solid = clamp((here - 0.3) / 0.7, 0, 1);
-  if (cloud > 0) drawMirageCloud(ctx, v, cloud, clock, medium);
+  /*
+   * The cloud is always up there, and always faintly elephant-shaped.
+   *
+   * Long before you have sat down for anything there is a smudge in that corner
+   * of the sky with a trunk on it, barely enough to be sure of — and then one
+   * day you sit still for ten seconds and the thing you had half-noticed turns
+   * out to have been the shape of what was coming. It thickens while the animal
+   * gathers and thins back to a hint when it goes.
+   */
+  drawMirageCloud(ctx, v, RESTING_CLOUD + gathering * 0.62, clock, medium);
   if (solid <= 0) return;
 
   ctx.save();
@@ -601,13 +657,16 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
      */
     ctx.beginPath();
     for (const [fx, w, foot] of legs) ctx.rect(fx - w / 2, -18, w, 18 + foot);
-    // The far ear, behind everything.
+    // The far ear, behind everything. `moveTo` first: `ellipse` would otherwise
+    // run a chord from the last leg's corner into it.
+    ctx.moveTo(-33 + 7.4, -43);
     ctx.ellipse(-33, -43, 7.4, 8.4, -0.2, 0, TAU);
     body();
     head();
     trunk();
     // The near ear, leaning as it listens. Rotated in the path rather than by
     // the canvas, so that it can join the rest of it.
+    ctx.moveTo(-25.5 + 8.2, -44);
     ctx.ellipse(-25.5, -44, 8.2, 8.8, 0.18 + ear, 0, TAU);
     ctx.fillStyle = hideColour;
     ctx.fill();
@@ -643,39 +702,51 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     return;
   }
 
-  const k = 6100;
-  ink(ctx, 0.5, 1.3);
-  ctx.beginPath();
-  body();
-  ctx.stroke();
-  ink(ctx, 0.5, 1.2);
-  ctx.beginPath();
-  head();
-  ctx.stroke();
-  ctx.beginPath();
-  trunk();
-  ctx.stroke();
-  for (const [fx, w, foot] of legs) {
-    inkLines(
-      ctx,
-      [
-        [fx - w / 2, -16, fx - w / 2, foot],
-        [fx + w / 2, -16, fx + w / 2, foot],
-        [fx - w / 2, foot, fx + w / 2, foot],
-      ],
-      k + 10 + fx,
-    );
-  }
-  ink(ctx, 0.45, 1.1);
-  inkArc(ctx, -33, -43, 7.6, k + 30);
-  inkArc(ctx, -25.5, -44, 8.4, k + 32);
-  ink(ctx, 0.55, 1.2);
-  tail(1.2);
-  ink(ctx, 0.6, 1.6);
-  for (const i of [0, 1, 2, 3, 4, 5]) {
-    inkLine(ctx, -34.2 + i * 0.6, -27 + i * 4.6, -31.4 + i * 0.6, -26.6 + i * 4.6, k + 40 + i);
-  }
-  ink(ctx, 0.65, 1.5);
-  for (const ex of [-33.5, -26.5]) inkArc(ctx, ex, -36.5, 1.7, k + 60 + ex);
+  /*
+   * Faded as one, the same as the colour version.
+   *
+   * Every stroke's weight is multiplied rather than the canvas alpha being
+   * set once: `ink` assigns `globalAlpha` outright, so anything set here
+   * would be discarded by the first line drawn — which is exactly why this
+   * arrived in graphite as a fully drawn elephant appearing from nowhere
+   * while the coloured one melted in politely.
+   */
+  withInkFade(solid, () => {
+    const k = 6100;
+    ink(ctx, 0.5, 1.3);
+    ctx.beginPath();
+    body();
+    ctx.stroke();
+    ink(ctx, 0.5, 1.2);
+    ctx.beginPath();
+    head();
+    ctx.stroke();
+    ctx.beginPath();
+    trunk();
+    ctx.stroke();
+    for (const [fx, w, foot] of legs) {
+      inkLines(
+        ctx,
+        [
+          [fx - w / 2, -16, fx - w / 2, foot],
+          [fx + w / 2, -16, fx + w / 2, foot],
+          [fx - w / 2, foot, fx + w / 2, foot],
+        ],
+        k + 10 + fx,
+      );
+    }
+    ink(ctx, 0.45, 1.1);
+    inkArc(ctx, -33, -43, 7.6, k + 30);
+    inkArc(ctx, -25.5, -44, 8.4, k + 32);
+    ink(ctx, 0.55, 1.2);
+    tail(1.2);
+    ink(ctx, 0.6, 1.6);
+    for (const i of [0, 1, 2, 3, 4, 5]) {
+      inkLine(ctx, -34.2 + i * 0.6, -27 + i * 4.6, -31.4 + i * 0.6, -26.6 + i * 4.6, k + 40 + i);
+    }
+    ink(ctx, 0.65, 1.5);
+    for (const ex of [-33.5, -26.5]) inkArc(ctx, ex, -36.5, 1.7, k + 60 + ex);
+ 
+  });
   ctx.restore();
 }

@@ -43,10 +43,32 @@ export function jitter(index: number, amplitude: number): number {
   return (n - Math.floor(n) - 0.5) * 2 * amplitude;
 }
 
+/**
+ * A multiplier on every pencil stroke's opacity, for fading a drawing in.
+ *
+ * `ink` sets `globalAlpha` outright, which is what it is for — each stroke has
+ * its own weight. The consequence is that a caller cannot fade a pencil drawing
+ * by setting `globalAlpha` first, because the first stroke throws it away; the
+ * elephant fading into the sky worked perfectly in colour and popped straight
+ * in at full strength in graphite. This is the missing multiply.
+ */
+let inkFade = 1;
+
+/** Draw `fn` with every pencil stroke at `scale` of its usual weight. */
+export function withInkFade<T>(scale: number, fn: () => T): T {
+  const previous = inkFade;
+  inkFade = scale;
+  try {
+    return fn();
+  } finally {
+    inkFade = previous;
+  }
+}
+
 /** Set up a pencil stroke style. */
 export function ink(ctx: CanvasRenderingContext2D, alpha: number, width: number): void {
   ctx.strokeStyle = PENCIL;
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * inkFade;
   ctx.lineWidth = width;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';

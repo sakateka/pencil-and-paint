@@ -62,7 +62,21 @@
     white-space:nowrap;
     transition:opacity .2s ease, visibility 0s linear 0s;
   }
+  /*
+     A hidden button gives up its space as well as its ink.
+
+     The shared `.hidden` uses `visibility`, which keeps the element's box — and
+     in a centred flex row that means the one button actually showing sits off
+     to one side, out of line with the hint underneath it. With two buttons the
+     row was centred; with one it was sixty-eight pixels adrift.
+
+     The cost is the fade-out, which `display` cannot animate. Appearing is the
+     part anybody notices, so that keeps a fade of its own below.
+  */
+  #actions > .hidden { display:none; }
   #action.hidden, #leave.hidden { transition:opacity .2s ease, visibility 0s linear .2s; }
+  @keyframes promptIn { from { opacity:0; transform:translateY(3px); } to { opacity:1; transform:none; } }
+  #action, #leave { animation:promptIn .18s ease both; }
   #action .key, #leave .key { padding:2px 8px; font-size:13px; box-shadow:1px 2px 0 rgba(60,55,45,.2); }
   #action:active, #leave:active { transform:translateY(2px); box-shadow:1px 2px 0 rgba(60,55,45,.18); }
   #action:focus-visible, #leave:focus-visible { outline:2px solid rgba(60,55,45,.6); outline-offset:3px; }

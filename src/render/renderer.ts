@@ -320,8 +320,13 @@ export class Renderer {
     if (camera.canSee(vigil.x, vigil.y, 90) && !hidden(vigil.x, vigil.y, 60)) {
       still(() => drawStump(ctx, vigil, medium));
     }
+    /*
+     * Always, not only once something is there.
+     *
+     * The cloud it comes out of hangs in that patch of sky permanently, so this
+     * has to be asked every frame rather than gated on the animal existing.
+     */
     if (
-      vigil.elephant > 0 &&
       camera.canSee(vigil.elephantX, vigil.elephantY, 120) &&
       !hidden(vigil.elephantX, vigil.elephantY, 90)
     ) {
