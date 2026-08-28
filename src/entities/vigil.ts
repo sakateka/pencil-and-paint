@@ -380,19 +380,31 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     ctx.closePath();
   };
 
-  const headAndTrunk = () => {
+  /*
+   * Head and trunk, filled as two paths rather than two subpaths of one.
+   *
+   * As one path they punched a hole in each other: canvas fills by the non-zero
+   * winding rule, and the two loops happened to run in opposite directions, so
+   * where the trunk met the head the overlap was cut straight out and the face
+   * had a gap in it.
+   */
+  const head = () => {
     ctx.beginPath();
-    // Head, tall and narrow, tucked against the front of the body.
     ctx.moveTo(-22, -24);
     ctx.quadraticCurveTo(-40, -26, -38, -38);
     ctx.quadraticCurveTo(-36, -47, -27, -46);
     ctx.quadraticCurveTo(-20, -45, -20, -34);
     ctx.closePath();
-    ctx.moveTo(-36, -30);
-    // Trunk: wide at the top, barely tapering, hanging almost to the ground.
-    ctx.quadraticCurveTo(-37, -16, -34.5, -4.5);
-    ctx.quadraticCurveTo(-31.5, -2.5, -28.5, -5);
-    ctx.quadraticCurveTo(-28, -18, -26.5, -29);
+  };
+
+  /** Wide at the top, barely tapering, hanging almost to the ground. */
+  const trunk = () => {
+    ctx.beginPath();
+    // From well up inside the head, and down nearly to the feet.
+    ctx.moveTo(-37, -34);
+    ctx.quadraticCurveTo(-38, -18, -35, -3);
+    ctx.quadraticCurveTo(-31.5, -0.8, -28, -3.4);
+    ctx.quadraticCurveTo(-27.5, -19, -26, -33);
     ctx.closePath();
   };
 
@@ -407,8 +419,8 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * Each entry is the leg's centre, its width, and how far down its foot goes.
    */
   const legs = [
-    [-20, 9, -1.5],
-    [-12, 8, -2.4],
+    [-16, 9, -1.5],
+    [-8, 8, -2.4],
     [14, 8, -7],
     [22, 9, -6.2],
   ] as const;
@@ -430,8 +442,18 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
   };
 
   if (medium === 'color') {
-    // Hide, ears, trunk and eyes, all sampled from the painting.
-    const hide = '#4e3f28';
+    /*
+     * Measured off the painting: `srgb(66,58,45)` over the whole flank.
+     *
+     * Two earlier goes at this were wrong in opposite directions. The first
+     * sampled a washed-out copy and came out a yellow-olive that went green
+     * against the grass; the second corrected for that by warming it, which
+     * made a mid-brown carthorse. The paint is actually much darker than either
+     * and very nearly neutral — the channels are only twenty apart — and at
+     * that value it reads as dark brown against anything — nudged a few points
+     * towards red, because neutral at this value goes grey-green on grass.
+     */
+    const hide = '#46362a';
 
     // Tail first only in the sense that it must not be buried: it hangs clear
     // of the rump, so it is drawn after the body below.
@@ -461,20 +483,31 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     }
 
     // The far ear, behind the head.
+    ctx.fillStyle = '#372f25';
     ctx.beginPath();
     ctx.ellipse(-33, -43, 7.4, 8.4, -0.2, 0, TAU);
     ctx.fill();
+    ctx.fillStyle = hide;
 
     body();
     ctx.fill();
-    headAndTrunk();
+    /*
+     * Head and trunk in one colour, so they read as one mass.
+     *
+     * A darker trunk left a seam across the face where the two shapes met, and
+     * in the painting there is no seam: the head runs straight down into the
+     * trunk and the whole front of the animal is one continuous fall of dark.
+     */
+    head();
+    ctx.fill();
+    trunk();
     ctx.fill();
 
     // The near ear, over the head, leaning as it listens.
     ctx.save();
     ctx.translate(-25.5, -44);
     ctx.rotate(ear);
-    ctx.fillStyle = '#5a4930';
+    ctx.fillStyle = '#4b4234';
     ctx.beginPath();
     ctx.ellipse(0, 0, 8.2, 8.8, 0.18, 0, TAU);
     ctx.fill();
@@ -485,15 +518,15 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     tail(2.6);
 
     // The stripes down the trunk.
-    ctx.fillStyle = '#1a1410';
-    for (const i of [0, 1, 2, 3, 4]) {
+    ctx.fillStyle = '#1a140e';
+    for (const i of [0, 1, 2, 3, 4, 5]) {
       ctx.beginPath();
-      ctx.ellipse(-32.6 + i * 0.7, -25 + i * 4.6, 2.4, 1.5, 0.1, 0, TAU);
+      ctx.ellipse(-32.8 + i * 0.6, -27 + i * 4.6, 2.5, 1.6, 0.1, 0, TAU);
       ctx.fill();
     }
 
     // Two green eyes, which is what the painting gives it.
-    ctx.fillStyle = '#427441';
+    ctx.fillStyle = '#4e7a49';
     for (const ex of [-33.5, -26.5]) {
       ctx.beginPath();
       ctx.ellipse(ex, -36.5, 2.1, 1.6, 0.15, 0, TAU);
@@ -509,7 +542,9 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
   body();
   ctx.stroke();
   ink(ctx, 0.5, 1.2);
-  headAndTrunk();
+  head();
+  ctx.stroke();
+  trunk();
   ctx.stroke();
   for (const [fx, w, foot] of legs) {
     inkLines(
@@ -528,8 +563,8 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
   ink(ctx, 0.55, 1.2);
   tail(1.2);
   ink(ctx, 0.6, 1.6);
-  for (const i of [0, 1, 2, 3, 4]) {
-    inkLine(ctx, -34 + i * 0.7, -25 + i * 4.6, -31.2 + i * 0.7, -24.6 + i * 4.6, k + 40 + i);
+  for (const i of [0, 1, 2, 3, 4, 5]) {
+    inkLine(ctx, -34.2 + i * 0.6, -27 + i * 4.6, -31.4 + i * 0.6, -26.6 + i * 4.6, k + 40 + i);
   }
   ink(ctx, 0.65, 1.5);
   for (const ex of [-33.5, -26.5]) inkArc(ctx, ex, -36.5, 1.7, k + 60 + ex);
