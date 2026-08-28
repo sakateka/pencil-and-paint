@@ -5,7 +5,7 @@ import { Rest } from './entities/rest';
 import { Treehouse } from './entities/treehouse';
 import { Herd } from './entities/herd';
 import { Owl } from './entities/owl';
-import { Vigil } from './entities/vigil';
+import { Vigil, VIGIL_SECONDS } from './entities/vigil';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
 import { scatterPots, type Pot } from './entities/pots';
@@ -305,6 +305,7 @@ export class Game {
     this.fishing.update(dt, this.walker.x, this.walker.y);
     this.rest.update(dt, this.won);
     this.owl.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.owl.x, this.owl.y, 10));
+    this.vigil.lit = this.isAwakeAt(this.vigil.elephantX, this.vigil.elephantY, 12);
     if (this.vigil.update(dt)) this.events.onElephant();
     this.treehouse.update(dt);
     if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.landed);
@@ -607,6 +608,17 @@ export class Game {
     } else {
       w.facing = dy < 0 ? 'up' : 'down';
     }
+  }
+
+  /**
+   * Debug: skip the two minutes of sitting.
+   *
+   * Waiting it out is the whole point of the stump, and also the whole problem
+   * with testing anything downstream of it by hand.
+   */
+  summonElephant(): void {
+    if (!this.vigil.sitting) this.vigil.sitDown();
+    this.vigil.clock = VIGIL_SECONDS;
   }
 
   /** Debug: find every remaining pot at once, as if you had walked to them. */

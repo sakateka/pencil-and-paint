@@ -85,6 +85,14 @@ export function installDebugPanel(game: Game, extras: {
       run: () => game.collectAll(),
     },
     {
+      label: 'Summon the elephant',
+      hint: 'sits you on the stump and skips the two minutes',
+      run: () => {
+        game.teleport(game.vigil.x, game.vigil.y + 30);
+        game.summonElephant();
+      },
+    },
+    {
       label: 'Flood colour',
       hint: 'full colour, pots left alone',
       run: () => {

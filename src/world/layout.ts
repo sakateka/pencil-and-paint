@@ -522,30 +522,44 @@ export function buildLayout(): Layout {
      */
     !sites.inPond(ax, ay, 150);
 
-  let stump = { x: perch.x + 96, y: perch.y + 74 };
-  for (const [dx, dy] of [
-    [96, 74],
-    [-104, 66],
-    [118, -70],
-    [-92, -84],
-    [40, 132],
-    [-46, 138],
-  ] as const) {
-    if (near(perch.x + dx, perch.y + dy, 30)) {
-      stump = { x: perch.x + dx, y: perch.y + dy };
-      break;
+  /*
+   * Out in the north-east, well away from everything.
+   *
+   * Scanned on a fixed grid rather than sampled at random: this runs after the
+   * whole valley is laid out, and a `findFree` here would take numbers from the
+   * world's generator. A scan asks `isFree` the same question and takes none.
+   */
+  const scan = (
+    fromX: number,
+    toX: number,
+    fromY: number,
+    toY: number,
+    pad: number,
+  ): { x: number; y: number } | null => {
+    // East to west, so it settles as far into the corner as there is room for.
+    for (let ay = fromY; ay <= toY; ay += 40) {
+      for (let ax = toX; ax >= fromX; ax -= 40) {
+        if (near(ax, ay, pad)) return { x: ax, y: ay };
+      }
     }
-  }
-  // Somewhere with room for it, in front of the trees rather than among them.
-  let standing = { x: stump.x - 30, y: stump.y - 150 };
+    return null;
+  };
+
+  const stump = scan(1680, WORLD_WIDTH - 200, 200, 620, 30) ??
+    scan(200, WORLD_WIDTH - 200, 200, 900, 30) ?? { x: perch.x + 96, y: perch.y + 74 };
+  /*
+   * Off to one side and a little further away, so it is something you look
+   * across at from the stump rather than something standing over you.
+   */
+  let standing = { x: stump.x - 190, y: stump.y - 40 };
   for (const [dx, dy] of [
-    [-30, -150],
-    [60, -155],
-    [-120, -130],
-    [130, -120],
-    [-20, 165],
+    [-190, -40],
+    [-190, 60],
+    [190, -40],
+    [-120, 150],
+    [150, 140],
   ] as const) {
-    if (near(stump.x + dx, stump.y + dy, 56)) {
+    if (near(stump.x + dx, stump.y + dy, 95)) {
       standing = { x: stump.x + dx, y: stump.y + dy };
       break;
     }

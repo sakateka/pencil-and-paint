@@ -22,11 +22,16 @@ export const VIGIL_SECONDS = 120;
 const ARRIVING = 6;
 const LEAVING = 2;
 
+/** How much bigger than life it is. Nothing about it is to scale anyway. */
+const ELEPHANT_SCALE = 2;
+
 const SKIN = '#f2c398';
 const HAIR = '#4a3527';
 const SHIRT = '#e8563f';
 const SHIRT_SHADE = '#c9452f';
 const TROUSERS = '#3a5a86';
+const SCARF = '#f7c14b';
+const EYE = '#3a2f26';
 
 export class Vigil {
   sitting = false;
@@ -39,6 +44,15 @@ export class Vigil {
 
   /** Whether it has ever shown itself this session. */
   seen = false;
+
+  /**
+   * Whether the colour has reached the elephant.
+   *
+   * Its ear and its tail move on `beastClock`, and out in the graphite they
+   * must not: everything else in this valley holds perfectly still once the
+   * colour has left it, because it is a drawing again.
+   */
+  lit = false;
 
   /** The elephant's own clock, for the ear and the tail. Runs while it is here. */
   beastClock = 0;
@@ -75,7 +89,7 @@ export class Vigil {
   update(dt: number): boolean {
     if (!this.sitting) {
       this.elephant = Math.max(0, this.elephant - dt / LEAVING);
-      if (this.elephant > 0) this.beastClock += dt;
+      if (this.elephant > 0 && this.lit) this.beastClock += dt;
       return false;
     }
 
@@ -84,7 +98,7 @@ export class Vigil {
 
     const first = this.elephant === 0;
     this.elephant = Math.min(1, this.elephant + dt / ARRIVING);
-    this.beastClock += dt;
+    if (this.lit) this.beastClock += dt;
     if (first) this.seen = true;
     return first;
   }
@@ -93,7 +107,7 @@ export class Vigil {
 /** The stump, and whoever is sitting on it. */
 export function drawStump(ctx: CanvasRenderingContext2D, v: Vigil, medium: Medium): void {
   const { x, y } = v;
-  groundShadow(ctx, x, y + 2, 17, 6, medium);
+  groundShadow(ctx, x, y + 2, 17, 6, medium, true);
 
   ctx.save();
   ctx.translate(x, y);
@@ -159,7 +173,8 @@ export function drawStump(ctx: CanvasRenderingContext2D, v: Vigil, medium: Mediu
   }
   ctx.restore();
 
-  if (v.sitting) drawSitter(ctx, x, y, medium);
+  // Facing whatever it is waiting for, which is the only reason to sit here.
+  if (v.sitting) drawSitter(ctx, x, y, v.elephantX < v.x ? -1 : 1, medium);
 }
 
 /**
@@ -170,91 +185,134 @@ export function drawStump(ctx: CanvasRenderingContext2D, v: Vigil, medium: Mediu
  * of the stump, and a person sitting is not a person standing with a shorter
  * gap between their feet.
  */
-function drawSitter(ctx: CanvasRenderingContext2D, x: number, y: number, medium: Medium): void {
+function drawSitter(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  face: -1 | 1,
+  medium: Medium,
+): void {
+  /*
+   * Built off the standing walker's own proportions, because the first version
+   * of this was not: its head was a 4.6 disc where the walker's is 9.2, so
+   * sitting down halved them. Hips at the seat, shoulders twelve above, head
+   * centre ten above that — the same spacing `player.ts` uses standing.
+   */
   ctx.save();
-  ctx.translate(x, y - 9);
+  ctx.translate(x - face, y - 10);
+  ctx.scale(face, 1);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
   if (medium === 'color') {
-    // Legs, hanging down off the front of the stump.
-    ctx.strokeStyle = TROUSERS;
-    ctx.lineWidth = 5.4;
-    ctx.beginPath();
-    ctx.moveTo(-1, -2);
-    ctx.quadraticCurveTo(5.5, -1, 7.5, 7);
-    ctx.stroke();
+    // Legs: thigh forward off the seat, shin down to the ground.
     ctx.strokeStyle = '#33507a';
+    ctx.lineWidth = 6.4;
     ctx.beginPath();
-    ctx.moveTo(-1.5, -2);
-    ctx.quadraticCurveTo(3.5, -0.5, 5, 7.5);
+    ctx.moveTo(0, -1);
+    ctx.lineTo(9.5, -1.5);
+    ctx.lineTo(11.5, 9);
+    ctx.stroke();
+    ctx.strokeStyle = TROUSERS;
+    ctx.beginPath();
+    ctx.moveTo(0, 0.5);
+    ctx.lineTo(11, 0.5);
+    ctx.lineTo(13.5, 10.5);
     ctx.stroke();
     ctx.strokeStyle = '#4a3b30';
-    ctx.lineWidth = 3.2;
+    ctx.lineWidth = 4.4;
     ctx.beginPath();
-    ctx.moveTo(7.5, 7);
-    ctx.lineTo(9.6, 7.6);
-    ctx.moveTo(5, 7.5);
-    ctx.lineTo(7.1, 8.1);
+    ctx.moveTo(11.5, 9.6);
+    ctx.lineTo(15.5, 10.2);
+    ctx.moveTo(13.5, 11);
+    ctx.lineTo(17.5, 11.6);
     ctx.stroke();
 
-    // Body, leaning back a little the way you do when you have stopped.
+    // Body, leaning back the way you do when you have stopped walking.
     ctx.fillStyle = SHIRT;
     ctx.beginPath();
-    ctx.moveTo(-5.6, -3);
-    ctx.quadraticCurveTo(-6.6, -12, -3.4, -15);
-    ctx.lineTo(3, -14.4);
-    ctx.quadraticCurveTo(4.2, -8, 3.4, -2);
+    ctx.moveTo(-5.4, 0.5);
+    ctx.quadraticCurveTo(-7.4, -7, -5.6, -13);
+    ctx.lineTo(4.4, -12);
+    ctx.quadraticCurveTo(6, -6, 5.2, 0.5);
     ctx.closePath();
     ctx.fill();
-    // An arm, propped on the stump behind.
-    ctx.strokeStyle = SHIRT_SHADE;
-    ctx.lineWidth = 3;
+    // The scarf, which is what says it is the same person.
+    ctx.strokeStyle = SCARF;
+    ctx.lineWidth = 3.2;
     ctx.beginPath();
-    ctx.moveTo(-4, -11);
-    ctx.quadraticCurveTo(-7.5, -7, -7, -2.5);
+    ctx.moveTo(-5.2, -11.4);
+    ctx.quadraticCurveTo(0, -9.4, 4.6, -11);
+    ctx.stroke();
+    // An arm, propped back on the stump.
+    ctx.strokeStyle = SHIRT_SHADE;
+    ctx.lineWidth = 4.2;
+    ctx.beginPath();
+    ctx.moveTo(-4.4, -10.5);
+    ctx.quadraticCurveTo(-9.5, -6, -9, -0.5);
     ctx.stroke();
     ctx.fillStyle = SKIN;
     ctx.beginPath();
-    ctx.arc(-7, -1.8, 1.7, 0, TAU);
+    ctx.arc(-9, 0.6, 2.6, 0, TAU);
     ctx.fill();
 
-    // Head, turned to whatever it is watching for.
+    /*
+     * Head: the walker's own, at the walker's own size, and their own haircut —
+     * a fringe rather than a helmet. Drawn as a plain arc it swallowed the
+     * whole face and left a pale band under a brown lump.
+     */
     ctx.fillStyle = SKIN;
     ctx.beginPath();
-    ctx.arc(0.4, -18.4, 4.6, 0, TAU);
+    ctx.arc(1, -22, 9.2, 0, TAU);
     ctx.fill();
+    // The haircut and the eye at exactly the offsets `player.ts` uses, so it is
+    // recognisably the same person and not a doll of them.
     ctx.fillStyle = HAIR;
     ctx.beginPath();
-    ctx.arc(0.4, -19.4, 4.6, Math.PI * 0.92, Math.PI * 2.16);
+    ctx.arc(1, -22.5, 9.4, Math.PI * 0.98, Math.PI * 2.12);
+    ctx.quadraticCurveTo(7, -20, 9.6, -18.5);
+    ctx.quadraticCurveTo(5, -21.5, -1, -20.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = EYE;
+    ctx.beginPath();
+    ctx.arc(5.2, -21.6, 1.25, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(230,140,120,.35)';
+    ctx.beginPath();
+    ctx.arc(7.2, -19.6, 2.2, 0, TAU);
     ctx.fill();
   } else {
     const k = 5400;
-    ink(ctx, 0.5, 1.2);
+    ink(ctx, 0.5, 1.25);
     ctx.beginPath();
-    ctx.moveTo(-1, -2);
-    ctx.quadraticCurveTo(5.5, -1, 7.5 + jitter(k, 0.5), 7);
-    ctx.moveTo(-1.5, -2);
-    ctx.quadraticCurveTo(3.5, -0.5, 5 + jitter(k + 1, 0.5), 7.5);
+    ctx.moveTo(0, 0.5);
+    ctx.lineTo(11 + jitter(k, 0.5), 0.5);
+    ctx.lineTo(13.5, 10.5);
+    ctx.moveTo(0, -1);
+    ctx.lineTo(9.5, -1.5);
+    ctx.lineTo(11.5 + jitter(k + 1, 0.5), 9);
     ctx.stroke();
-    ink(ctx, 0.55, 1.25);
+    ink(ctx, 0.55, 1.3);
     ctx.beginPath();
-    ctx.moveTo(-5.6 + jitter(k + 2, 0.5), -3);
-    ctx.quadraticCurveTo(-6.6, -12, -3.4, -15);
-    ctx.lineTo(3, -14.4);
-    ctx.quadraticCurveTo(4.2, -8, 3.4, -2);
+    ctx.moveTo(-5.4 + jitter(k + 2, 0.5), 0.5);
+    ctx.quadraticCurveTo(-7.4, -7, -5.6, -13);
+    ctx.lineTo(4.4, -12);
+    ctx.quadraticCurveTo(6, -6, 5.2, 0.5);
     ctx.closePath();
     ctx.stroke();
-    ink(ctx, 0.5, 1.1);
+    ink(ctx, 0.45, 1.1);
     ctx.beginPath();
-    ctx.moveTo(-4, -11);
-    ctx.quadraticCurveTo(-7.5, -7, -7, -2.5);
+    ctx.moveTo(-4.4, -10.5);
+    ctx.quadraticCurveTo(-9.5, -6, -9, -0.5);
     ctx.stroke();
-    inkArc(ctx, 0.4, -18.4, 4.6, k + 8);
-    ink(ctx, 0.35, 0.9);
+    ink(ctx, 0.55, 1.25);
+    inkArc(ctx, 1, -22, 9.2, k + 8);
+    // Hair, hatched rather than filled, as everywhere else in graphite.
+    ink(ctx, 0.34, 0.9);
     inkLines(
       ctx,
-      [0, 1, 2, 3].map((i) => [-3.4 + i * 2, -22.4, -2 + i * 2, -19] as const),
+      [0, 1, 2, 3, 4].map((i) => [-6.6 + i * 3, -29.4, -4.6 + i * 3, -24.4] as const),
       k + 14,
     );
   }
@@ -287,19 +345,32 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    */
   ctx.globalAlpha = here;
   ctx.translate(v.elephantX, v.elephantY);
+  ctx.scale(ELEPHANT_SCALE, ELEPHANT_SCALE);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  groundShadow(ctx, 0, 2, 40, 11, medium);
+  // The shadow stays on the ground while the animal does not — see below.
+  groundShadow(ctx, 0, 5, 30, 7, medium, true);
+  /*
+   * Off the ground.
+   *
+   * In the painting it floats: its feet are well above the strip of grass at
+   * the bottom, and the whole thing hangs in the sky rather than standing in a
+   * field. So it hovers here too, drifting very slowly, with its shadow left
+   * behind on the grass to say that the gap is real and not a mistake.
+   */
+  ctx.translate(0, -(7 + Math.sin(clock * 0.45) * 2.6));
 
   if (medium === 'color') {
-    const hide = '#4a3a2c';
+    // Hide, ears and trunk, all sampled from the painting.
+    const hide = '#4e3f28';
     /*
      * Toenails first, so the feet are drawn over their tops.
      *
-     * Pink rather than the red they sample as in the painting — the paint there
-     * is a coral that reads red at full size and simply muddy at this one.
+     * Sampled off the painting rather than guessed: the paint is a coral,
+     * `srgb(236,96,82)`, which reads far pinker than the flat red I first put
+     * here and rather redder than the pink I replaced it with.
      */
-    ctx.fillStyle = '#e8848f';
+    ctx.fillStyle = '#ec6052';
     for (const fx of [-16, -6, 14, 24]) {
       ctx.beginPath();
       ctx.ellipse(fx, -1, 5.2, 3, 0, 0, TAU);
@@ -347,7 +418,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     ctx.closePath();
     ctx.fill();
     // The stripes across the trunk.
-    ctx.strokeStyle = '#241b13';
+    ctx.strokeStyle = '#1a1410';
     ctx.lineWidth = 1.6;
     for (const i of [0, 1, 2, 3, 4]) {
       const ty = -25 + i * 4.4;
@@ -360,7 +431,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     ctx.save();
     ctx.translate(-22, -49);
     ctx.rotate(ear);
-    ctx.fillStyle = '#43342780';
+    ctx.fillStyle = '#3d3120';
     ctx.beginPath();
     ctx.ellipse(-4, -2, 8, 9, -0.25, 0, TAU);
     ctx.fill();
@@ -370,7 +441,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     ctx.fill();
     ctx.restore();
     // Two green eyes, which is what the painting gives it.
-    ctx.fillStyle = '#3fae52';
+    ctx.fillStyle = '#427441';
     for (const ey of [[-27.5, -42], [-20.5, -43]] as const) {
       ctx.beginPath();
       ctx.ellipse(ey[0], ey[1], 2, 1.5, 0.2, 0, TAU);

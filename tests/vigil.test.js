@@ -138,6 +138,56 @@ export async function run(url) {
     suite.equal(restarted.elephant, 0, 'and nothing standing in the trees');
     suite.ok(!restarted.seen, 'and no memory of having seen it');
 
+    /*
+     * Out in the graphite, the stump and whatever is standing by it must hold
+     * perfectly still.
+     *
+     * Pencil strokes jitter against a boil counter that ticks seven times a
+     * second, and anything drawn without freezing it twitches even though it is
+     * a drawing on paper. It caught the owl first and then these. The wait is
+     * real time: the boil is driven by the page's animation loop, so stepping
+     * the simulation leaves it exactly where it was.
+     */
+    const sample = (pencil) => {
+      const { game } = pencil;
+      const ctx = document.querySelector('#game').getContext('2d');
+      const sx = Math.round(game.camera.toScreenX(game.vigil.x) * pencil.renderer.scale);
+      const sy = Math.round(game.camera.toScreenY(game.vigil.y) * pencil.renderer.scale);
+      const R = 70;
+      const data = ctx.getImageData(sx - R, sy - R * 1.4, R * 2, R * 2).data;
+      let hash = 0;
+      let opaque = 0;
+      for (let i = 0; i < data.length; i++) hash = (hash * 31 + data[i]) | 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 200) opaque++;
+      return { hash, opaque };
+    };
+
+    await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const v = game.vigil;
+      // Sat, so the elephant is there, then the view moved out of the colour.
+      game.restart();
+      game.teleport(v.x, v.y + 30);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.summonElephant();
+      for (let i = 0; i < 60 * 8; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      // Far enough that it is graphite again, near enough to still be on screen.
+      game.teleport(v.x - 330, v.y + 190);
+      for (let i = 0; i < 120; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      pencil.renderOnce();
+    });
+
+    const firstFrame = await game.evaluate(sample);
+    await game.page.waitForTimeout(450); // three boil ticks, wall clock
+    const laterFrame = await game.evaluate(sample);
+
+    suite.ok(
+      firstFrame.opaque > 2000,
+      'the sample is actually looking at the page',
+      `${firstFrame.opaque} opaque pixels`,
+    );
+    suite.equal(laterFrame.hash, firstFrame.hash, 'in graphite nothing twitches');
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();

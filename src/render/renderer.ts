@@ -276,11 +276,24 @@ export class Renderer {
       (x, y) => camera.canSee(x, y, 90) && !hidden(x, y, 60),
     );
 
+    /*
+     * Everything below is drawn live at a fixed spot, and everything below is
+     * drawn with a still hand when it is drawn in pencil.
+     *
+     * Pencil strokes jitter against a boil counter that ticks seven times a
+     * second. In the colour pass nothing jitters at all, so this only matters
+     * for the sketch pass — and the sketch pass is only ever *visible* outside
+     * the colour, where the thing is meant to be a drawing on paper. Left to
+     * the live boil, the hammock and the stump and the elephant all sat out in
+     * the graphite twitching.
+     */
+    const still = <T,>(fn: () => T): T => withBoil(medium === 'color', fn);
+
     // The cloth sags under whoever is in it, so it cannot be baked — see the
     // note in `world/hammock.ts`.
     const { rest } = scene;
     if (camera.canSee(rest.x, rest.y, 130) && !hidden(rest.x, rest.y, 90)) {
-      drawHammock(ctx, rest, medium);
+      still(() => drawHammock(ctx, rest, medium));
     }
 
     /*
@@ -291,14 +304,14 @@ export class Renderer {
      */
     const { vigil } = scene;
     if (camera.canSee(vigil.x, vigil.y, 90) && !hidden(vigil.x, vigil.y, 60)) {
-      drawStump(ctx, vigil, medium);
+      still(() => drawStump(ctx, vigil, medium));
     }
     if (
       vigil.elephant > 0 &&
       camera.canSee(vigil.elephantX, vigil.elephantY, 120) &&
       !hidden(vigil.elephantX, vigil.elephantY, 90)
     ) {
-      drawElephant(ctx, vigil, medium);
+      still(() => drawElephant(ctx, vigil, medium));
     }
 
     // Yours, over the abandoned one baked into the board. Colour only: in

@@ -154,7 +154,12 @@ export function withoutGroundShadows<T>(fn: () => T): T {
   }
 }
 
-/** The soft dark patch a baked object sits on. */
+/** The fractional part, for hashing a position into a repeatable number. */
+function fract(n: number): number {
+  return n - Math.floor(n);
+}
+
+/** The soft dark patch an object sits on. */
 export function groundShadow(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -162,6 +167,18 @@ export function groundShadow(
   rx: number,
   ry: number,
   medium: Medium,
+  /*
+   * Draw the same shadow every time, taking no numbers from the world's
+   * generator.
+   *
+   * The hatching's opacity is normally a fresh `rnd()` per stroke, which is
+   * fine for something baked once — and wrong for anything drawn live, where
+   * it means the shadow re-rolls itself sixty times a second and sits there
+   * flickering. The default is left alone because every baked caller's strokes
+   * come out of the shared sequence, and skipping those draws would move every
+   * tree in the valley.
+   */
+  stable = false,
 ): void {
   if (shadowsSuppressed) return;
 
@@ -186,7 +203,8 @@ export function groundShadow(
     for (let i = 0; i < 7; i++) {
       const t = i / 6;
       const skew = lerp(-0.4, 0.4, t);
-      ctx.globalAlpha = 0.13 + rnd() * 0.1;
+      const roll = stable ? fract(Math.sin(x * 12.9898 + y * 78.233 + i * 3.71) * 43758.5453) : rnd();
+      ctx.globalAlpha = 0.13 + roll * 0.1;
       ctx.lineWidth = 0.8;
       const px = x + lerp(-rx * 0.85, rx * 0.85, t);
       ctx.beginPath();
