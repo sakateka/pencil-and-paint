@@ -29,6 +29,17 @@ export interface DebugHandle {
   /** Force a frame outside the rAF loop, for deterministic measurement. */
   renderOnce(): void;
   /**
+   * The hills, as the one polyline everything about them is read off.
+   *
+   * The silhouette drawn over the sky, the polygon the meadow is filled inside
+   * and the floor the walker is held to are all this array. Exposed because
+   * "the line you can see is the ground you walk on" is a claim about two
+   * things agreeing, and a screenshot can only ever show one of them.
+   */
+  hillSurface(): readonly (readonly [number, number])[];
+  /** Where the northern floor sits at this x — read off `hillSurface`. */
+  northernSurfaceY(x: number): number;
+  /**
    * Where the world generator's rng finished.
    *
    * Every draw during the bake draws jitter from it, so this is a fingerprint

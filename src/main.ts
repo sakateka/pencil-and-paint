@@ -30,6 +30,7 @@ import { drawPerfOverlay, Performance } from './systems/perf';
 import { latestDrawing, Studio } from './studio';
 import { Ui } from './ui';
 import { World } from './world/world';
+import { northernSurfaceY, SURFACE } from './world/hills';
 
 /** Longest step the simulation will take, so a stall does not teleport anyone. */
 const MAX_STEP = 0.05;
@@ -378,6 +379,8 @@ async function boot(): Promise<void> {
     perf,
     input,
     renderOnce: () => renderer.render(game.scene),
+    hillSurface: () => SURFACE,
+    northernSurfaceY,
     rngEndState: () => rng.seed,
     longestBakeSliceMs: () => world.longestSliceMs,
     isPerfOn: () => showPerf,

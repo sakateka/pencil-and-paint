@@ -412,11 +412,23 @@ export class Game {
     this.camera.follow(cameraX, cameraY, dt);
   }
 
+  /**
+   * Whether the pointer is a finger. Asked once, not sixty times a second.
+   *
+   * `matchMedia` builds a new `MediaQueryList` on every call — an object with a
+   * parsed query and a live subscription behind it — and the answer cannot
+   * change for the life of the page: a mouse does not become a finger. The
+   * width can change, and is read fresh below; this cannot.
+   */
+  private touchPointer?: boolean;
+
   /** Portrait phones, plus touch devices held in landscape. */
   private get isMobileViewport(): boolean {
     const width = globalThis.innerWidth || 1280;
     if (width <= 700) return true;
-    return width <= 1000 && globalThis.matchMedia?.('(hover: none)').matches === true;
+    if (width > 1000) return false;
+    this.touchPointer ??= globalThis.matchMedia?.('(hover: none)').matches === true;
+    return this.touchPointer;
   }
 
   private get speed(): number {

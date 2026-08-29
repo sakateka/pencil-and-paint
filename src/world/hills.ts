@@ -41,9 +41,6 @@ function sample(curves: readonly Curve[]): Point[] {
   return points;
 }
 
-const LEFT = sample(HILL_CURVES.slice(0, 2));
-const RIGHT = sample(HILL_CURVES.slice(2));
-
 function onSurface(points: readonly Point[], x: number): number | null {
   if (x < points[0][0] || x > points[points.length - 1][0]) return null;
   let lo = 0;
@@ -59,16 +56,62 @@ function onSurface(points: readonly Point[], x: number): number | null {
   return a[1] + (b[1] - a[1]) * t;
 }
 
+/**
+ * Where the hills begin and end, in world x.
+ *
+ * The whole northern landscape lives between these, and everything about it —
+ * the silhouette, the ground the walker is held to, the polygon the meadow is
+ * filled inside — is read off `SURFACE` below. One array over one domain: they
+ * used to be three arrays over two, agreeing only because they happened to come
+ * from the same control points, with nothing anywhere saying they must.
+ */
+export const HILLS_FROM = HILL_CURVES[0][0][0];
+export const HILLS_TO = HILL_CURVES[HILL_CURVES.length - 1][3][0];
+
+/** How finely the curves are flattened into the one array. */
+const SURFACE_STEP = 6;
+
+/**
+ * The hills, as one polyline.
+ *
+ * Built by evaluating the Béziers densely and reading them back onto an even
+ * grid, so that a lookup is a step along it rather than a search through four
+ * curves with their own parameterisations.
+ */
+export const SURFACE: readonly Point[] = (() => {
+  const left = sample(HILL_CURVES.slice(0, 2));
+  const right = sample(HILL_CURVES.slice(2));
+  const at = (x: number) => Math.min(0, onSurface(left, x) ?? 0, onSurface(right, x) ?? 0);
+  const points: Point[] = [];
+  for (let x = HILLS_FROM; x <= HILLS_TO; x += SURFACE_STEP) points.push([x, at(x)]);
+  // The east end exactly, which the even grid steps over.
+  if (points[points.length - 1][0] < HILLS_TO) points.push([HILLS_TO, at(HILLS_TO)]);
+  return points;
+})();
+
 /** The northern edge of walkable ground at this horizontal position. */
 export function northernSurfaceY(x: number): number {
-  const left = onSurface(LEFT, x);
-  const right = onSurface(RIGHT, x);
-  return Math.min(0, left ?? 0, right ?? 0);
+  if (x <= HILLS_FROM || x >= HILLS_TO) return 0;
+  const i = Math.min(
+    SURFACE.length - 2,
+    Math.floor((x - HILLS_FROM) / SURFACE_STEP),
+  );
+  const a = SURFACE[i];
+  const b = SURFACE[i + 1];
+  return a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0] || 1);
 }
 
-const SURFACE: Point[] = [];
-for (let x = 0; x <= 1010; x += 6) SURFACE.push([x, northernSurfaceY(x)]);
-SURFACE.push([1010, 0]);
+/**
+ * Where the drawing starts, as an index into `SURFACE`.
+ *
+ * The hills run from x = -120, but the map does not, and the camera is clamped
+ * inside it — so west of x = 0 there is ground the walker could stand on if
+ * they could get there and no pixel of it will ever be on screen. `minX` keeps
+ * them at 26. Drawing that western tail would be filling a polygon nobody can
+ * see; the collision keeps it because a boundary with a hole in it is worse
+ * than one that runs a little past the edge of the paper.
+ */
+const DRAWN_FROM = SURFACE.findIndex(([x]) => x >= 0);
 
 export const PAINTED_HOUSE = { x: 340, y: -116, scale: 0.874 } as const;
 export const PINE = { x: 690, y: -98, scale: 1.058 } as const;
@@ -121,6 +164,30 @@ function drawLandmarks(ctx: CanvasRenderingContext2D, medium: Medium): void {
   ctx.drawImage(cached.canvas, LANDMARK_BOUNDS.x0, LANDMARK_BOUNDS.y0);
 }
 
+/**
+ * Hand the two cached drawings back.
+ *
+ * `World.dispose` shrinks every tile and every occluder sprite to a single
+ * pixel when the page goes, because — its own words — two worlds of canvas at
+ * once is more than a phone will grant, and on a reload the new document starts
+ * building while the old one is still resident. These two surfaces live at
+ * module scope rather than on the World, so they were sitting out exactly the
+ * teardown that exists to stop that: better than half a megabyte of canvas
+ * each once the device pixel ratio is counted, held past the end of the page.
+ *
+ * Shrunk rather than only dropped, for the same reason the tiles are: letting
+ * go of the reference asks the collector to get round to it, and this is the
+ * moment where the memory is actually wanted elsewhere. If anything draws
+ * afterwards it simply builds them again, which is correct.
+ */
+export function disposeLandmarks(): void {
+  for (const surface of landmarkCache.values()) {
+    surface.canvas.width = 1;
+    surface.canvas.height = 1;
+  }
+  landmarkCache.clear();
+}
+
 const grass = (() => {
   const random = new Rng(0x6a4d123b);
   const marks: { x: number; y: number; lean: number; size: number }[] = [];
@@ -140,9 +207,9 @@ const grass = (() => {
 
 function traceMeadow(ctx: CanvasRenderingContext2D): void {
   ctx.beginPath();
-  ctx.moveTo(SURFACE[0][0], SURFACE[0][1]);
-  for (let i = 1; i < SURFACE.length; i++) ctx.lineTo(SURFACE[i][0], SURFACE[i][1]);
-  ctx.lineTo(1010, 70);
+  ctx.moveTo(SURFACE[DRAWN_FROM][0], SURFACE[DRAWN_FROM][1]);
+  for (let i = DRAWN_FROM + 1; i < SURFACE.length; i++) ctx.lineTo(SURFACE[i][0], SURFACE[i][1]);
+  ctx.lineTo(HILLS_TO, 70);
   ctx.lineTo(0, 70);
   ctx.closePath();
 }
@@ -189,8 +256,8 @@ export function drawNorthernLandscape(
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(SURFACE[0][0], SURFACE[0][1]);
-    for (let i = 1; i < SURFACE.length; i++) ctx.lineTo(SURFACE[i][0], SURFACE[i][1]);
+    ctx.moveTo(SURFACE[DRAWN_FROM][0], SURFACE[DRAWN_FROM][1]);
+    for (let i = DRAWN_FROM + 1; i < SURFACE.length; i++) ctx.lineTo(SURFACE[i][0], SURFACE[i][1]);
     ctx.stroke();
 
     ctx.strokeStyle = medium === 'color' ? '#4f9156' : PENCIL;

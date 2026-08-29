@@ -5,6 +5,7 @@ import { yieldToBrowser } from '../core/schedule';
 import type { Medium } from '../media/medium';
 import { withoutGroundShadows } from '../media/pencil';
 import { GRAIN } from '../media/sprites';
+import { disposeLandmarks } from './hills';
 import { buildLayout, WORLD_HEIGHT, WORLD_WIDTH, type AnimalSpawn } from './layout';
 import {
   drawGroundBase,
@@ -351,6 +352,10 @@ export class World {
       }
       occluder.sprites.clear();
     }
+    // The two northern landmarks are cached outside the World, at module scope
+    // in `hills.ts`, because they are drawn over the sky rather than baked into
+    // a layer. They are canvas all the same, and this is where canvas goes back.
+    disposeLandmarks();
     this.spriteOrder.length = 0;
     this.disposed = true;
   }

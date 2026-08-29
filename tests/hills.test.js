@@ -47,6 +47,52 @@ export async function run(url) {
     suite.atLeast(reached.oldHorizon.y, 10, 'the old horizon still stops them elsewhere');
 
     /*
+     * The line you can see is the ground you walk on.
+     *
+     * The silhouette, the meadow polygon and the walker's northern boundary are
+     * one array now, but "one array" is a claim about the code, and the claim
+     * worth holding is about the game: walk north anywhere along the hills and
+     * you stop on the drawn line, not near it. Forty-odd places along them,
+     * through the real collision — not reading the boundary back out of the
+     * thing that set it.
+     */
+    const agree = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const surface = pencil.hillSurface();
+      // Straight off the drawn polyline, by the same walk a renderer would do.
+      const drawnAt = (x) => {
+        for (let i = 1; i < surface.length; i++) {
+          if (surface[i][0] < x) continue;
+          const a = surface[i - 1];
+          const b = surface[i];
+          return a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0] || 1);
+        }
+        return 0;
+      };
+      const off = [];
+      let checked = 0;
+      for (let i = 0; i < 70; i++) {
+        // Inside the map and clear of the two landmarks, which stop you early
+        // and honestly — a wall is not the boundary being measured here.
+        const x = 40 + i * 14;
+        if (Math.abs(x - 340) < 120 || Math.abs(x - 690) < 95) continue;
+        checked++;
+        game.teleport(x, 120);
+        for (let f = 0; f < 240; f++) {
+          game.advance(1 / 60, { direction: () => ({ x: 0, y: -1 }) });
+        }
+        const want = Math.min(0, drawnAt(x)) + 12;
+        const got = game.walker.y;
+        if (Math.abs(got - want) > 2) off.push(`x${x}: ${got.toFixed(1)} vs ${want.toFixed(1)}`);
+      }
+      return { checked, off, surface: surface.length };
+    });
+
+    suite.ok(agree.surface > 150, 'the hills are one polyline', `${agree.surface} points`);
+    suite.atLeast(agree.checked, 30, 'enough places along them to mean something');
+    suite.equal(agree.off.length, 0, 'and you stop on the drawn line at every one', agree.off.join(' | '));
+
+    /*
      * And the whole northern view holds still.
      *
      * Everything above the top edge — the sky's ruled strokes, the two green
@@ -115,6 +161,21 @@ export async function run(url) {
     );
     suite.ok(first.opaque > 4000, 'the sample is looking at the house', `${first.opaque} pixels`);
     suite.equal(second.hash, first.hash, 'and it does not twitch between boil ticks');
+
+    /*
+     * Last, because it takes the world apart.
+     *
+     * The two landmarks are cached at module scope rather than on the World, so
+     * they used to sit out the teardown that hands every other canvas back on
+     * `pagehide`. `dispose` now shrinks them too — and a frame afterwards must
+     * not throw, which is the failure mode of shrinking a cached surface while
+     * leaving it in the map for the next draw to find.
+     */
+    await game.evaluate((pencil) => {
+      pencil.game.world.dispose();
+      pencil.renderOnce();
+      pencil.renderOnce();
+    });
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
