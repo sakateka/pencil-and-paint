@@ -18,7 +18,6 @@ import { WALK_CYCLE } from './entities/player';
 import { Game } from './game';
 import { tickBoil } from './media/ink';
 import { yieldToBrowser } from './core/schedule';
-import { GRAIN } from './media/sprites';
 import { Renderer } from './render/renderer';
 import birdsongUrl from './assets/birdsong.mp3';
 import pondUrl from './assets/pond.mp3';
@@ -123,10 +122,6 @@ async function boot(): Promise<void> {
    * Kept here, after the gesture, rather than on the critical path to first
    * paint.
    */
-  const grainStarted = performance.now();
-  const grain = document.querySelector<HTMLElement>('#grain');
-  if (grain) grain.style.backgroundImage = `url(${GRAIN.toDataURL()})`;
-  const grainMs = performance.now() - grainStarted;
 
   const world = await World.generate((fraction) => {
     if (!startButton) return;
@@ -179,7 +174,7 @@ async function boot(): Promise<void> {
       );
     };
     const thisLoad =
-      `grain ${grainMs.toFixed(0)}ms · script ${ms(nav && nav.domContentLoadedEventStart - nav.responseEnd)}` +
+      `script ${ms(nav && nav.domContentLoadedEventStart - nav.responseEnd)}` +
       ` · net ${ms(nav?.responseEnd)} · paint ${ms(paint?.startTime)} · ready ${performance.now().toFixed(0)}` +
       ` · wall ${(Date.now() - performance.timeOrigin).toFixed(0)}` +
       ` · hidden ${(hiddenMs + (hiddenSince ? performance.now() - hiddenSince : 0)).toFixed(0)}` +

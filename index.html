@@ -16,13 +16,13 @@
   }
   #game { display:block; position:fixed; inset:0; }
 
-  /* Paper grain and vignette. Static, screen-space, and identical every frame,
-     so they are layers for the compositor to cache rather than a full-screen
-     alpha blend the canvas repeats sixty times a second. */
-  #grain, #vignette { position:fixed; inset:0; pointer-events:none; z-index:1; }
-  #grain    { opacity:.13; }
-  #vignette { background:radial-gradient(ellipse at 50% 50%,
-                rgba(90,80,60,0) 45%, rgba(90,80,60,.20) 100%); }
+  /* The paper grain and the vignette are drawn into the canvas now, at the end
+     of the frame. As `position:fixed` layers they were re-blended over every
+     new frame at the device pixel ratio, while the canvas draws at CSS
+     resolution — four times the pixels we draw ourselves, spent by the
+     compositor where no timer in this codebase could see them. Hiding them was
+     worth ten frames a second on a 4K display. See `buildPaper` in
+     render/renderer.ts. */
 
   .panel {
     position:fixed;
@@ -287,8 +287,6 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="grain"></div>
-<div id="vignette"></div>
 
 <div id="hud" class="panel">
   <div><b><span id="found">0</span> / <span id="total">0</span></b> <span data-i18n="hud.pots">paint pots</span></div>

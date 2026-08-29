@@ -17,6 +17,7 @@ import { drawPot, type Pot } from '../entities/pots';
 import type { Medium } from '../media/medium';
 import type { World } from '../world/world';
 import type { Camera } from './camera';
+import { GRAIN } from '../media/sprites';
 import { MASK_SCALE } from './colorField';
 import type { ColorField, DirtyRect } from './colorField';
 
@@ -91,6 +92,8 @@ export interface StageTimings {
   mask: number;
   composite: number;
   occluders: number;
+  /** The one blit of grain and vignette over the finished frame. */
+  paper: number;
   /** Sprites baked this frame — should settle to zero once explored. */
   bakes: number;
   /*
@@ -137,6 +140,7 @@ export class Renderer {
     mask: 0,
     composite: 0,
     occluders: 0,
+    paper: 0,
     bakes: 0,
     colourTiles: 0,
     colourLive: 0,
@@ -185,6 +189,24 @@ export class Renderer {
     this.ran.clear();
   }
 
+  /**
+   * The paper: grain and vignette, in screen space, on one sheet.
+   *
+   * These used to be two `position:fixed` divs over the canvas, on the reasoning
+   * that a static layer is something the compositor can cache. It can — but
+   * caching saves *rasterising* them, not blending them, and the canvas beneath
+   * changes every frame, so both were re-blended over every frame anyway. At
+   * device resolution, while the canvas draws at CSS resolution: at a device
+   * pixel ratio of two the browser was blending four times as many pixels on
+   * our behalf as we drew ourselves, none of it visible to any timer here.
+   * Hiding them took a real session from 42fps to 52.
+   *
+   * Composed once per resize and laid down with a single one-to-one blit, which
+   * is the cheapest full-screen operation there is — a pattern fill and a
+   * gradient every frame would have given most of the saving back.
+   */
+  private readonly paper: Surface;
+
   constructor(private readonly canvas: HTMLCanvasElement) {
     // Opaque. The compositor can then copy rather than blend a full-screen
     // layer every frame. This was transparent for a while because a resize
@@ -193,6 +215,7 @@ export class Renderer {
     // does, and those redraw immediately.
     this.ctx = context2d(canvas, { alpha: false });
     this.temp = createSurface(1, 1);
+    this.paper = createSurface(1, 1);
   }
 
   resize(width: number, height: number, scale: number, field: ColorField): void {
@@ -211,6 +234,43 @@ export class Renderer {
     field.resize(scratchW, scratchH);
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
+    this.buildPaper();
+  }
+
+  /** Draw the grain and the vignette onto their own sheet, at screen size. */
+  private buildPaper(): void {
+    const w = Math.max(1, Math.round(this.width * this.scale));
+    const h = Math.max(1, Math.round(this.height * this.scale));
+    this.paper.canvas.width = w;
+    this.paper.canvas.height = h;
+    const p = this.paper.ctx;
+    p.setTransform(1, 0, 0, 1, 0, 0);
+    p.clearRect(0, 0, w, h);
+
+    const grain = p.createPattern(GRAIN, 'repeat');
+    if (grain) {
+      p.globalAlpha = 0.13;
+      p.fillStyle = grain;
+      p.fillRect(0, 0, w, h);
+      p.globalAlpha = 1;
+    }
+
+    /*
+     * The vignette, as it was in the stylesheet: an ellipse filling the window,
+     * clear to nearly half way out and reaching a fifth opacity at the corners.
+     * Canvas gradients are circular, so the context is squashed to the window's
+     * proportions and a circle drawn in that.
+     */
+    isolate(p, () => {
+      p.translate(w / 2, h / 2);
+      p.scale(1, h / w || 1);
+      const r = w / 2;
+      const g = p.createRadialGradient(0, 0, r * 0.45, 0, 0, r);
+      g.addColorStop(0, 'rgba(90,80,60,0)');
+      g.addColorStop(1, 'rgba(90,80,60,.20)');
+      p.fillStyle = g;
+      p.fillRect(-r, -r, r * 2, r * 2);
+    });
   }
 
   render(scene: Scene): void {
@@ -313,6 +373,16 @@ export class Renderer {
       if (house.inside) {
         drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving);
       }
+    });
+
+    /*
+     * The paper over everything, so the whole frame reads as one drawing rather
+     * than as things arranged on a background. One blit, one to one.
+     */
+    this.time('paper', () => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(this.paper.canvas, 0, 0);
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
     });
 
     this.stages.bakes = world.bakeCount;
