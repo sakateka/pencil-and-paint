@@ -379,6 +379,61 @@ async function boot(): Promise<void> {
     perf,
     input,
     renderOnce: () => renderer.render(game.scene),
+    build: BUILD_ID,
+    snapshot: () => {
+      const p = perf.snapshot();
+      const d = game.field.lastDirty;
+      const c = world.canvasStats();
+      const screen = renderer.width * renderer.height;
+      const round = (n: number) => Math.round(n * 100) / 100;
+      return {
+        build: BUILD_ID,
+        visible: document.visibilityState === 'visible',
+        fps: round(p.fps),
+        frameMs: round(p.frameMs),
+        simMs: round(p.simMs),
+        drawMs: round(p.drawMs),
+        otherMs: round(p.otherMs),
+        slow: `${p.slowFrames}/${p.windowFrames}`,
+        path: renderer.lastFlooded ? 'flooded' : 'composite',
+        won: game.won,
+        pots: `${game.pots.filter((pot) => pot.found).length}/${game.pots.length}`,
+        litRadius: Math.round(game.litRadius),
+        maskRadius: Math.round(game.maskRadius),
+        view: `${renderer.width}x${renderer.height}`,
+        scale: renderer.scale,
+        dpr: globalThis.devicePixelRatio || 1,
+        zoom: round(game.camera.zoom),
+        dirty: `${d.width}x${d.height}`,
+        dirtyPctOfScreen: screen ? Math.round((d.width * d.height * 100) / screen) : 0,
+        awake: game.herd.animals.reduce((n, a) => n + (a.awake ? 1 : 0), 0),
+        canvases: c.tiles + c.sprites,
+        canvasMb: c.mb,
+        ...Object.fromEntries(Object.entries(renderer.stages).map(([k, v]) => [k, round(v)])),
+      };
+    },
+    probe: (frames = 120) => {
+      /*
+       * Simulation and drawing timed separately, each as one batch. See the
+       * note on `probe` in debug.ts for why batches rather than averages.
+       */
+      const step = () => game.advance(1 / 60, input);
+      let t0 = performance.now();
+      for (let i = 0; i < frames; i++) step();
+      const simMs = (performance.now() - t0) / frames;
+      t0 = performance.now();
+      for (let i = 0; i < frames; i++) {
+        step();
+        renderer.render(game.scene);
+      }
+      const bothMs = (performance.now() - t0) / frames;
+      return {
+        frames,
+        simMs: Math.round(simMs * 1000) / 1000,
+        drawMs: Math.round((bothMs - simMs) * 1000) / 1000,
+        totalMs: Math.round(bothMs * 1000) / 1000,
+      };
+    },
     hillSurface: () => SURFACE,
     northernSurfaceY,
     rngEndState: () => rng.seed,
@@ -420,6 +475,7 @@ async function boot(): Promise<void> {
     const dt = Math.min(MAX_STEP, (now - last) / 1000);
     last = now;
 
+    const simStart = performance.now();
     tickBoil(game.elapsed + dt);
     game.advance(dt, input);
     ui.setAction(game.interaction?.say ?? null);
@@ -434,6 +490,7 @@ async function boot(): Promise<void> {
     purrSound.update(dt);
     birdsong.update(dt);
     pond.update(dt);
+    perf.recordSim(performance.now() - simStart);
 
     const drawStart = performance.now();
     renderer.render(game.scene);

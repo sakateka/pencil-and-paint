@@ -29,6 +29,35 @@ export interface DebugHandle {
   /** Force a frame outside the rAF loop, for deterministic measurement. */
   renderOnce(): void;
   /**
+   * The build this page is running, as shown on the title card.
+   *
+   * The first question about any report from a deployed page is whether it is
+   * even the code you think it is. Answering that by hunting for a function
+   * that only exists in newer builds is not a method.
+   */
+  build: string;
+  /**
+   * Everything worth knowing about the current frame, flat enough to read.
+   *
+   * Deliberately one object of plain values: a browser console collapses
+   * anything nested and truncates anything long, and the number you wanted is
+   * always the one behind the ellipsis.
+   */
+  snapshot(): Record<string, string | number | boolean>;
+  /**
+   * Time `frames` renders as one batch, and report the cost of one.
+   *
+   * Not an average of individually timed frames. Firefox rounds
+   * `performance.now()` to whole milliseconds by default, so anything under a
+   * millisecond is measured as either nothing or everything, and a per-stage
+   * average becomes noise wearing a decimal point. Timing a hundred frames at
+   * once and dividing puts the measurement well clear of the clock's grain.
+   *
+   * The simulation is stepped between frames, so the trail, the boil and the
+   * animals move as they would in play.
+   */
+  probe(frames?: number): Record<string, number>;
+  /**
    * The hills, as the one polyline everything about them is read off.
    *
    * The silhouette drawn over the sky, the polygon the meadow is filled inside

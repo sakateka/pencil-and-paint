@@ -93,6 +93,21 @@ export interface StageTimings {
   occluders: number;
   /** Sprites baked this frame — should settle to zero once explored. */
   bakes: number;
+  /*
+   * The four passes inside `composite`, which is otherwise one number covering
+   * most of the frame. Worth having permanently: a night was spent guessing
+   * which of them was expensive, and the answer turned out to differ between
+   * machines — so the only useful version of this question is the one asked on
+   * the machine that is actually slow.
+   */
+  /** Coloured world tiles blitted into the scratch. */
+  colourTiles: number;
+  /** Live entities drawn into the scratch, in colour. */
+  colourLive: number;
+  /** `destination-in` punching the mask through the scratch. */
+  maskPunch: number;
+  /** The finished scratch laid over the pencil. */
+  blitOut: number;
 }
 
 export class Renderer {
@@ -106,6 +121,16 @@ export class Renderer {
   /** Device pixels per CSS pixel. Adapted at runtime by `systems/perf.ts`. */
   scale = 1;
 
+  /**
+   * Which of the two paths the last frame took.
+   *
+   * Recorded rather than recomputed, because the whole point of asking is to
+   * find out what actually happened. Confusing the cheap flooded path for the
+   * expensive composite one — they differ by better than ten times — cost an
+   * evening once.
+   */
+  lastFlooded = false;
+
   readonly stages: StageTimings = {
     worldBlit: 0,
     live: 0,
@@ -113,15 +138,51 @@ export class Renderer {
     composite: 0,
     occluders: 0,
     bakes: 0,
+    colourTiles: 0,
+    colourLive: 0,
+    maskPunch: 0,
+    blitOut: 0,
   };
+
+  /**
+   * Which stages ran this frame, so the others can be decayed.
+   *
+   * Without this a stage that stops running keeps its last average for ever:
+   * win the game and the composite is skipped from then on, but the readout
+   * goes on reporting whatever it cost on the final frame before the flood.
+   * That is not a stale number, it is a wrong one, and it sent a real debugging
+   * session down the wrong path.
+   */
+  private readonly ran = new Set<keyof StageTimings>();
 
 
   /** Blend a sample into the running average for one stage. */
   private time<T>(stage: keyof StageTimings, fn: () => T): T {
     const started = performance.now();
     const result = fn();
-    this.stages[stage] = this.stages[stage] * 0.9 + (performance.now() - started) * 0.1;
+    this.blend(stage, performance.now() - started);
     return result;
+  }
+
+  /** Fold one sample into a stage's running average, and mark it as having run. */
+  private blend(stage: keyof StageTimings, ms: number): void {
+    this.stages[stage] = this.stages[stage] * 0.9 + ms * 0.1;
+    this.ran.add(stage);
+  }
+
+  /**
+   * Let anything that did not run this frame fall away.
+   *
+   * Towards zero at the same rate it would have risen, so a stage that stops
+   * reads as fading out rather than as switching off — which is the truth, and
+   * also tells you *when* it stopped if you are watching.
+   */
+  private decayIdle(): void {
+    for (const key of Object.keys(this.stages) as (keyof StageTimings)[]) {
+      if (key === 'bakes' || this.ran.has(key)) continue;
+      this.stages[key] *= 0.9;
+    }
+    this.ran.clear();
   }
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -162,6 +223,7 @@ export class Renderer {
     const centreY = camera.toScreenY(walker.y - 14);
     const radius = scene.maskRadius * camera.zoom;
     const flooded = radius > Math.hypot(this.width, this.height) * 0.85;
+    this.lastFlooded = flooded;
 
     // No clear: the world blit below covers every pixel of the viewport, and on
     // an opaque canvas a full-screen clear is a full-screen write for nothing.
@@ -254,6 +316,7 @@ export class Renderer {
     });
 
     this.stages.bakes = world.bakeCount;
+    this.decayIdle();
   }
 
   private blitWorld(
@@ -411,6 +474,7 @@ export class Renderer {
     const sourceW = dirty.width / camera.zoom;
     const sourceH = dirty.height / camera.zoom;
 
+    let part = performance.now();
     const t = temp.ctx;
     t.setTransform(1, 0, 0, 1, 0, 0);
     // No clear. The colour blit below paints the whole dirty rectangle opaquely
@@ -435,9 +499,13 @@ export class Renderer {
       dirty.width,
       dirty.height,
     );
+    this.blend('colourTiles', performance.now() - part);
+    part = performance.now();
     camera.applyTransform(t);
     this.drawLive(t, scene, 'color');
     t.restore();
+    this.blend('colourLive', performance.now() - part);
+    part = performance.now();
 
     // The clip matters: `destination-in` would otherwise clear the entire
     // scratch canvas, which is exactly the full-screen work being avoided.
@@ -467,6 +535,8 @@ export class Renderer {
     );
     t.restore();
     t.globalCompositeOperation = 'source-over';
+    this.blend('maskPunch', performance.now() - part);
+    part = performance.now();
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(
@@ -480,9 +550,9 @@ export class Renderer {
       dirty.width * scale,
       dirty.height * scale,
     );
+    this.blend('blitOut', performance.now() - part);
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    this.stages.composite =
-      this.stages.composite * 0.9 + (performance.now() - compositeStarted) * 0.1;
+    this.blend('composite', performance.now() - compositeStarted);
   }
 
   /**

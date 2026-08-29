@@ -36,6 +36,26 @@ export interface PerfSnapshot {
   fps: number;
   frameMs: number;
   drawMs: number;
+  /** Simulation: everything the frame does that is not drawing. */
+  simMs: number;
+  /**
+   * Frame time that is neither ours to simulate nor ours to draw.
+   *
+   * The browser's own half of the frame — style, layout, compositing the canvas
+   * up to the device pixel ratio, GC — and, at a healthy frame rate, mostly
+   * just waiting for the next vsync. So read it together with `fps`:
+   *
+   *   60fps and `other` large   the page is idle. Nothing to fix.
+   *   low fps and `other` large the main thread is finishing early and
+   *                             something outside this codebase is setting the
+   *                             pace. Optimising the renderer will do nothing.
+   *   low fps and `draw` large  the renderer. This is the only case where the
+   *                             drawing code is the answer.
+   *
+   * Written down because an evening went into the renderer on the strength of a
+   * 13ms figure, while the frame was 35.9ms and the draw was 1.76ms of it.
+   */
+  otherMs: number;
   slowFrames: number;
   windowFrames: number;
   scale: number;
@@ -46,6 +66,7 @@ export interface PerfSnapshot {
 export class Performance {
   private frameAverage = 0;
   private drawAverage = 0;
+  private simAverage = 0;
   private slowFrames = 0;
   private windowFrames = 0;
 
@@ -59,6 +80,11 @@ export class Performance {
 
   recordDraw(ms: number): void {
     this.drawAverage = this.drawAverage * 0.9 + ms * 0.1;
+  }
+
+  /** Everything the frame does apart from drawing: the world moving on. */
+  recordSim(ms: number): void {
+    this.simAverage = this.simAverage * 0.9 + ms * 0.1;
   }
 
   /**
@@ -82,6 +108,8 @@ export class Performance {
       fps: this.frameAverage ? 1000 / this.frameAverage : 0,
       frameMs: this.frameAverage,
       drawMs: this.drawAverage,
+      simMs: this.simAverage,
+      otherMs: Math.max(0, this.frameAverage - this.drawAverage - this.simAverage),
       slowFrames: this.slowFrames,
       windowFrames: this.windowFrames,
       scale: this.scale,
@@ -102,6 +130,7 @@ export function drawPerfOverlay(
   const written = [
     `fps ${perf.fps.toFixed(0)}   frame ${perf.frameMs.toFixed(1)}ms`,
     `draw ${perf.drawMs.toFixed(2)}ms   slow ${perf.slowFrames}/${perf.windowFrames}`,
+    `sim ${perf.simMs.toFixed(2)}ms   other ${perf.otherMs.toFixed(1)}ms`,
     `scale ${perf.scale} (max ${perf.maxScale}, dpr ${perf.devicePixelRatio})`,
     ...extra,
   ];

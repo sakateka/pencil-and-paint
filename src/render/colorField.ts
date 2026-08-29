@@ -87,6 +87,11 @@ export class ColorField {
     this.surface.canvas.height = Math.max(1, Math.ceil(height * MASK_SCALE) + 2);
   }
 
+  /** The rectangle the last frame composited through. Read-only, for debugging. */
+  get lastDirty(): Readonly<DirtyRect> {
+    return this.dirty;
+  }
+
   clearTrail(): void {
     this.trail.length = 0;
     this.sampleTimer = 0;

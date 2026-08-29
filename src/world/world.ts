@@ -336,6 +336,40 @@ export class World {
    * a white screen. Zeroing the dimensions releases the backing store at once
    * rather than waiting for the collector to get round to it.
    */
+  /**
+   * How much canvas this world is holding, and in how many surfaces.
+   *
+   * Both numbers matter and for different reasons: the megabytes are what a
+   * phone runs out of, and the *count* is what a compositor runs out of — a
+   * browser will only keep so many surfaces accelerated, and the ones that miss
+   * out fall back to software without saying so.
+   */
+  canvasStats(): { tiles: number; tilePx: number; sprites: number; spritePx: number; mb: number } {
+    let tiles = 0;
+    let tilePx = 0;
+    for (const layer of [this.layers.color, this.layers.sketch]) {
+      for (const tile of layer.tiles) {
+        tiles++;
+        tilePx += tile.width * tile.height;
+      }
+    }
+    let sprites = 0;
+    let spritePx = 0;
+    for (const occluder of this.occluders) {
+      for (const sprite of occluder.sprites.values()) {
+        sprites++;
+        spritePx += sprite.canvas.width * sprite.canvas.height;
+      }
+    }
+    return {
+      tiles,
+      tilePx,
+      sprites,
+      spritePx,
+      mb: +(((tilePx + spritePx) * 4) / 1048576).toFixed(1),
+    };
+  }
+
   dispose(): void {
     for (const layer of [this.layers.color, this.layers.sketch]) {
       for (const tile of layer.tiles) {
