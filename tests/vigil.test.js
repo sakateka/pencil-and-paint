@@ -208,6 +208,40 @@ export async function run(url) {
     );
     suite.equal(laterFrame.hash, firstFrame.hash, 'in graphite nothing twitches');
 
+    /*
+     * A phone cannot hold the stump and the enlarged mirage in one frame. Once
+     * seated — never while walking — the camera should quietly pan to it.
+     */
+    await game.page.setViewportSize({ width: 412, height: 892 });
+    const mobilePan = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const v = game.vigil;
+      game.restart();
+      game.teleport(v.x, v.y + 34);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      const from = { x: game.walker.x, y: game.walker.y };
+      const before = Math.hypot(game.camera.x - v.elephantX, game.camera.y - (v.elephantY - 115));
+      game.interact();
+      for (let i = 0; i < 60 * 4; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 1, y: 1 }) });
+      }
+      pencil.renderOnce();
+      return {
+        before,
+        after: Math.hypot(game.camera.x - v.elephantX, game.camera.y - (v.elephantY - 115)),
+        moved: Math.hypot(game.walker.x - from.x, game.walker.y - from.y),
+        viewY: game.camera.viewY,
+      };
+    });
+
+    suite.atMost(mobilePan.moved, 0.01, 'the walker stays still during the mobile pan');
+    suite.ok(
+      mobilePan.after < mobilePan.before * 0.2,
+      'the mobile camera settles on the elephant cloud',
+      `${Math.round(mobilePan.before)}px to ${Math.round(mobilePan.after)}px`,
+    );
+    suite.ok(mobilePan.viewY <= -500, 'and reveals the full height of the sky', `viewY ${mobilePan.viewY}`);
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();

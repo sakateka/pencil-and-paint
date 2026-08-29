@@ -372,7 +372,29 @@ export class Game {
      */
     if (this.fishing.active) this.herd.startle(this.fishing.floatX, this.fishing.floatY);
     else this.herd.calm();
-    this.camera.follow(this.walker.x, this.walker.y, dt);
+    let cameraX = this.walker.x;
+    let cameraY = this.walker.y;
+    if (this.vigil.sitting && this.isMobileViewport) {
+      /*
+       * On a narrow screen the enlarged mirage sits outside the stump's frame.
+       * Pan only after sitting, while the walker is immobile: ordinary walking
+       * must keep the camera at exactly the walker's pace. Three seconds is
+       * slow enough to feel deliberate and early enough to watch it condense.
+       */
+      const t = clamp(this.vigil.clock / 3, 0, 1);
+      const focus = t * t * (3 - 2 * t);
+      cameraX = lerp(this.walker.x, this.vigil.elephantX, focus);
+      // `elephantY` is its baseline; the visible cloud and body are above it.
+      cameraY = lerp(this.walker.y, this.vigil.elephantY - 115, focus);
+    }
+    this.camera.follow(cameraX, cameraY, dt);
+  }
+
+  /** Portrait phones, plus touch devices held in landscape. */
+  private get isMobileViewport(): boolean {
+    const width = globalThis.innerWidth || 1280;
+    if (width <= 700) return true;
+    return width <= 1000 && globalThis.matchMedia?.('(hover: none)').matches === true;
   }
 
   private get speed(): number {
