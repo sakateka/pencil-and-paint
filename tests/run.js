@@ -21,8 +21,9 @@ import { run as lion } from './lion.test.js';
 import { run as sky } from './sky.test.js';
 import { run as hills } from './hills.test.js';
 import { run as perch } from './perch.test.js';
+import { run as hedgehog } from './hedgehog.test.js';
 
-const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch, i18n];
+const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch, hedgehog, i18n];
 
 /**
  * Runs every suite against the production build, served over HTTP the way a

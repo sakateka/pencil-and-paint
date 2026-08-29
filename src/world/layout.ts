@@ -51,6 +51,17 @@ export const TREEHOUSE = { x: 2180, y: 1712 } as const;
 export const BENCH = { x: 1425, y: 1255 } as const;
 export const HAYSTACK = { x: 2585, y: 590 } as const;
 
+/**
+ * The bush above the haystack, and the hedgehog under it.
+ *
+ * North of the hay and near enough that lying back on it puts the bush inside
+ * the colour from the very first minute — the walker on the hay is about a
+ * hundred and ten units away, and the colour reaches a hundred and fifty-eight
+ * before a single pot is found. A hedgehog you could only meet after collecting
+ * half the valley would be a hedgehog almost nobody meets.
+ */
+export const HEDGEHOG = { x: 2612, y: 468 } as const;
+
 export interface AnimalSpawn {
   kind: AnimalKind;
   x: number;
@@ -627,6 +638,16 @@ export function buildLayout(): Layout {
     ],
     draw() {},
   });
+
+  /*
+   * The hedgehog's bush, last of everything.
+   *
+   * Last on purpose. `makeBush` draws from the shared rng — a berry check and
+   * possibly five berry positions — so putting it anywhere earlier in this
+   * function would shift every tree, rock and flower placed after it. At the
+   * end there is nothing after it to move.
+   */
+  scenery.push(makeBush(HEDGEHOG.x, HEDGEHOG.y, 1.15));
 
   return {
     scenery,

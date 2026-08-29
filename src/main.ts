@@ -326,6 +326,7 @@ async function boot(): Promise<void> {
      * make it an achievement, and it is meant to be something you notice.
      */
     onElephant: () => ui.note('note.elephant', 7000),
+    onHedgehog: () => ui.note('note.hedgehog', 6000),
     onDraw: () => openStudio(),
     onClimb: (inside) => ui.note(inside ? 'note.climbedIn' : 'note.climbedDown'),
     onCatch: (total) => {

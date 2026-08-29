@@ -144,6 +144,7 @@ const en: Dictionary = {
   'note.lainHay': 'the hay gives under you, and smells of last summer',
   'note.leftHay': 'you get up, picking straw out of your collar',
   'note.elephant': 'something enormous is standing in the trees',
+  'note.hedgehog': 'something small has decided you are part of the field',
 
   'corner.sourceTitle': 'View the source on GitHub',
   'corner.stats': 'Show performance diagnostics',
@@ -246,6 +247,7 @@ const es: Dictionary = {
   'note.lainHay': 'el heno cede bajo tu peso y huele al verano pasado',
   'note.leftHay': 'te levantas y te quitas la paja del cuello',
   'note.elephant': 'algo enorme está de pie entre los árboles',
+  'note.hedgehog': 'algo pequeño ha decidido que eres parte del campo',
 
   'corner.sourceTitle': 'Ver el código en GitHub',
   'corner.stats': 'Mostrar datos de rendimiento',
@@ -348,6 +350,7 @@ const pt: Dictionary = {
   'note.lainHay': 'o feno cede debaixo de ti e cheira ao verão passado',
   'note.leftHay': 'levantas-te, a tirar palha do colarinho',
   'note.elephant': 'algo enorme está parado entre as árvores',
+  'note.hedgehog': 'algo pequeno decidiu que você faz parte do campo',
 
   'corner.sourceTitle': 'Ver o código no GitHub',
   'corner.stats': 'Mostrar dados de desempenho',
@@ -486,6 +489,7 @@ const ru: Dictionary = {
   'note.lainHay': 'сено проминается под тобой и пахнет прошлым летом',
   'note.leftHay': 'ты поднимаешься, вытаскивая соломинки из-за ворота',
   'note.elephant': 'что-то огромное стоит между деревьев',
+  'note.hedgehog': 'кто-то маленький решил, что ты — часть поля',
 
   'corner.sourceTitle': 'Посмотреть исходники на GitHub',
   'corner.stats': 'Показать диагностику производительности',
@@ -584,6 +588,7 @@ const zh: Dictionary = {
   'note.lainHay': '干草在身下陷下去，闻起来像去年的夏天',
   'note.leftHay': '你起身，从领口里挑出草秆',
   'note.elephant': '有个庞然大物站在树林里',
+  'note.hedgehog': '有个小家伙认定你也是这片田野的一部分',
 
   'corner.sourceTitle': '在 GitHub 上查看源码',
   'corner.stats': '显示性能数据',

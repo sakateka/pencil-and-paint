@@ -5,6 +5,7 @@ import { Rest } from './entities/rest';
 import { Treehouse } from './entities/treehouse';
 import { Herd } from './entities/herd';
 import { Owl } from './entities/owl';
+import { Hedgehog } from './entities/hedgehog';
 import { MIRAGE_REACH, Vigil, VIGIL_SECONDS } from './entities/vigil';
 import { Lion } from './entities/lion';
 import { Perch } from './entities/perch';
@@ -18,7 +19,7 @@ import { isSpotClear, resolveCollisions, type WorldEdges } from './systems/colli
 import { northernSurfaceY } from './world/hills';
 import type { Input } from './systems/input';
 import { POT_HUES } from './world/palette';
-import { BENCH, EASEL, HAMMOCK, HAYSTACK, SPAWN, TREEHOUSE } from './world/layout';
+import { BENCH, EASEL, HAMMOCK, HAYSTACK, HEDGEHOG, SPAWN, TREEHOUSE } from './world/layout';
 import type { World } from './world/world';
 
 export const POT_COUNT = 14;
@@ -113,6 +114,8 @@ export interface GameEvents {
   onSitEnd(note: string): void;
   /** Two minutes of sitting still, rewarded. */
   onElephant(): void;
+  /** The hedgehog has come right out of its bush. */
+  onHedgehog(): void;
   /** A fish has been landed; `total` counts them this playthrough. */
   onCatch(total: number): void;
   /** Somebody has got into the hammock. `birds` is false until the pots are in. */
@@ -145,6 +148,7 @@ export class Game {
 
   /** The stump, the waiting, and what turns up at the end of it. */
   readonly vigil: Vigil;
+  readonly hedgehog: Hedgehog;
 
   /** Lying in the far corner, doing nothing whatsoever. */
   readonly lion: Lion;
@@ -218,6 +222,7 @@ export class Game {
        */
       new Perch(HAYSTACK.x - 20, HAYSTACK.y - 12, 'hay', 'prompt.lieHay', -1),
     ];
+    this.hedgehog = new Hedgehog(HEDGEHOG.x, HEDGEHOG.y);
     this.vigil = new Vigil(
       world.vigil.x,
       world.vigil.y,
@@ -258,6 +263,7 @@ export class Game {
     this.rest.getUp();
     this.treehouse.climbOut();
     this.vigil.reset();
+    this.hedgehog.reset();
     for (const perch of this.perches) perch.getUp();
     this.herd.scatter();
     this.pots = scatterPots(
@@ -374,6 +380,14 @@ export class Game {
     this.owl.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.owl.x, this.owl.y, 10));
     this.lion.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.lion.x, this.lion.y, 14));
     for (const perch of this.perches) perch.update(dt, this.isAwakeAt(perch.x, perch.y, 12));
+    /*
+     * The hedgehog comes out for the hay and nothing else — not the bench, not
+     * standing beside the bush looking at it. `lying` is that, exactly.
+     */
+    const lying = this.perches.some((perch) => perch.resting && perch.pose === 'hay');
+    if (this.hedgehog.update(dt, lying, this.isAwakeAt(this.hedgehog.x, this.hedgehog.y, 16))) {
+      this.events.onHedgehog();
+    }
     this.vigil.lit = this.isWhollyLit(this.vigil.elephantX, this.vigil.elephantY, MIRAGE_REACH);
     if (this.vigil.update(dt, this.won)) this.events.onElephant();
     this.treehouse.update(dt);
@@ -827,6 +841,7 @@ export class Game {
       rest: this.rest,
       owl: this.owl,
       vigil: this.vigil,
+      hedgehog: this.hedgehog,
       lion: this.lion,
       perches: this.perches,
       easel: EASEL,

@@ -4,6 +4,7 @@ import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
 import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
+import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
 import { drawLion, type Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
 import { drawSky } from '../world/sky';
@@ -41,6 +42,7 @@ export interface Scene {
   readonly rest: Rest;
   readonly owl: Owl;
   readonly vigil: Vigil;
+  readonly hedgehog: Hedgehog;
   readonly lion: Lion;
   readonly perches: readonly Perch[];
   readonly treehouse: Treehouse;
@@ -477,6 +479,19 @@ export class Renderer {
 
     // The cloth sags under whoever is in it, so it cannot be baked — see the
     // note in `world/hammock.ts`.
+    /*
+     * The hedgehog, which is only ever there while somebody is lying on the
+     * hay. Under a still hand like everything else drawn live in pencil.
+     */
+    const { hedgehog } = scene;
+    if (
+      hedgehog.out > 0 &&
+      camera.canSee(hedgehog.atX, hedgehog.atY, 60) &&
+      !hidden(hedgehog.atX, hedgehog.atY, 20)
+    ) {
+      still(() => drawHedgehog(ctx, hedgehog, medium));
+    }
+
     const { rest } = scene;
     if (camera.canSee(rest.x, rest.y, 130) && !hidden(rest.x, rest.y, 90)) {
       still(() => drawHammock(ctx, rest, medium));
