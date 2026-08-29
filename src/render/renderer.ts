@@ -356,7 +356,7 @@ export class Renderer {
      * has to be asked every frame rather than gated on the animal existing.
      */
     if (
-      camera.canSee(vigil.elephantX, vigil.elephantY, 120) &&
+      camera.canSee(vigil.elephantX, vigil.elephantY, 320) &&
       !hidden(vigil.elephantX, vigil.elephantY, 90)
     ) {
       still(() => drawElephant(ctx, vigil, medium));

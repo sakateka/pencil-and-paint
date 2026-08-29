@@ -65,8 +65,19 @@ export class Camera {
      * so the sky appears as a band a few hundred units before you reach the end
      * and is fully open only when you are against it.
      */
+    /*
+     * At the head of the valley, look into the new strip of sky rather than
+     * leaving it unreachable above the viewport. This changes framing only;
+     * walker coordinates, velocity and collision speed remain untouched.
+     */
+    // Spread the change over a long walk. Compressing the same 180-unit reveal
+    // into the last few hundred units made the camera visibly overtake the
+    // walker just before the horizon; over 1800 units the extra motion is at
+    // most about fifteen percent and reads as ordinary camera easing.
+    const north = clamp(1 - this.y / 1800, 0, 1);
+    const skyLookAhead = 180 * north * north * (3 - 2 * north);
     const cy = clamp(
-      this.y,
+      this.y - skyLookAhead,
       this.viewHeight / 2 - SKY_DEPTH,
       this.worldHeight - this.viewHeight / 2,
     );

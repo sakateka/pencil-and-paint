@@ -37,8 +37,8 @@ export async function run(url) {
     suite.ok(there.y < there.height * 0.2, 'the stump is at the head of the valley', `y ${there.y}`);
     suite.ok(there.solid > 0, 'and you cannot stand inside it');
     suite.ok(there.fromPond > 330, 'well clear of the pond', `${there.fromPond}px`);
-    suite.ok(there.elephantY < 0, 'and the elephant stands in the sky', `y ${there.elephantY}`);
-    suite.ok(there.gap > 90 && there.gap < 420, 'across the sky from it', `${there.gap}px`);
+    suite.ok(there.elephantY < -100, 'and the elephant stands high in the sky', `y ${there.elephantY}`);
+    suite.ok(there.gap > 300 && there.gap < 560, 'across the sky from it', `${there.gap}px`);
 
     // Walking up to it offers a sit, before any pot has been found.
     const offered = await game.evaluate((pencil) => {

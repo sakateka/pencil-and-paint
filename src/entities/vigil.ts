@@ -42,8 +42,14 @@ const LEAVING = 7;
 /** How much of the cloud is there when nothing else is. Barely anything. */
 const RESTING_CLOUD = 0.34;
 
-/** How much bigger than life it is. Nothing about it is to scale anyway. */
-const ELEPHANT_SCALE = 2;
+/**
+ * Shared by the elephant and the cloud it condenses out of.
+ *
+ * Keep this as one value: the two drawings occupy the same silhouette during
+ * the transformation. Scaling either one independently makes the animal jump
+ * in size halfway through its arrival.
+ */
+const ELEPHANT_MIRAGE_SCALE = 4;
 
 const SKIN = '#f2c398';
 const HAIR = '#4a3527';
@@ -385,12 +391,12 @@ function drawMirageCloud(
     [-20, -11, 6],
     [-10, -10, 5],
     [13, -11, 5],
-    [23, -10, 6],
+    [21, -10, 6],
   ] as const;
 
   ctx.save();
   ctx.translate(v.elephantX, v.elephantY);
-  ctx.scale(ELEPHANT_SCALE, ELEPHANT_SCALE);
+  ctx.scale(ELEPHANT_MIRAGE_SCALE, ELEPHANT_MIRAGE_SCALE);
   ctx.translate(0, -(8 + Math.sin(clock * 0.62) * 4.6));
   // Swelling as it forms, so it does not simply switch on at full size.
   const grow = 0.72 + amount * 0.28;
@@ -522,7 +528,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     0,
     0,
   );
-  ctx.scale(ELEPHANT_SCALE, ELEPHANT_SCALE);
+  ctx.scale(ELEPHANT_MIRAGE_SCALE, ELEPHANT_MIRAGE_SCALE);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   /*
@@ -604,14 +610,16 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     [-21, 8, -1.5],
     [-11, 7.5, -2.4],
     [13, 7.5, -7],
-    [23, 8, -6.2],
+    [21, 8, -6.2],
   ] as const;
 
   /** Off the rump, down and out, ending in a splayed brush. */
   const tail = (wide: number) => {
     ctx.lineWidth = wide;
     ctx.beginPath();
-    ctx.moveTo(25, -32);
+    // Begin just inside the rump so the tail is visibly attached. Its control
+    // and lower end deliberately stay where they were, giving it a slight turn.
+    ctx.moveTo(22.5, -32);
     ctx.quadraticCurveTo(31, -26, 30.5 + swish, -16);
     ctx.stroke();
     ctx.lineWidth = wide * 0.7;

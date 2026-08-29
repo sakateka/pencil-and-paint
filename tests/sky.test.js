@@ -42,11 +42,11 @@ export async function run(url) {
 
     suite.ok(view.middle >= 0, 'no sky from the middle of the valley', `viewY ${view.middle}`);
     suite.ok(
-      view.approaching < 0 && view.approaching > -200,
+      view.approaching < 0 && view.approaching > -300,
       'a band of it as you come up the field',
       `viewY ${view.approaching}`,
     );
-    suite.ok(view.top <= -300, 'and all of it at the very top', `viewY ${view.top}`);
+    suite.ok(view.top <= -500, 'and all of the taller sky at the very top', `viewY ${view.top}`);
     suite.ok(
       view.bottom + 1 >= view.height - 800,
       'and the bottom edge still stops dead',
