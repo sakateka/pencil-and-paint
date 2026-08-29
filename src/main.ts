@@ -412,6 +412,72 @@ async function boot(): Promise<void> {
         ...Object.fromEntries(Object.entries(renderer.stages).map(([k, v]) => [k, round(v)])),
       };
     },
+    report: (frames = 90) => {
+      /*
+       * Stepped with the walker standing still, so running a report does not
+       * march them across the valley. `direction` is the only thing `advance`
+       * asks the input for, which is why this stub is enough.
+       */
+      const stationary = { direction: () => ({ x: 0, y: 0 }) } as unknown as Input;
+      const t0 = performance.now();
+      for (let i = 0; i < frames; i++) game.advance(1 / 60, stationary);
+      const simMs = (performance.now() - t0) / frames;
+      const t1 = performance.now();
+      for (let i = 0; i < frames; i++) {
+        game.advance(1 / 60, stationary);
+        renderer.render(game.scene);
+      }
+      const bothMs = (performance.now() - t1) / frames;
+      const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
+      const p = perf.snapshot();
+      const snap = globalThis.pencil?.snapshot() ?? {};
+      /*
+       * Which third of the frame is at fault, stated rather than implied. The
+       * rules are the ones written out over `otherMs` in systems/perf.ts.
+       */
+      const verdict =
+        p.fps > 50
+          ? 'healthy — a large `other` here is idle time, not work'
+          : bothMs - simMs > p.frameMs * 0.4
+            ? 'the renderer: drawing is most of a slow frame'
+            : simMs > p.frameMs * 0.4
+              ? 'the simulation: game.advance is most of a slow frame'
+              : 'NOT this codebase — the main thread finishes early and something '
+                + 'outside it sets the pace (compositing, vsync, the tab)';
+
+      const nav = navigator as Navigator & { deviceMemory?: number };
+      return JSON.stringify(
+        {
+          build: BUILD_ID,
+          at: new Date().toISOString(),
+          verdict,
+          env: {
+            ua: navigator.userAgent,
+            dpr: globalThis.devicePixelRatio || 1,
+            viewport: `${renderer.width}x${renderer.height}`,
+            screen: `${screen.width}x${screen.height}`,
+            cores: nav.hardwareConcurrency ?? null,
+            memoryGb: nav.deviceMemory ?? null,
+            visible: document.visibilityState === 'visible',
+          },
+          frame: snap,
+          probe: {
+            frames,
+            simMs: r3(simMs),
+            drawMs: r3(bothMs - simMs),
+            totalMs: r3(bothMs),
+          },
+          bake: {
+            summary: world.bakeSummary,
+            longestSliceMs: world.longestSliceMs,
+            rngEnd: rng.seed,
+          },
+        },
+        null,
+        1,
+      );
+    },
     probe: (frames = 120) => {
       /*
        * Simulation and drawing timed separately, each as one batch. See the

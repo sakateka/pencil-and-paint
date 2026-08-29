@@ -58,6 +58,24 @@ export interface DebugHandle {
    */
   probe(frames?: number): Record<string, number>;
   /**
+   * Everything worth knowing, in one string, ready to paste.
+   *
+   * The single call to make when something is wrong and you do not yet know
+   * what. It gathers the build, the machine, the frame budget split three ways,
+   * an honest batch-timed probe, which render path is running, the state of the
+   * game, every stage, the canvas the world is holding, and the bake — and
+   * hands back formatted JSON rather than an object, because a console collapses
+   * objects, truncates long ones, and hides the number you needed behind an
+   * ellipsis. This has happened enough times to be worth designing against.
+   *
+   * It includes a `verdict` line naming which part of the frame is at fault,
+   * because the readings alone have been misread more than once.
+   *
+   * Costs about a second and a half of simulated time: the probe steps the
+   * world without moving the walker, so animals will have wandered a little.
+   */
+  report(frames?: number): string;
+  /**
    * The hills, as the one polyline everything about them is read off.
    *
    * The silhouette drawn over the sky, the polygon the meadow is filled inside
