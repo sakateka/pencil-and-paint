@@ -23,6 +23,7 @@ import {
   makeTree,
 } from './scenery';
 import { makePond, makeTuft, type Ellipse, type Path, type Tuft } from './terrain';
+import { NORTHERN_LANDMARKS } from './hills';
 import type { Point } from '../core/geom';
 import { circleCollider, type Scenery } from './types';
 
@@ -60,6 +61,8 @@ export interface AnimalSpawn {
 
 export interface Layout {
   scenery: Scenery[];
+  /** Objects above y=0: drawn with the sky, but solid like ordinary scenery. */
+  northernLandmarks: readonly Scenery[];
   tufts: Tuft[];
   paths: Path[];
   pond: Ellipse;
@@ -579,7 +582,12 @@ export function buildLayout(): Layout {
    * hundred units and the animal is a hundred and forty tall, so any higher and
    * its ears are cut off by the edge of the screen.
    */
-  const standing = { x: stump.x - 210, y: -34 };
+  /*
+   * The whole mirage moved with the taller sky: cloud, animal and heat shimmer
+   * still share this one origin. The extra 150 west is the cloud's old rendered
+   * width, so doubling it grows mostly into the newly cleared space on the left.
+   */
+  const standing = { x: stump.x - 360, y: -134 };
 
   // A collider so you cannot stand inside the stump, and nothing drawn: see
   // above. The bake calls `draw` on every piece of scenery, and this one has
@@ -622,6 +630,7 @@ export function buildLayout(): Layout {
 
   return {
     scenery,
+    northernLandmarks: NORTHERN_LANDMARKS,
     tufts,
     paths,
     pond: pond.area,

@@ -305,13 +305,19 @@ export class World {
     };
     onProgress(1);
 
-    const colliders = scenery.flatMap((piece) => piece.colliders ?? []);
+    const colliders = [...scenery, ...layout.northernLandmarks].flatMap(
+      (piece) => piece.colliders ?? [],
+    );
 
     const occluders: Occluder[] = [];
     scenery.forEach((piece, i) => {
       if (!piece.tall || !piece.bounds) return;
       occluders.push({ scenery: piece, bounds: piece.bounds, seed: seeds[i], sprites: new Map() });
     });
+    for (const piece of layout.northernLandmarks) {
+      if (!piece.tall || !piece.bounds) continue;
+      occluders.push({ scenery: piece, bounds: piece.bounds, seed: rng.forkSeed(), sprites: new Map() });
+    }
 
     const world = new World(layers, colliders, occluders, layout.pond, layout.animals, layout.owl, layout.vigil, layout.lion);
     world.longestSliceMs = longestSlice;

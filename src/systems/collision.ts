@@ -17,7 +17,7 @@ const VERTICAL_SQUASH = 1.6;
 
 export interface WorldEdges {
   minX: number;
-  minY: number;
+  minY: number | ((x: number) => number);
   maxX: number;
   maxY: number;
 }
@@ -50,7 +50,8 @@ export function resolveCollisions(
     }
   }
   body.x = clamp(body.x, edges.minX, edges.maxX);
-  body.y = clamp(body.y, edges.minY, edges.maxY);
+  const minY = typeof edges.minY === 'function' ? edges.minY(body.x) : edges.minY;
+  body.y = clamp(body.y, minY, edges.maxY);
 }
 
 function pushOutOfCircle(

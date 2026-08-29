@@ -15,6 +15,7 @@ import { Camera } from './render/camera';
 import { ColorField } from './render/colorField';
 import type { Scene } from './render/renderer';
 import { isSpotClear, resolveCollisions, type WorldEdges } from './systems/collision';
+import { northernSurfaceY } from './world/hills';
 import type { Input } from './systems/input';
 import { POT_HUES } from './world/palette';
 import { BENCH, EASEL, HAMMOCK, HAYSTACK, SPAWN, TREEHOUSE } from './world/layout';
@@ -232,7 +233,12 @@ export class Game {
      * of the world and never quite reach it. The far edge of the paper is the
      * one place worth being able to stand.
      */
-    this.edges = { minX: 26, minY: 12, maxX: world.width - 26, maxY: world.height - 26 };
+    this.edges = {
+      minX: 26,
+      minY: (x) => northernSurfaceY(x) + 12,
+      maxX: world.width - 26,
+      maxY: world.height - 26,
+    };
     this.restart();
     this.camera.snapTo(this.walker.x, this.walker.y);
   }

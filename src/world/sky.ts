@@ -2,6 +2,7 @@ import { Rng } from '../core/rng';
 import { TAU } from '../core/math';
 import { ink, jitter } from '../media/ink';
 import { PAPER, PENCIL, type Medium } from '../media/medium';
+import { drawNorthernLandscape } from './hills';
 
 /**
  * The sky, above the top edge of the map.
@@ -18,7 +19,10 @@ import { PAPER, PENCIL, type Medium } from '../media/medium';
  */
 
 /** How far above the map the camera may rise, in world units. */
-export const SKY_DEPTH = 320;
+export const SKY_DEPTH = 530;
+
+/** The sky where it meets the meadow. */
+export const SKY_HORIZON = '#e6f2f6';
 
 /**
  * The sun, over towards the right, with the spiky rays it has in the painting.
@@ -32,14 +36,14 @@ export const SKY_DEPTH = 320;
  * can see all of is a sticker on the page; a quarter of an enormous one coming
  * over the corner is the sky carrying on past the edge of the paper.
  */
-const SUN = { x: 2792, y: -336, r: 150 };
+const SUN = { x: 2792, y: -486, r: 150 };
 
 /** Clouds, at fixed places along the top of the world. */
 const clouds = (() => {
   const rng = new Rng(0x5c1b7a3d);
   return Array.from({ length: 26 }, (_, i) => ({
     x: i * 190 + rng.range(-60, 60),
-    y: -rng.range(40, 280),
+    y: -rng.range(140, 380),
     r: rng.range(26, 62),
     lobes: rng.int(3, 5),
     pale: rng.next() < 0.45,
@@ -122,7 +126,7 @@ export function drawSky(
     const g = ctx.createLinearGradient(0, -SKY_DEPTH, 0, 0);
     g.addColorStop(0, '#7cb6de');
     g.addColorStop(0.62, '#b6dcee');
-    g.addColorStop(1, '#e6f2f6');
+    g.addColorStop(1, SKY_HORIZON);
     ctx.fillStyle = g;
     ctx.fillRect(left, viewY, width, height);
 
@@ -138,7 +142,7 @@ export function drawSky(
 
     for (const c of clouds) {
       if (c.x + c.r * 2 < left || c.x - c.r * 2 > left + width) continue;
-      if (Math.abs(c.x - clearAt) < 170) continue;
+      if (Math.abs(c.x - clearAt) < 360) continue;
       ctx.fillStyle = c.pale ? 'rgba(255,255,255,.72)' : 'rgba(255,255,255,.5)';
       for (let i = 0; i < c.lobes; i++) {
         const t = i / (c.lobes - 1 || 1) - 0.5;
@@ -169,6 +173,7 @@ export function drawSky(
     ctx.fillStyle = haze;
     ctx.fillRect(left, -70, width, 70);
     ctx.restore();
+    drawNorthernLandscape(ctx, medium);
     return;
   }
 
@@ -210,7 +215,7 @@ export function drawSky(
   ctx.fillStyle = PENCIL;
   for (const c of clouds) {
     if (c.x + c.r * 2 < left || c.x - c.r * 2 > left + width) continue;
-    if (Math.abs(c.x - clearAt) < 170) continue;
+    if (Math.abs(c.x - clearAt) < 360) continue;
     ctx.beginPath();
     for (let i = 0; i < c.lobes; i++) {
       const t = i / (c.lobes - 1 || 1) - 0.5;
@@ -232,4 +237,5 @@ export function drawSky(
   ctx.lineTo(left + width, jitter(9301, 1));
   ctx.stroke();
   ctx.restore();
+  drawNorthernLandscape(ctx, medium);
 }

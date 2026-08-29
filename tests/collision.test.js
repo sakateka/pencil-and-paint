@@ -88,14 +88,15 @@ export async function run(url) {
         y: Math.round(game.walker.y),
         inBounds:
           game.walker.x >= 20 &&
-          game.walker.y >= 60 &&
+          game.walker.y >= -115 &&
+          (game.walker.y >= 10 || game.walker.x < 1030) &&
           game.walker.x <= game.world.width - 20 &&
           game.walker.y <= game.world.height - 20,
       };
     });
 
     suite.atMost(roam.overlap, 0.01, 'never overlaps solid scenery while roaming');
-    suite.ok(roam.inBounds, 'stays inside the map', `at ${roam.x},${roam.y}`);
+    suite.ok(roam.inBounds, 'stays on the map, including the northern hills', `at ${roam.x},${roam.y}`);
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();

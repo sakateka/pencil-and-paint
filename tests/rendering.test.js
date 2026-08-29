@@ -47,7 +47,16 @@ export async function run(url) {
         x1: Infinity,
         y1: Infinity,
       })];
-      const building = tall.find((o) => o.bounds.y1 - o.bounds.y0 > 180);
+      /*
+       * Find an actual building by its rectangular wall. Height used to be a
+       * convenient proxy, until the painted pine became the first genuinely
+       * tall tree in the scenery list.
+       */
+      const building = tall.find((o) =>
+        game.world.colliders.some(
+          (c) => c.kind === 'rect' && Math.abs(c.y + c.h - o.scenery.y) < 2,
+        ),
+      );
       if (!building) return null;
 
       const wall = game.world.colliders.find(
@@ -409,4 +418,3 @@ export async function run(url) {
   }
   return suite;
 }
-
