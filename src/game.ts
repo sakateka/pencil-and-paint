@@ -5,7 +5,7 @@ import { Rest } from './entities/rest';
 import { Treehouse } from './entities/treehouse';
 import { Herd } from './entities/herd';
 import { Owl } from './entities/owl';
-import { Vigil, VIGIL_SECONDS } from './entities/vigil';
+import { MIRAGE_REACH, Vigil, VIGIL_SECONDS } from './entities/vigil';
 import { Lion } from './entities/lion';
 import { Perch } from './entities/perch';
 import { Particles } from './entities/particles';
@@ -315,6 +315,23 @@ export class Game {
     return dx * dx + dy * dy < r * r;
   };
 
+  /**
+   * Has the colour reached everything within `reach` of this spot?
+   *
+   * For drawings too big to ask about as a point. The mirage cloud is most of
+   * six hundred units across and the colour is four hundred at its widest, so
+   * asking at its origin can say yes while the trunk is still out in the
+   * graphite — and then the whole thing breathes, half of it in pencil, which
+   * is the one thing the graphite is not allowed to do.
+   */
+  isWhollyLit = (x: number, y: number, reach: number): boolean => {
+    const r = this.maskRadius - reach;
+    if (r <= 0) return false;
+    const dx = x - this.walker.x;
+    const dy = y - this.walker.y - 14;
+    return dx * dx + dy * dy < r * r;
+  };
+
   advance(dt: number, input: Input): void {
     this.elapsed += dt;
     if (!this.running) return;
@@ -357,8 +374,8 @@ export class Game {
     this.owl.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.owl.x, this.owl.y, 10));
     this.lion.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.lion.x, this.lion.y, 14));
     for (const perch of this.perches) perch.update(dt, this.isAwakeAt(perch.x, perch.y, 12));
-    this.vigil.lit = this.isAwakeAt(this.vigil.elephantX, this.vigil.elephantY, 12);
-    if (this.vigil.update(dt)) this.events.onElephant();
+    this.vigil.lit = this.isWhollyLit(this.vigil.elephantX, this.vigil.elephantY, MIRAGE_REACH);
+    if (this.vigil.update(dt, this.won)) this.events.onElephant();
     this.treehouse.update(dt);
     if (wasFishing && !this.fishing.active) this.events.onFishingEnd(this.fishing.landed);
 
@@ -374,12 +391,17 @@ export class Game {
     else this.herd.calm();
     let cameraX = this.walker.x;
     let cameraY = this.walker.y;
-    if (this.vigil.sitting && this.isMobileViewport) {
+    if (this.vigil.sitting && this.won && this.isMobileViewport) {
       /*
        * On a narrow screen the enlarged mirage sits outside the stump's frame.
        * Pan only after sitting, while the walker is immobile: ordinary walking
        * must keep the camera at exactly the walker's pace. Three seconds is
        * slow enough to feel deliberate and early enough to watch it condense.
+       *
+       * And only once the map is coloured, which is the same gate the arrival
+       * is on and for the same reason: before that there is nothing over there
+       * to look at, and swinging the camera onto an empty patch of pencil is a
+       * worse answer than leaving it where the walker is.
        */
       const t = clamp(this.vigil.clock / 3, 0, 1);
       const focus = t * t * (3 - 2 * t);

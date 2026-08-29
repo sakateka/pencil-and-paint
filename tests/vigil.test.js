@@ -55,6 +55,40 @@ export async function run(url) {
     suite.equal(offered.leaving, null, 'with nothing to get up from yet');
 
     /*
+     * But nothing comes of it yet.
+     *
+     * The animal turns up four hundred and seventy units from the seat, which
+     * is further than the colour reaches at any point in the game — so until
+     * the last pot is in, sitting on the stump is only sitting on the stump.
+     * Nothing in this valley happens out in the graphite.
+     */
+    const tooSoon = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      game.interact();
+      for (let i = 0; i < 60 * 15; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      }
+      const held = {
+        sitting: game.vigil.sitting,
+        elephant: +game.vigil.elephant.toFixed(2),
+        clock: +game.vigil.clock.toFixed(2),
+        seen: game.vigil.seen,
+        lit: game.vigil.lit,
+      };
+      game.cancel(); // back on your feet — `interact` sits, it does not stand
+      return held;
+    });
+
+    suite.ok(tooSoon.sitting, 'you may sit there as long as you like');
+    suite.equal(tooSoon.elephant, 0, 'and after fifteen seconds nothing has come');
+    suite.equal(tooSoon.clock, 0, 'the wait has not even started');
+    suite.equal(tooSoon.seen, false, 'nothing has been seen');
+    suite.equal(tooSoon.lit, false, 'because the colour is nowhere near that sky');
+
+    // Every pot in. Now the stump means something.
+    await game.evaluate((pencil) => pencil.game.collectAll());
+
+    /*
      * Sit, and watch it come. The ten seconds are the arrival, not a wait in
      * front of one — a second in should already be more elephant than it was.
      */
@@ -209,6 +243,64 @@ export async function run(url) {
     suite.equal(laterFrame.hash, firstFrame.hash, 'in graphite nothing twitches');
 
     /*
+     * And the cloud does not breathe where the colour has not reached it.
+     *
+     * The mirage rides up and down on `beastClock`, which only runs while it is
+     * lit — but "lit" used to be a point test at its origin, and the drawing is
+     * most of six hundred units across against a colour four hundred wide at
+     * its widest. So standing underneath switched the whole thing on, and the
+     * trunk and the ears went up and down out in the pencil.
+     *
+     * Walked under it deliberately, with the game running, sampling only the
+     * parts further from the walker than the colour goes.
+     */
+    const cloud = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      game.restart();
+      // As close under the mirage as the top edge of the map allows.
+      game.teleport(game.vigil.elephantX, 12);
+      for (let i = 0; i < 300; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      return { lit: game.vigil.lit, mask: Math.round(game.maskRadius) };
+    });
+
+    const patches = (pencil) => {
+      const { game } = pencil;
+      const ctx = document.querySelector('#game').getContext('2d');
+      const k = pencil.renderer.scale;
+      const out = {};
+      for (let wy = -320; wy <= -60; wy += 40) {
+        for (let wx = game.vigil.elephantX - 300; wx <= game.vigil.elephantX + 200; wx += 40) {
+          // Clear of the colour by a whole cell, so its breathing edge and the
+          // motes around the walker can never be what is being measured.
+          const away = Math.hypot(wx + 20 - game.walker.x, wy + 20 - game.walker.y - 14);
+          if (away < game.maskRadius + 60) continue;
+          const sx = Math.round(game.camera.toScreenX(wx) * k);
+          const sy = Math.round(game.camera.toScreenY(wy) * k);
+          if (sx < 0 || sy < 0) continue;
+          const d = ctx.getImageData(sx, sy, Math.round(40 * k), Math.round(40 * k)).data;
+          let h = 0;
+          for (let i = 0; i < d.length; i++) h = (h * 31 + d[i]) | 0;
+          out[`${wx},${wy}`] = h;
+        }
+      }
+      return out;
+    };
+
+    await game.page.waitForTimeout(400);
+    const cloudFirst = await game.evaluate(patches);
+    await game.page.waitForTimeout(700);
+    const cloudLater = await game.evaluate(patches);
+    const stirred = Object.keys(cloudFirst).filter((k) => cloudFirst[k] !== cloudLater[k]);
+
+    suite.equal(cloud.lit, false, 'standing under it does not light the whole cloud');
+    suite.ok(
+      Object.keys(cloudFirst).length > 20,
+      'there is uncoloured sky being watched',
+      `${Object.keys(cloudFirst).length} patches, colour reaches ${cloud.mask}`,
+    );
+    suite.equal(stirred.length, 0, 'and none of it stirs', stirred.join(' '));
+
+    /*
      * A phone cannot hold the stump and the enlarged mirage in one frame. Once
      * seated — never while walking — the camera should quietly pan to it.
      */
@@ -217,6 +309,9 @@ export async function run(url) {
       const { game } = pencil;
       const v = game.vigil;
       game.restart();
+      // The pan is on the same gate as the arrival: nothing to swing round to
+      // until the map is coloured.
+      game.collectAll();
       game.teleport(v.x, v.y + 34);
       game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       const from = { x: game.walker.x, y: game.walker.y };

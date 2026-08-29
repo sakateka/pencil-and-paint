@@ -51,6 +51,54 @@ const RESTING_CLOUD = 0.34;
  */
 const ELEPHANT_MIRAGE_SCALE = 4;
 
+/** How far the cloud rides up and down on its own breath. */
+const MIRAGE_BOB = 8 + 4.6;
+
+/**
+ * Lobes laid along the animal rather than heaped in a pile.
+ *
+ * A generic puff said "something is happening here". Tracing the body, the
+ * head, the trunk and the four legs says "an elephant is happening here" —
+ * which is the better hint, and is the kind of thing anybody has seen a cloud
+ * do. Deliberately loose: it should be arguable, not obvious.
+ *
+ * Up here at module scope rather than inside the drawing, because how far the
+ * cloud reaches is a question the game asks — see `MIRAGE_REACH`.
+ */
+const MIRAGE_LOBES = [
+  [-2, -29, 15],
+  [16, -27, 12],
+  [-18, -28, 12],
+  [24, -23, 10],
+  [-6, -20, 13],
+  [12, -19, 11],
+  // Head, ears and the trunk hanging off the front.
+  [-30, -35, 11],
+  [-26, -44, 8],
+  [-33, -22, 7],
+  [-32, -11, 6],
+  // Four legs.
+  [-20, -11, 6],
+  [-10, -10, 5],
+  [13, -11, 5],
+  [21, -10, 6],
+] as const;
+
+/**
+ * How far the mirage reaches from its own origin, at full size.
+ *
+ * Measured off the lobes rather than guessed at, so that moving a leg or
+ * changing the scale cannot quietly leave this behind. What it is for: the
+ * cloud may only breathe when the colour covers all of it, and "all of it" is
+ * this. A point test at the origin is not the same question — the drawing is
+ * most of six hundred units across, and the colour reaches four hundred at its
+ * widest, so the middle can be well inside the colour while the trunk is still
+ * out in the graphite.
+ */
+export const MIRAGE_REACH = Math.max(
+  ...MIRAGE_LOBES.map(([lx, ly, r]) => Math.hypot(lx, ly - MIRAGE_BOB) + r),
+) * ELEPHANT_MIRAGE_SCALE;
+
 const SKIN = '#f2c398';
 const HAIR = '#4a3527';
 const SHIRT = '#e8563f';
@@ -111,8 +159,15 @@ export class Vigil {
     return clamp(this.clock / VIGIL_SECONDS, 0, 1);
   }
 
-  /** Steps the wait on, and answers true on the frame it first shows itself. */
-  update(dt: number): boolean {
+  /**
+   * Steps the wait on, and answers true on the frame it first shows itself.
+   *
+   * `mayArrive` is the whole map being coloured. Until then the stump is only
+   * somewhere to sit: nothing in this valley happens where the colour has not
+   * reached, and the animal turns up four hundred and seventy units from the
+   * seat — out in the graphite, at every stage of the game but the last.
+   */
+  update(dt: number, mayArrive: boolean): boolean {
     /*
      * The beast's clock runs whenever the colour is on that patch of sky, not
      * only when the animal is there: the cloud it comes out of is always there
@@ -120,8 +175,11 @@ export class Vigil {
      */
     if (this.lit) this.beastClock += dt;
 
-    if (!this.sitting) {
+    if (!this.sitting || !mayArrive) {
       this.elephant = Math.max(0, this.elephant - dt / LEAVING);
+      // Time sat before the map is finished counts for nothing, so the wait
+      // begins at zero when it finally does — not part-way through.
+      if (!mayArrive) this.clock = 0;
       return false;
     }
 
@@ -367,32 +425,7 @@ function drawMirageCloud(
   clock: number,
   medium: Medium,
 ): void {
-  /*
-   * Lobes laid along the animal rather than heaped in a pile.
-   *
-   * A generic puff said "something is happening here". Tracing the body, the
-   * head, the trunk and the four legs says "an elephant is happening here" —
-   * which is the better hint, and is the kind of thing anybody has seen a cloud
-   * do. Deliberately loose: it should be arguable, not obvious.
-   */
-  const lobes = [
-    [-2, -29, 15],
-    [16, -27, 12],
-    [-18, -28, 12],
-    [24, -23, 10],
-    [-6, -20, 13],
-    [12, -19, 11],
-    // Head, ears and the trunk hanging off the front.
-    [-30, -35, 11],
-    [-26, -44, 8],
-    [-33, -22, 7],
-    [-32, -11, 6],
-    // Four legs.
-    [-20, -11, 6],
-    [-10, -10, 5],
-    [13, -11, 5],
-    [21, -10, 6],
-  ] as const;
+  const lobes = MIRAGE_LOBES;
 
   ctx.save();
   ctx.translate(v.elephantX, v.elephantY);
