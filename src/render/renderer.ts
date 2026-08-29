@@ -297,15 +297,24 @@ export class Renderer {
      * scratch surface and running this again, and it assumes — reasonably,
      * until now — that the camera is inside the map and so every pixel has a
      * tile under it. Above the top edge there are no tiles at all.
+     *
+     * Under a still hand. The sky and the hills below it are scenery — paper,
+     * ruled strokes, two green caps and the drawings standing on them — and
+     * scenery in this world does not move: everything else up here is baked
+     * once, and only the live actors boil. The ruled strokes were the one
+     * exception, jittering away behind a house that holds perfectly still,
+     * which read as the whole northern view crawling.
      */
-    drawSky(
-      ctx,
-      camera.viewX,
-      camera.viewY,
-      camera.viewWidth,
-      medium,
-      scene.elapsed,
-      scene.vigil.elephantX,
+    withBoil(false, () =>
+      drawSky(
+        ctx,
+        camera.viewX,
+        camera.viewY,
+        camera.viewWidth,
+        medium,
+        scene.elapsed,
+        scene.vigil.elephantX,
+      ),
     );
 
     for (const pot of scene.pots) {
