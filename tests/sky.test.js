@@ -25,22 +25,30 @@ export async function run(url) {
        * — so stepping the simulation moves the camera's centre and leaves the
        * visible region reporting whatever the last real frame computed.
        */
-      const at = (y) => {
-        game.teleport(1400, y);
+      const at = (x, y) => {
+        game.teleport(x, y);
         for (let i = 0; i < 180; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         pencil.renderOnce();
         return Math.round(game.camera.viewY);
       };
       return {
-        middle: at(1000),
-        approaching: at(360),
-        top: at(40),
-        bottom: at(game.world.height - 40),
+        middle: at(1400, 1000),
+        northA: at(1400, 700),
+        northB: at(1400, 500),
+        approaching: at(1400, 360),
+        // The new hill itself reaches into the extra sky without a camera lift.
+        top: at(200, -90),
+        bottom: at(1400, game.world.height - 40),
         height: game.world.height,
       };
     });
 
     suite.ok(view.middle >= 0, 'no sky from the middle of the valley', `viewY ${view.middle}`);
+    suite.ok(
+      Math.abs(view.northA - view.northB - 200) <= 2,
+      'the camera does not accelerate on the walk north',
+      `${view.northA} to ${view.northB}`,
+    );
     suite.ok(
       view.approaching < 0 && view.approaching > -300,
       'a band of it as you come up the field',
