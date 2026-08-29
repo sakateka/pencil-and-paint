@@ -412,36 +412,29 @@ async function boot(): Promise<void> {
         ...Object.fromEntries(Object.entries(renderer.stages).map(([k, v]) => [k, round(v)])),
       };
     },
-    report: (frames = 90) => {
+    report: async (frames = 90) => {
       /*
-       * Stepped with the walker standing still, so running a report does not
-       * march them across the valley. `direction` is the only thing `advance`
-       * asks the input for, which is why this stub is enough.
+       * Watched, not driven: the page's own loop is the only place a frame can
+       * be measured honestly, so the report simply waits for some to happen.
+       * Nothing here steps the world, so asking is free of side effects.
        */
-      const stationary = { direction: () => ({ x: 0, y: 0 }) } as unknown as Input;
-      const t0 = performance.now();
-      for (let i = 0; i < frames; i++) game.advance(1 / 60, stationary);
-      const simMs = (performance.now() - t0) / frames;
-      const t1 = performance.now();
-      for (let i = 0; i < frames; i++) {
-        game.advance(1 / 60, stationary);
-        renderer.render(game.scene);
-      }
-      const bothMs = (performance.now() - t1) / frames;
-      const r3 = (n: number) => Math.round(n * 1000) / 1000;
-
+      const watched: Record<string, number> = (await globalThis.pencil?.probe(frames)) ?? {};
       const p = perf.snapshot();
+      const drawMs = watched.drawMs ?? p.drawMs;
+      const simMs = watched.simMs ?? p.simMs;
+      const frameMs = watched.frameMs ?? p.frameMs;
+      const fps = watched.fps ?? p.fps;
       const snap = globalThis.pencil?.snapshot() ?? {};
       /*
        * Which third of the frame is at fault, stated rather than implied. The
        * rules are the ones written out over `otherMs` in systems/perf.ts.
        */
       const verdict =
-        p.fps > 50
+        fps > 50
           ? 'healthy — a large `other` here is idle time, not work'
-          : bothMs - simMs > p.frameMs * 0.4
+          : drawMs > frameMs * 0.4
             ? 'the renderer: drawing is most of a slow frame'
-            : simMs > p.frameMs * 0.4
+            : simMs > frameMs * 0.4
               ? 'the simulation: game.advance is most of a slow frame'
               : 'NOT this codebase — the main thread finishes early and something '
                 + 'outside it sets the pace (compositing, vsync, the tab)';
@@ -462,12 +455,7 @@ async function boot(): Promise<void> {
             visible: document.visibilityState === 'visible',
           },
           frame: snap,
-          probe: {
-            frames,
-            simMs: r3(simMs),
-            drawMs: r3(bothMs - simMs),
-            totalMs: r3(bothMs),
-          },
+          watched,
           bake: {
             summary: world.bakeSummary,
             longestSliceMs: world.longestSliceMs,
@@ -478,28 +466,35 @@ async function boot(): Promise<void> {
         1,
       );
     },
-    probe: (frames = 120) => {
-      /*
-       * Simulation and drawing timed separately, each as one batch. See the
-       * note on `probe` in debug.ts for why batches rather than averages.
-       */
-      const step = () => game.advance(1 / 60, input);
-      let t0 = performance.now();
-      for (let i = 0; i < frames; i++) step();
-      const simMs = (performance.now() - t0) / frames;
-      t0 = performance.now();
-      for (let i = 0; i < frames; i++) {
-        step();
-        renderer.render(game.scene);
-      }
-      const bothMs = (performance.now() - t0) / frames;
-      return {
-        frames,
-        simMs: Math.round(simMs * 1000) / 1000,
-        drawMs: Math.round((bothMs - simMs) * 1000) / 1000,
-        totalMs: Math.round(bothMs * 1000) / 1000,
-      };
-    },
+    probe: (frames = 120) =>
+      new Promise((resolve) => {
+        // Real frames through the page's own loop. See debug.ts for why.
+        const started = performance.now();
+        const from = { ...perf.snapshot() };
+        let seen = 0;
+        const tick = (): void => {
+          seen++;
+          if (seen < frames) {
+            requestAnimationFrame(tick);
+            return;
+          }
+          const wall = performance.now() - started;
+          const to = perf.snapshot();
+          const r3 = (n: number) => Math.round(n * 1000) / 1000;
+          resolve({
+            frames: seen,
+            seconds: r3(wall / 1000),
+            fps: r3((seen * 1000) / wall),
+            frameMs: r3(wall / seen),
+            simMs: r3(to.simMs),
+            drawMs: r3(to.drawMs),
+            otherMs: r3(Math.max(0, wall / seen - to.simMs - to.drawMs)),
+            slowFramesBefore: from.slowFrames,
+            slowFramesAfter: to.slowFrames,
+          });
+        };
+        requestAnimationFrame(tick);
+      }),
     hillSurface: () => SURFACE,
     northernSurfaceY,
     rngEndState: () => rng.seed,

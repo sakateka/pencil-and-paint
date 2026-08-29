@@ -45,18 +45,19 @@ export interface DebugHandle {
    */
   snapshot(): Record<string, string | number | boolean>;
   /**
-   * Time `frames` renders as one batch, and report the cost of one.
+   * Watch `frames` real frames go by, and report what they cost.
    *
-   * Not an average of individually timed frames. Firefox rounds
-   * `performance.now()` to whole milliseconds by default, so anything under a
-   * millisecond is measured as either nothing or everything, and a per-stage
-   * average becomes noise wearing a decimal point. Timing a hundred frames at
-   * once and dividing puts the measurement well clear of the clock's grain.
+   * Real ones, through the page's own animation loop, because calling
+   * `render` in a tight loop measures nothing useful: canvas work is recorded
+   * now and rasterised later, so a hundred back-to-back renders queue a hundred
+   * frames of commands and return almost instantly. An early version of this
+   * reported 0.1ms a frame on a page whose own average was 0.56ms.
    *
-   * The simulation is stepped between frames, so the trail, the boil and the
-   * animals move as they would in play.
+   * Timed across the batch rather than per frame — Firefox rounds
+   * `performance.now()` to whole milliseconds, and a sub-millisecond frame
+   * measured individually is noise wearing a decimal point.
    */
-  probe(frames?: number): Record<string, number>;
+  probe(frames?: number): Promise<Record<string, number>>;
   /**
    * Everything worth knowing, in one string, ready to paste.
    *
@@ -71,10 +72,11 @@ export interface DebugHandle {
    * It includes a `verdict` line naming which part of the frame is at fault,
    * because the readings alone have been misread more than once.
    *
-   * Costs about a second and a half of simulated time: the probe steps the
-   * world without moving the walker, so animals will have wandered a little.
+   * Takes about a second and a half of real time, because it watches that many
+   * frames go by rather than driving any itself. Nothing here touches the
+   * world, so asking has no effect on the game.
    */
-  report(frames?: number): string;
+  report(frames?: number): Promise<string>;
   /**
    * The hills, as the one polyline everything about them is read off.
    *
