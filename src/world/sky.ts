@@ -173,7 +173,7 @@ export function drawSky(
     ctx.fillStyle = haze;
     ctx.fillRect(left, -70, width, 70);
     ctx.restore();
-    drawNorthernLandscape(ctx, medium);
+    drawNorthernLandscape(ctx, medium, viewX, viewWidth);
     return;
   }
 
@@ -237,5 +237,5 @@ export function drawSky(
   ctx.lineTo(left + width, jitter(9301, 1));
   ctx.stroke();
   ctx.restore();
-  drawNorthernLandscape(ctx, medium);
+  drawNorthernLandscape(ctx, medium, viewX, viewWidth);
 }

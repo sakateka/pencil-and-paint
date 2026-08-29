@@ -1,5 +1,6 @@
-import { isolate } from '../core/canvas';
+import { createSurface, isolate, type Surface } from '../core/canvas';
 import { Rng } from '../core/rng';
+import { withBoil } from '../media/ink';
 import { PAPER, PENCIL, type Medium } from '../media/medium';
 import { GRAIN } from '../media/sprites';
 import { makePaintedHouse, makePine } from './homestead';
@@ -78,6 +79,48 @@ export const NORTHERN_LANDMARKS: readonly Scenery[] = [
   makePine(PINE.x, PINE.y, PINE.scale),
 ];
 
+/*
+ * The house and pine are detailed, but completely static. In a mixed frame
+ * they used to be rebuilt once in graphite and again in colour — most of the
+ * live-layer cost at the hills, especially in Firefox. Keep the hill itself as
+ * geometry, and cache only these two expensive drawings in one compact surface
+ * per medium. That buys the useful part of sprite caching without adding a
+ * canvas for every object or changing the world's baking architecture.
+ */
+const LANDMARK_PAD = 4;
+const LANDMARK_BOUNDS = NORTHERN_LANDMARKS.reduce(
+  (bounds, landmark) => {
+    const drawn = landmark.bounds;
+    if (!drawn) return bounds;
+    return {
+      x0: Math.min(bounds.x0, drawn.x0 - LANDMARK_PAD),
+      y0: Math.min(bounds.y0, drawn.y0 - LANDMARK_PAD),
+      x1: Math.max(bounds.x1, drawn.x1 + LANDMARK_PAD),
+      y1: Math.max(bounds.y1, drawn.y1 + LANDMARK_PAD),
+    };
+  },
+  { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity },
+);
+const landmarkCache = new Map<Medium, Surface>();
+
+function drawLandmarks(ctx: CanvasRenderingContext2D, medium: Medium): void {
+  let cached = landmarkCache.get(medium);
+  if (!cached) {
+    const surface = createSurface(
+      Math.ceil(LANDMARK_BOUNDS.x1 - LANDMARK_BOUNDS.x0),
+      Math.ceil(LANDMARK_BOUNDS.y1 - LANDMARK_BOUNDS.y0),
+    );
+    surface.ctx.translate(-LANDMARK_BOUNDS.x0, -LANDMARK_BOUNDS.y0);
+    // These are scenery, not live actors: their graphite should hold still.
+    withBoil(false, () => {
+      for (const landmark of NORTHERN_LANDMARKS) landmark.draw(surface.ctx, medium);
+    });
+    landmarkCache.set(medium, surface);
+    cached = surface;
+  }
+  ctx.drawImage(cached.canvas, LANDMARK_BOUNDS.x0, LANDMARK_BOUNDS.y0);
+}
+
 const grass = (() => {
   const random = new Rng(0x6a4d123b);
   const marks: { x: number; y: number; lean: number; size: number }[] = [];
@@ -105,7 +148,15 @@ function traceMeadow(ctx: CanvasRenderingContext2D): void {
 }
 
 /** Draw the hill caps and the two landmarks over the sky, in both media. */
-export function drawNorthernLandscape(ctx: CanvasRenderingContext2D, medium: Medium): void {
+export function drawNorthernLandscape(
+  ctx: CanvasRenderingContext2D,
+  medium: Medium,
+  viewX: number,
+  viewWidth: number,
+): void {
+  // The northern painting only occupies the west end of the map.
+  if (viewX > 1012 || viewX + viewWidth < 0) return;
+
   isolate(ctx, () => {
     traceMeadow(ctx);
     const fill = ctx.createLinearGradient(0, -130, 0, 70);
@@ -158,5 +209,5 @@ export function drawNorthernLandscape(ctx: CanvasRenderingContext2D, medium: Med
     ctx.stroke();
   });
 
-  for (const landmark of NORTHERN_LANDMARKS) landmark.draw(ctx, medium);
+  drawLandmarks(ctx, medium);
 }
