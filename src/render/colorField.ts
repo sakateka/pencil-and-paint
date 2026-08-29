@@ -45,6 +45,17 @@ function rimScale(angle: number, t: number): number {
   );
 }
 
+/**
+ * How coarsely the mask may be drawn, against the device pixel grid.
+ *
+ * The mask is pure alpha: a soft radial gradient and a handful of blurred
+ * blobs, with no edge in it sharper than the fade itself. Painting that at full
+ * device resolution is the single most expensive thing in the frame once the
+ * colour has grown, and every one of those pixels is thrown away into a smooth
+ * ramp. Half-resolution is a quarter of the work and the upscale is invisible.
+ */
+export const MASK_SCALE = 0.5;
+
 export class ColorField {
   readonly surface: Surface;
   private trail: TrailPoint[] = [];
@@ -66,8 +77,14 @@ export class ColorField {
    * cuts that surface to a fraction.
    */
   resize(width: number, height: number): void {
-    this.surface.canvas.width = Math.max(1, Math.round(width));
-    this.surface.canvas.height = Math.max(1, Math.round(height));
+    /*
+     * Rounded up, with a pixel to spare. The composite reads back a sub-rect of
+     * `ceil(dirty * scale * MASK_SCALE)`; a surface a pixel short of that leaves
+     * the last row transparent, and where the dirty rectangle is clamped to the
+     * edge of the window that is a stripe of pencil down the side of the colour.
+     */
+    this.surface.canvas.width = Math.max(1, Math.ceil(width * MASK_SCALE) + 2);
+    this.surface.canvas.height = Math.max(1, Math.ceil(height * MASK_SCALE) + 2);
   }
 
   clearTrail(): void {
@@ -145,11 +162,12 @@ export class ColorField {
   ): void {
     const { ctx } = this.surface;
     const d = this.dirty;
+    const s = scale * MASK_SCALE;
 
     // Painted at a local origin: the surface holds only the dirty rectangle.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, d.width * scale + 2, d.height * scale + 2);
-    ctx.setTransform(scale, 0, 0, scale, -d.x * scale, -d.y * scale);
+    ctx.clearRect(0, 0, d.width * s + 2, d.height * s + 2);
+    ctx.setTransform(s, 0, 0, s, -d.x * s, -d.y * s);
     ctx.save();
     ctx.beginPath();
     ctx.rect(d.x, d.y, d.width, d.height);

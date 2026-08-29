@@ -17,6 +17,7 @@ import { drawPot, type Pot } from '../entities/pots';
 import type { Medium } from '../media/medium';
 import type { World } from '../world/world';
 import type { Camera } from './camera';
+import { MASK_SCALE } from './colorField';
 import type { ColorField, DirtyRect } from './colorField';
 
 /**
@@ -446,7 +447,24 @@ export class Renderer {
     t.rect(0, 0, dirty.width * scale, dirty.height * scale);
     t.clip();
     t.globalCompositeOperation = 'destination-in';
-    t.drawImage(field.surface.canvas, 0, 0);
+    /*
+     * Nearest-neighbour on the way up. The mask is a smooth alpha ramp with no
+     * edge in it, so interpolating the upscale buys nothing visible and costs
+     * more than the half-resolution build saves — in software rasterisation a
+     * filtered 2x upscale of a full-screen region is its own full pass.
+     */
+    t.imageSmoothingEnabled = false;
+    t.drawImage(
+      field.surface.canvas,
+      0,
+      0,
+      Math.ceil(dirty.width * scale * MASK_SCALE),
+      Math.ceil(dirty.height * scale * MASK_SCALE),
+      0,
+      0,
+      Math.ceil(dirty.width * scale),
+      Math.ceil(dirty.height * scale),
+    );
     t.restore();
     t.globalCompositeOperation = 'source-over';
 
