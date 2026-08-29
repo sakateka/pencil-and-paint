@@ -26,10 +26,60 @@ import { buzzPurr, hapticStatus } from './systems/haptics';
 import { Sample } from './systems/sample';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
+import { PAINTINGS } from './assets/paintings/index';
 import { latestDrawing, Studio } from './studio';
 import { Ui } from './ui';
 import { World } from './world/world';
 import { northernSurfaceY, SURFACE } from './world/hills';
+
+/**
+ * Wait for a moment the browser is not busy.
+ *
+ * `requestIdleCallback` where it exists, a short timer where it does not —
+ * Safari has never shipped it. The timeout on the idle request matters: without
+ * one, a page that never goes idle never runs the callback at all.
+ */
+function whenIdle(timeout = 2000): Promise<void> {
+  return new Promise((resolve) => {
+    const idle = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void })
+      .requestIdleCallback;
+    if (idle) idle(() => resolve(), { timeout });
+    else setTimeout(resolve, 120);
+  });
+}
+
+/**
+ * Bring in the paintings once the last pot is found.
+ *
+ * The collection appears on the easel at the end, and its images were fetched
+ * when it opened — which is the one moment somebody is waiting to look at them.
+ *
+ * Everything about this is deliberately unhurried. It starts after the colour
+ * has finished flooding the page, because that sweep is the one animation in
+ * the game nobody should see stutter. It takes one image at a time, waiting for
+ * an idle moment before each. And it decodes off the main thread, which is the
+ * whole difference between preparing an image and dropping a frame.
+ */
+let paintingsFetched = false;
+async function fetchPaintings(): Promise<void> {
+  if (paintingsFetched) return;
+  paintingsFetched = true;
+  await new Promise((resolve) => setTimeout(resolve, FLOOD_SETTLE_MS));
+  for (const painting of PAINTINGS) {
+    for (const url of [painting.thumb, painting.full]) {
+      await whenIdle();
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = url;
+      // A painting that will not load is the easel's problem, later, and not
+      // worth breaking the ending over.
+      await image.decode().catch(() => undefined);
+    }
+  }
+}
+
+/** Long enough for the ending's colour sweep to finish before anything else starts. */
+const FLOOD_SETTLE_MS = 4000;
 
 /** Longest step the simulation will take, so a stall does not teleport anyone. */
 const MAX_STEP = 0.05;
@@ -244,7 +294,10 @@ async function boot(): Promise<void> {
       ui.setPotHint(found, total);
       chime(found - 1);
     },
-    onComplete: (seconds) => ui.announceCompletion(seconds),
+    onComplete: (seconds) => {
+      ui.announceCompletion(seconds);
+      void fetchPaintings();
+    },
     onPet: (first) => {
       // Here, where it is certainly a cat that was touched. Both are inside the
       // tap or keypress that caused it, so the browser allows the motor to run.
@@ -339,6 +392,28 @@ async function boot(): Promise<void> {
     // Building the world and baking the first sprites is a one-off cost and
     // must not be mistaken for a slow machine.
     perf.pardonWarmUp();
+    void fetchSounds();
+  }
+
+  /**
+   * Fetch the three recordings once the valley is up.
+   *
+   * Not at load — see the note in `systems/sample.ts` about keeping a hundred
+   * kilobytes off the critical path for sounds most sessions never hear. But
+   * fetching them the moment they are *wanted* means the first purr, the first
+   * birdsong and the first pond each stutter, and each of those is a moment
+   * something is happening.
+   *
+   * One at a time, and only when the browser has nothing better to do: three at
+   * once compete for the same connection at exactly the point the page is
+   * trying to become responsive, and the world bake is still finishing.
+   */
+  async function fetchSounds(): Promise<void> {
+    for (const sample of [purrSound, birdsong, pond]) {
+      await whenIdle();
+      if (!running) return;
+      await sample.preload();
+    }
   }
 
   /** Cleared on `pagehide`, after which nothing may touch a canvas. */

@@ -11,6 +11,10 @@
  * Neither is fetched at load. Most sessions never lie in the hammock and plenty
  * never find the cat, and a hundred kilobytes on the critical path for a sound
  * nobody hears is a poor trade.
+ *
+ * `preload` is the other half of that bargain: once the valley is up and the
+ * critical path is behind us, there is nothing left to protect, and a sound
+ * that arrives late is a sound that stutters the first time you want it.
  */
 export class Sample {
   private element: HTMLAudioElement | undefined;
@@ -65,6 +69,28 @@ export class Sample {
       this.outcome = 'unavailable';
       return undefined;
     }
+  }
+
+  /**
+   * Fetch it now, without playing it.
+   *
+   * Resolves when the browser says it could play through, when it gives up, or
+   * after a while — whichever comes first. The promise is not a guarantee of
+   * anything; it exists so that several of these can be queued one after
+   * another rather than three at once, all competing for the same connection
+   * at the moment the page is trying to be responsive.
+   */
+  preload(): Promise<void> {
+    const audio = this.ensure();
+    if (!audio || audio.readyState >= 3) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = (): void => resolve();
+      audio.addEventListener('canplaythrough', done, { once: true });
+      audio.addEventListener('error', done, { once: true });
+      // A slow connection should not hold the queue for ever; the next sound is
+      // better off starting than waiting on this one.
+      setTimeout(done, 8000);
+    });
   }
 
   /**
