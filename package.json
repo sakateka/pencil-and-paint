@@ -12,7 +12,8 @@
     "preview": "vite preview --port 4173",
     "typecheck": "tsc --noEmit",
     "test": "node tests/run.js",
-    "test:tmp": "PENCIL_DIST=tmp/dist node tests/run.js"
+    "test:tmp": "PENCIL_DIST=tmp/dist node tests/run.js",
+    "benchmark": "node tests/benchmark.js"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",
