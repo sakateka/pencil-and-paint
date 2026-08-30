@@ -163,7 +163,13 @@ export function installDebugPanel(game: Game, extras: {
 
   addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key !== '`' && e.key !== '~') return;
+    /*
+     * The physical key, not the character: on a Cyrillic layout the key that
+     * makes ` on a US keyboard makes ё, so comparing `e.key` to '`' never
+     * fires. `e.code` is the same key wherever the layout thinks it is — and
+     * covers `~` too, being the same key with Shift held.
+     */
+    if (e.code !== 'Backquote') return;
     e.preventDefault();
     panel.hidden = !panel.hidden;
     if (!panel.hidden) refresh();
