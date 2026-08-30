@@ -63,6 +63,7 @@ function buildFresh() {
 }
 
 async function main() {
+  const started = performance.now();
   const external = process.env.PENCIL_DIST;
   let root;
   let ours = false;
@@ -91,7 +92,15 @@ async function main() {
 
   if (ours) console.log(`build served from ${root} — kept; npm run test:clean removes it`);
 
-  console.log(allPassed ? '\nall suites passed\n' : '\nFAILURES\n');
+  /*
+   * The whole run, build included: this is what `npm test` cost, not just the
+   * suites. Rounded to the second past a minute, tenths below it — a fraction
+   * of a second is signal on a quick run and noise on a long one.
+   */
+  const seconds = (performance.now() - started) / 1000;
+  const elapsed =
+    seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+  console.log(allPassed ? `\nall suites passed in ${elapsed}\n` : `\nFAILURES after ${elapsed}\n`);
   process.exit(allPassed ? 0 : 1);
 }
 
