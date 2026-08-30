@@ -1,5 +1,5 @@
 import { Suite } from './assert.js';
-import { openGame } from './harness.js';
+import { openGame, waitForBoil } from './harness.js';
 
 /**
  * The lion, lying in the top-left corner of the map.
@@ -172,7 +172,7 @@ export async function run(url) {
     };
 
     const first = await game.evaluate(sample);
-    await game.page.waitForTimeout(450);
+    await waitForBoil(game.page);
     const second = await game.evaluate(sample);
 
     suite.ok(first.opaque > 2000, 'the sample is looking at the page', `${first.opaque} pixels`);

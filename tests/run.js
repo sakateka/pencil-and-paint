@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { serve } from './harness.js';
+import { closeBrowser, serve } from './harness.js';
 
 import { run as collision } from './collision.test.js';
 import { run as stillness } from './stillness.test.js';
@@ -87,6 +87,7 @@ async function main() {
       if (!result.report()) allPassed = false;
     }
   } finally {
+    await closeBrowser();
     await server.close();
   }
 

@@ -70,7 +70,11 @@ export async function run(url) {
 
     await early.click('#startBtn');
     await early.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 30000 });
-    await early.waitForTimeout(500);
+    await early.waitForFunction(
+      () => globalThis.pencil.game.running && document.getElementById('intro').classList.contains('hidden'),
+      null,
+      { timeout: 1000 },
+    );
 
     const after = await early.evaluate(() => ({
       running: globalThis.pencil.game.running,

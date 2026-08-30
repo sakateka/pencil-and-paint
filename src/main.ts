@@ -16,7 +16,7 @@ import { installDebugPanel } from './debugPanel';
 import { purrStrength } from './entities/animals';
 import { WALK_CYCLE } from './entities/player';
 import { Game } from './game';
-import { tickBoil } from './media/ink';
+import { boilTick, tickBoil } from './media/ink';
 import { yieldToBrowser } from './core/schedule';
 import { Renderer } from './render/renderer';
 import birdsongUrl from './assets/birdsong.mp3';
@@ -506,6 +506,8 @@ async function boot(): Promise<void> {
     walkCycle: WALK_CYCLE,
     renderer,
     perf,
+    cuckoo,
+    boilTick,
     input,
     renderOnce: () => renderer.render(game.scene),
     build: BUILD_ID,

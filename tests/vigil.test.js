@@ -1,5 +1,5 @@
 import { Suite } from './assert.js';
-import { openGame } from './harness.js';
+import { openGame, waitForBoil } from './harness.js';
 
 /**
  * The stump in the northern wood, and the elephant.
@@ -232,7 +232,7 @@ export async function run(url) {
     });
 
     const firstFrame = await game.evaluate(sample);
-    await game.page.waitForTimeout(450); // three boil ticks, wall clock
+    await waitForBoil(game.page);
     const laterFrame = await game.evaluate(sample);
 
     suite.ok(
@@ -260,6 +260,7 @@ export async function run(url) {
       // As close under the mirage as the top edge of the map allows.
       game.teleport(game.vigil.elephantX, 12);
       for (let i = 0; i < 300; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      pencil.renderOnce();
       return { lit: game.vigil.lit, mask: Math.round(game.maskRadius) };
     });
 
@@ -286,9 +287,8 @@ export async function run(url) {
       return out;
     };
 
-    await game.page.waitForTimeout(400);
     const cloudFirst = await game.evaluate(patches);
-    await game.page.waitForTimeout(700);
+    await waitForBoil(game.page);
     const cloudLater = await game.evaluate(patches);
     const stirred = Object.keys(cloudFirst).filter((k) => cloudFirst[k] !== cloudLater[k]);
 

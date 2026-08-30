@@ -179,13 +179,15 @@ export async function run(url) {
     );
 
     // Tapping one puts it up on the board, at its own shape.
-    const looked = await game.page.evaluate(async () => {
-      const before = document.getElementById('paper').toDataURL().length;
-      document.querySelectorAll('#collection img')[0].click();
-      await new Promise((r) => setTimeout(r, 800));
-      return { before, after: document.getElementById('paper').toDataURL().length };
-    });
-    suite.ok(looked.after > looked.before * 1.2, 'and tapping one puts it on the board');
+    const before = await game.page.$eval('#paper', (paper) => paper.toDataURL().length);
+    await game.page.evaluate(() => document.querySelectorAll('#collection img')[0].click());
+    await game.page.waitForFunction(
+      (oldSize) => document.getElementById('paper').toDataURL().length > oldSize * 1.2,
+      before,
+      { timeout: 5000 },
+    );
+    const after = await game.page.$eval('#paper', (paper) => paper.toDataURL().length);
+    suite.ok(after > before * 1.2, 'and tapping one puts it on the board');
 
     await game.page.click('#studioClose');
 

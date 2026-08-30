@@ -25,6 +25,20 @@ const MIME = {
   '.webp': 'image/webp',
 };
 
+let browserPromise;
+
+async function browser() {
+  browserPromise ??= chromium.launch();
+  return browserPromise;
+}
+
+/** Close the shared browser after the suite runner has finished. */
+export async function closeBrowser() {
+  const current = browserPromise;
+  browserPromise = undefined;
+  if (current) await (await current).close();
+}
+
 /** Serve a build directory the way a static host would. */
 export async function serve(root = ROOT) {
   const server = createServer(async (req, res) => {
@@ -53,8 +67,8 @@ export async function serve(root = ROOT) {
  * end of each suite — a test that passes while the page throws is not a pass.
  */
 export async function openGame(url, { viewport = { width: 1280, height: 800 }, start = true } = {}) {
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport });
+  const context = await (await browser()).newContext({ viewport });
+  const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
@@ -76,7 +90,6 @@ export async function openGame(url, { viewport = { width: 1280, height: 800 }, s
   if (start) {
     await page.click('#startBtn');
     await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 30000 });
-    await page.waitForTimeout(300);
   }
 
   return {
@@ -88,7 +101,7 @@ export async function openGame(url, { viewport = { width: 1280, height: 800 }, s
         ([body, a]) => new Function('pencil', 'arg', `return (${body})(pencil, arg)`)(globalThis.pencil, a),
         [fn.toString(), arg ?? null],
       ),
-    close: () => browser.close(),
+    close: () => context.close(),
   };
 }
 
@@ -98,3 +111,13 @@ export const stepSimulation = `(pencil, arg) => {
   for (let i = 0; i < steps; i++) pencil.game.advance(dt, { direction: () => arg.dir ?? { x: 0, y: 0 } });
   return null;
 }`;
+
+/** Wait for the page's own ink clock to cross a tick, without guessing a delay. */
+export async function waitForBoil(page) {
+  const previous = await page.evaluate(() => globalThis.pencil.boilTick());
+  await page.waitForFunction(
+    (before) => globalThis.pencil.boilTick() !== before,
+    previous,
+    { timeout: 2000 },
+  );
+}

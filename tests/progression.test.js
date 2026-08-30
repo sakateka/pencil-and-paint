@@ -8,6 +8,8 @@ import { openGame } from './harness.js';
 export async function run(url) {
   const suite = new Suite('progression');
   const game = await openGame(url);
+  await game.page.clock.install();
+  await game.page.addStyleTag({ content: '#done { transition: none !important; }' });
 
   try {
     const placement = await game.evaluate((pencil) => {
@@ -119,7 +121,8 @@ export async function run(url) {
       pencil.game.restart();
       pencil.game.collectAll();
     });
-    await game.page.waitForSelector('#done:not(.hidden)', { timeout: 15000 });
+    await game.page.clock.fastForward(3400);
+    await game.page.waitForSelector('#done:not(.hidden)', { timeout: 1000 });
     const shown = await game.page.$eval('#done', (el) => ({
       tucked: el.classList.contains('tucked'),
       right: Math.round(el.getBoundingClientRect().right),
@@ -127,14 +130,12 @@ export async function run(url) {
     }));
     suite.ok(!shown.tucked, 'the note arrives where it can be read');
 
+    await game.page.clock.fastForward(7000);
     await game.page.waitForFunction(
       () => document.getElementById('done').classList.contains('tucked'),
       null,
-      { timeout: 15000 },
+      { timeout: 1000 },
     );
-    // The class flips before the slide finishes; measuring straight away reads
-    // the position it is leaving, not the one it is going to.
-    await game.page.waitForTimeout(600);
     const away = await game.page.$eval('#done', (el) => {
       const box = el.getBoundingClientRect();
       return { onScreen: Math.round(innerWidth - box.left), width: Math.round(box.width) };
@@ -147,9 +148,8 @@ export async function run(url) {
     await game.page.waitForFunction(
       () => !document.getElementById('done').classList.contains('tucked'),
       null,
-      { timeout: 5000 },
+      { timeout: 1000 },
     );
-    await game.page.waitForTimeout(600);
     const back = await game.page.$eval('#done', (el) =>
       Math.round(innerWidth - el.getBoundingClientRect().left),
     );

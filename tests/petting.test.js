@@ -401,25 +401,32 @@ export async function run(url) {
      * stroke, and finishes wherever you have walked to by then; only she
      * herself settles, out of earshot.
      */
-    const carried = await game.evaluate(async (pencil) => {
+    await game.evaluate((pencil) => {
       const { game } = pencil;
       const cat = game.herd.animals.find((a) => a.kind === 'cat');
       game.teleport(cat.x + 24, cat.y + 14);
       game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       game.pet();
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      const playing = () =>
-        [...document.querySelectorAll('audio')].some(
-          (a) => a.src.includes('purr') && !a.paused,
-        );
-      const started = playing();
+    });
+    const started = await game.page.waitForFunction(
+      () => [...document.querySelectorAll('audio')].some((a) => a.src.includes('purr') && !a.paused),
+      null,
+      { timeout: 1000 },
+    ).then(() => true).catch(() => false);
+    const carried = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const cat = game.herd.animals.find((a) => a.kind === 'cat');
       game.teleport(cat.x + 400, cat.y);
       game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      return { started, stillPlaying: playing(), settled: cat.purr };
+      return {
+        stillPlaying: [...document.querySelectorAll('audio')].some(
+          (a) => a.src.includes('purr') && !a.paused,
+        ),
+        settled: cat.purr,
+      };
     });
 
-    suite.ok(carried.started, 'stroking her starts the phrase');
+    suite.ok(started, 'stroking her starts the phrase');
     suite.ok(carried.stillPlaying, 'and walking off does not cut it short');
     suite.equal(carried.settled, 0, 'though she herself settles once you are gone');
 

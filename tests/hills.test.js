@@ -1,5 +1,5 @@
 import { Suite } from './assert.js';
-import { openGame } from './harness.js';
+import { openGame, waitForBoil } from './harness.js';
 
 /** Two pieces of walkable meadow above the old, otherwise flat horizon. */
 export async function run(url) {
@@ -148,10 +148,8 @@ export async function run(url) {
       };
     });
 
-    // A short settle, so the first sample is not taken mid-frame.
-    await game.page.waitForTimeout(300);
     const first = await game.evaluate(sample);
-    await game.page.waitForTimeout(450);
+    await waitForBoil(game.page);
     const second = await game.evaluate(sample);
 
     suite.ok(

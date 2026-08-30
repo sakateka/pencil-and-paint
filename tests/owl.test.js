@@ -1,5 +1,5 @@
 import { Suite } from './assert.js';
-import { openGame } from './harness.js';
+import { openGame, waitForBoil } from './harness.js';
 
 /**
  * The owl, up a tree in the north.
@@ -82,8 +82,7 @@ export async function run(url) {
     };
 
     const first = await game.evaluate(sample);
-    // Three boil ticks' worth, wall clock.
-    await game.page.waitForTimeout(450);
+    await waitForBoil(game.page);
     const second = await game.evaluate(sample);
 
     suite.ok(!first.awake, 'still out in the graphite');

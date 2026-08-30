@@ -171,7 +171,11 @@ export async function run(url) {
     try {
       const before = await card.page.$eval('#startBtn', (e) => e.textContent);
       await card.page.selectOption('#lang', 'ru');
-      await card.page.waitForTimeout(200);
+      await card.page.waitForFunction(
+        (oldText) => document.getElementById('startBtn').textContent !== oldText,
+        before,
+        { timeout: 1000 },
+      );
       const picked = await card.page.evaluate(() => ({
         start: document.getElementById('startBtn').textContent,
         tagline: document.querySelector('[data-i18n="intro.tagline1"]').textContent,
@@ -191,7 +195,11 @@ export async function run(url) {
 
       // And back, so it is a picker rather than a one-way door.
       await card.page.selectOption('#lang', 'en');
-      await card.page.waitForTimeout(200);
+      await card.page.waitForFunction(
+        (oldText) => document.getElementById('startBtn').textContent === oldText,
+        before,
+        { timeout: 1000 },
+      );
       const back = await card.page.$eval('#startBtn', (e) => e.textContent);
       suite.equal(back, before, 'and changes back again');
       suite.equal(card.errors.length, 0, 'no errors on the title card', card.errors.join(' | '));

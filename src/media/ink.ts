@@ -26,6 +26,11 @@ export function tickBoil(elapsed: number): void {
   boil = liveBoil;
 }
 
+/** The live tick, for diagnostics and the render-stability test. */
+export function boilTick(): number {
+  return liveBoil;
+}
+
 /** Draw `fn` with a moving hand (`alive`) or a perfectly still one. */
 export function withBoil<T>(alive: boolean, fn: () => T): T {
   const previous = boil;

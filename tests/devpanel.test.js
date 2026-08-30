@@ -23,7 +23,9 @@ export async function run(url) {
     suite.equal(local.hidden, true, 'starts hidden');
 
     await game.page.keyboard.press('`');
-    await game.page.waitForTimeout(150);
+    await game.page.waitForFunction(() => !document.getElementById('devpanel').hidden, null, {
+      timeout: 1000,
+    });
     const opened = await game.page.evaluate(() => !document.getElementById('devpanel').hidden);
     suite.ok(opened, 'backquote opens it');
 
@@ -76,7 +78,6 @@ export async function run(url) {
     await page.click('#startBtn');
     await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 30000 });
     await page.keyboard.press('`');
-    await page.waitForTimeout(150);
 
     const remote = await page.evaluate(() => ({
       hostname: location.hostname,

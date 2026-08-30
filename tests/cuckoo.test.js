@@ -146,22 +146,17 @@ export async function run(url) {
       `${started.middleQuietRms.toFixed(4)} rms`,
     );
 
-    // Let the real media clock make the handoff. Chromium cannot seek in the
-    // tiny test server's responses because it deliberately has no Range
-    // support; waiting also exercises the exact path a player hears.
-    await game.page.waitForFunction(
-      () => {
-        const intro = [...document.querySelectorAll('audio')].find(
-          (a) => a.dataset.sound === 'cuckoo-intro',
-        );
-        const forest = [...document.querySelectorAll('audio')].find(
-          (a) => a.dataset.sound === 'cuckoo-forest',
-        );
-        return intro?.paused && intro.volume === 0 && forest && forest.volume > 0.032;
-      },
-      null,
-      { timeout: 25000 },
-    );
+    // The media clock is real in play, but waiting eighteen seconds to test a
+    // five-second crossfade makes the suite pay for wall time. Jump the intro
+    // to its handoff point and drive the same update method through the debug
+    // handle; the browser still loaded and started both recordings above.
+    await game.evaluate((pencil) => {
+      const intro = [...document.querySelectorAll('audio')].find(
+        (a) => a.dataset.sound === 'cuckoo-intro',
+      );
+      Object.defineProperty(intro, 'currentTime', { configurable: true, value: 18 });
+      for (let i = 0; i < 180; i++) pencil.cuckoo.update(1 / 60);
+    });
     const handedOff = await game.evaluate(() => {
       const intro = [...document.querySelectorAll('audio')].find(
         (a) => a.dataset.sound === 'cuckoo-intro',
@@ -185,8 +180,10 @@ export async function run(url) {
       `${handedOff.forestVolume.toFixed(3)}`,
     );
 
-    await game.evaluate((pencil) => pencil.game.cancel());
-    await game.page.waitForTimeout(3000);
+    await game.evaluate((pencil) => {
+      pencil.game.cancel();
+      for (let i = 0; i < 180; i++) pencil.cuckoo.update(1 / 60);
+    });
     const stopped = await game.evaluate(() => {
       const forest = [...document.querySelectorAll('audio')].find(
         (a) => a.dataset.sound === 'cuckoo-forest',

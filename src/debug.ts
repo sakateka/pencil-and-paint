@@ -3,6 +3,7 @@ import type { WALK_CYCLE } from './entities/player';
 import type { Renderer } from './render/renderer';
 import type { Input } from './systems/input';
 import type { Performance } from './systems/perf';
+import type { CuckooAmbience } from './systems/cuckoo';
 
 /**
  * A handle for the test suite to drive the game headlessly.
@@ -18,6 +19,10 @@ export interface DebugHandle {
   walkCycle: typeof WALK_CYCLE;
   renderer: Renderer;
   perf: Performance;
+  /** Audio clock, exposed so tests can advance fades without wall time. */
+  cuckoo: CuckooAmbience;
+  /** Current live ink tick, exposed so render tests can await a real change. */
+  boilTick(): number;
   /**
    * The real input, not a stub.
    *
