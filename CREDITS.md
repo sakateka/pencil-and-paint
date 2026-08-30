@@ -2,7 +2,7 @@
 
 Everything in *Pencil & Paint* is drawn at runtime; the only pictures in it are
 the ones on the easel. Almost everything it makes a noise with is a handful of
-oscillators, too — the pot chimes still are. Three sounds are recordings.
+oscillators, too — the pot chimes still are. Four sounds are recordings.
 
 ## Paintings
 
@@ -15,9 +15,37 @@ requires separate written permission from their copyright holders. See
 
 ## Sound
 
-Three recordings, all from Wikimedia Commons. Two are public domain. The third
-is CC BY, which is free to use and charges nothing — its one condition is the
-credit below, which was going to be here regardless.
+Four recordings. Three come from Wikimedia Commons; the forest heard from the
+haystack comes from Freesound. Three are public domain. The pond is CC BY, which
+is free to use and charges nothing — its one condition is the credit below,
+which was going to be here regardless.
+
+### `src/assets/cuckoo-intro.mp3`
+
+The distant forest while you are lying on the haystack, once every colour has
+been found.
+
+- Main source: *Dawn chorus Ashdown Forrest Distact Cuckoo.wav*, by **Simon
+  Spiers**, via
+  [Freesound](https://freesound.org/people/Simon%20Spiers/sounds/344880/)
+- Cuckoos and continuing ambience: *AMBForst_Late Spring.Forest
+  Edge.Morning.Byrds.The Cuckoo.A Light Wind In The Trees 2_EM*, by
+  **newlocknew**, via
+  [Freesound](https://freesound.org/people/newlocknew/sounds/866207/)
+- Licences: main forest **[CC0](https://creativecommons.org/publicdomain/zero/1.0/)**;
+  cuckoos and continuing ambience **[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)**
+
+Changes made: the first eighteen seconds of the 48 kHz stereo main forest are
+kept locally. The complete, unfiltered stereo excerpt from 1:56 to 2:14 of
+newlocknew's recording is laid over it at 70%, preserving its full collection
+of birds, wind, and two cuckoos. The stereo mix is encoded as a high-quality MP3
+at about 190 kbit/s.
+
+When the walker lies down, the full 3:13 newlocknew preview starts streaming
+directly from Freesound at zero volume and seeks to 1:56. During seconds 13–18,
+the local mix fades away while the aligned stream rises to 70% of the pond's
+0.05 level. It then continues from 2:14 and loops when the full recording ends.
+The local intro is 418 KiB; the 4.2 MiB recording is not shipped with the game.
 
 ### `src/assets/purr.mp3`
 

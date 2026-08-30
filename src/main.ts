@@ -20,10 +20,12 @@ import { tickBoil } from './media/ink';
 import { yieldToBrowser } from './core/schedule';
 import { Renderer } from './render/renderer';
 import birdsongUrl from './assets/birdsong.mp3';
+import cuckooIntroUrl from './assets/cuckoo-intro.mp3';
 import pondUrl from './assets/pond.mp3';
 import purrUrl from './assets/purr.mp3';
 import { buzzPurr, hapticStatus } from './systems/haptics';
 import { Sample } from './systems/sample';
+import { CuckooAmbience } from './systems/cuckoo';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
 import { PAINTINGS } from './assets/paintings/index';
@@ -281,6 +283,7 @@ async function boot(): Promise<void> {
     onAction: () => interact(),
     onLeave: () => cancel(),
     onRestart: () => {
+      cuckoo.stop();
       game.restart();
       ui.reset();
       ui.setProgress(0, game.pots.length, game.litRadius);
@@ -319,8 +322,14 @@ async function boot(): Promise<void> {
       if (birds) birdsong.play();
     },
     onRestEnd: () => birdsong.stop(),
-    onSitStart: (note) => ui.note(note),
-    onSitEnd: (note) => ui.note(note),
+    onSitStart: (note) => {
+      ui.note(note);
+      if (note === 'note.lainHay' && game.won) cuckoo.play();
+    },
+    onSitEnd: (note) => {
+      ui.note(note);
+      if (note === 'note.leftHay') cuckoo.stop();
+    },
     /*
      * Two minutes of sitting still. No chime and no fanfare — a noise would
      * make it an achievement, and it is meant to be something you notice.
@@ -378,6 +387,7 @@ async function boot(): Promise<void> {
   const input = new Input(canvas, {
     onEngage: () => start(),
     onRestart: () => {
+      cuckoo.stop();
       game.restart();
       ui.reset();
       ui.setProgress(0, game.pots.length, game.litRadius);
@@ -397,7 +407,7 @@ async function boot(): Promise<void> {
   }
 
   /**
-   * Fetch the three recordings once the valley is up.
+   * Fetch the small recordings once the valley is up.
    *
    * Not at load — see the note in `systems/sample.ts` about keeping a hundred
    * kilobytes off the critical path for sounds most sessions never hear. But
@@ -405,12 +415,12 @@ async function boot(): Promise<void> {
    * birdsong and the first pond each stutter, and each of those is a moment
    * something is happening.
    *
-   * One at a time, and only when the browser has nothing better to do: three at
+   * One at a time, and only when the browser has nothing better to do: four at
    * once compete for the same connection at exactly the point the page is
    * trying to become responsive, and the world bake is still finishing.
    */
   async function fetchSounds(): Promise<void> {
-    for (const sample of [purrSound, birdsong, pond]) {
+    for (const sample of [purrSound, birdsong, pond, cuckoo]) {
       await whenIdle();
       if (!running) return;
       await sample.preload();
@@ -622,6 +632,7 @@ async function boot(): Promise<void> {
     purrSound.update(dt);
     birdsong.update(dt);
     pond.update(dt);
+    cuckoo.update(dt);
     perf.recordSim(performance.now() - simStart);
 
     const drawStart = performance.now();
@@ -637,6 +648,7 @@ async function boot(): Promise<void> {
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
         hapticStatus(),
         `purr ${purrSound.status()} · birds ${birdsong.status()} · pond ${pond.status()}`,
+        `cuckoo ${cuckoo.status()}`,
         ...loadReport,
       ]);
     }
@@ -734,6 +746,21 @@ const birdsong = new Sample(birdsongUrl, 0.21, 1.4);
  * long as somebody sits with a rod, and ambience you notice is too loud.
  */
 const pond = new Sample(pondUrl, 0.05, 2.6);
+
+/**
+ * The forest heard from the haystack once every colour has been found.
+ *
+ * Only its first eighteen seconds live in the game. The matching three-minute
+ * recording is streamed from Freesound after somebody lies down, then takes
+ * over during a five-second crossfade and loops when it eventually runs out.
+ */
+const cuckoo = new CuckooAmbience(
+  cuckooIntroUrl,
+  'https://cdn.freesound.org/previews/866/866207_5828667-hq.mp3',
+  0.05,
+  2.6,
+  { startAt: 116, level: 0.7 },
+);
 
 /**
  * How many purrs have been played.
