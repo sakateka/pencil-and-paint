@@ -664,7 +664,9 @@ async function boot(): Promise<void> {
   let last = performance.now();
   function frame(now: number): void {
     if (!running) return;
-    const dt = Math.min(MAX_STEP, (now - last) / 1000);
+    // Test clocks (and a resumed tab) can move performance.now() backwards;
+    // never let that rewind the simulation.
+    const dt = Math.min(MAX_STEP, Math.max(0, (now - last) / 1000));
     last = now;
 
     const simStart = performance.now();
