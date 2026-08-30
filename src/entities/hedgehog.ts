@@ -1,4 +1,5 @@
 import { TAU } from '../core/math';
+import { rr } from '../core/rng';
 import { ink, jitter } from '../media/ink';
 import { type Medium } from '../media/medium';
 
@@ -16,8 +17,17 @@ import { type Medium } from '../media/medium';
  * the stump has the elephant; this is what the hay is for.
  */
 
-/** How long it takes to work up the nerve, once you are lying still. */
+/** How long you must lie still before it dares to leave the bush. */
+const WAIT_ON_HAY = 5;
+
+/** How long it takes to cover the whole little path. */
 const EMERGING = 3.4;
+
+/** It keeps this much distance from the bush once it has ventured out. */
+const PATROL_NEAR = 0.46;
+
+/** Like the livestock, it spends longer standing around than walking. */
+const PATROL_PAUSE = [2.5, 5] as const;
 
 /**
  * And how long it takes to wander back.
@@ -43,14 +53,19 @@ const UNDER_BUSH = 0.22;
 /** How far it trundles out of the bush, in world units. */
 const VENTURE = 34;
 
-const SPINES = '#6b5643';
-const SPINE_TIP = '#4a3a2c';
-const FUR = '#c9a97f';
-const SNOUT = '#8a6f52';
+const SPINES = '#7b6047';
+const SPINE_TIP = '#a48160';
+const SNOUT = '#b8926b';
 const NOSE = '#2f2723';
 const EYE = '#2f2723';
 
+/** The two approved drawings, chosen afresh for each new world. */
+export type HedgehogLook = 'field' | 'hybrid';
+
 export class Hedgehog {
+  /** Which of the two approved drawing treatments this world received. */
+  look: HedgehogLook = 'field';
+
   /** How far out of the bush it is: 0 hidden, 1 all the way. */
   out = 0;
 
@@ -63,17 +78,23 @@ export class Hedgehog {
   /** Whether it has ever shown itself this session. */
   seen = false;
 
-  /**
-   * Which way it is pointed: -1 nose towards the hay, +1 back at the bush.
-   *
-   * Interpolated rather than switched, so it turns round on the spot instead of
-   * flipping. Passing through zero is the turn, and a hedgehog seen end-on is
-   * very nearly nothing, which is exactly right.
-   */
+  /** Which way it is pointed: -1 nose towards the hay, +1 back at the bush. */
   facing = -1;
+
+  /** Whether its feet are moving this frame. */
+  moving = false;
 
   /** Seconds since the walker got up, for the pause before it goes. */
   private idle = 0;
+
+  /** Uninterrupted seconds spent lying on the hay. */
+  private lyingFor = 0;
+
+  /** +1 away from the bush, -1 back towards it. */
+  private patrolDirection: -1 | 1 = 1;
+
+  /** Seconds left to stand and sniff at the end of its little walk. */
+  private patrolPause = 0;
 
   constructor(
     /** The bush it lives under. */
@@ -82,16 +103,23 @@ export class Hedgehog {
   ) {}
 
   reset(): void {
+    this.look = rr(0, 1) < 0.5 ? 'field' : 'hybrid';
     this.out = 0;
     this.clock = 0;
     this.seen = false;
     this.facing = -1;
+    this.moving = false;
     this.idle = 0;
+    this.lyingFor = 0;
+    this.patrolDirection = 1;
+    this.patrolPause = 0;
   }
 
   /** Where it actually is, having come this far out. */
   get atX(): number {
-    return this.x - VENTURE * 0.62 * ease(this.out);
+    // Far enough left that its face does not disappear into the tall pink
+    // flower beside the path when it turns at the end.
+    return this.x - VENTURE * 0.9 * ease(this.out);
   }
 
   get atY(): number {
@@ -112,21 +140,52 @@ export class Hedgehog {
     this.clock += dt;
 
     const before = this.out;
-    let going = false;
+    this.moving = false;
     if (lying) {
       this.idle = 0;
-      this.out = Math.min(1, this.out + dt / EMERGING);
+      this.lyingFor += dt;
+
+      // Five full seconds of stillness first. After that it ambles along the
+      // same short track, like the livestock wandering around their pasture.
+      if (this.lyingFor >= WAIT_ON_HAY) {
+        if (this.patrolPause > 0) {
+          this.patrolPause = Math.max(0, this.patrolPause - dt);
+        } else {
+          this.moving = true;
+          this.out += (this.patrolDirection * dt) / EMERGING;
+          if (this.out >= 1) {
+            this.out = 1;
+            this.patrolDirection = -1;
+            this.patrolPause = rr(PATROL_PAUSE[0], PATROL_PAUSE[1]);
+            this.moving = false;
+          } else if (this.patrolDirection === -1 && this.out <= PATROL_NEAR) {
+            this.out = PATROL_NEAR;
+            this.patrolDirection = 1;
+            this.patrolPause = rr(PATROL_PAUSE[0], PATROL_PAUSE[1]);
+            this.moving = false;
+          }
+        }
+        // Livestock flip as soon as their horizontal direction changes. The
+        // hedgehog should too; easing this value made it squash into a punkish
+        // end-on sliver every time it turned.
+        this.facing = this.patrolDirection === 1 ? -1 : 1;
+      }
     } else {
+      this.lyingFor = 0;
+      this.patrolPause = 0;
       this.idle += dt;
-      going = this.idle > LINGER && this.out > 0;
-      if (going) this.out = Math.max(0, this.out - dt / RETREAT);
+      if (this.idle > LINGER && this.out > 0) {
+        this.moving = true;
+        this.out = Math.max(0, this.out - dt / RETREAT);
+        this.facing = 1;
+        if (this.out === 0) {
+          this.patrolDirection = 1;
+          this.facing = -1;
+        }
+      }
     }
 
-    // Facing the way it is travelling, and turning before it sets off back.
-    const wanted = going ? 1 : -1;
-    this.facing += (wanted - this.facing) * Math.min(1, dt * 3.2);
-
-    const arrived = before < 1 && this.out >= 1;
+    const arrived = !this.seen && before < 1 && this.out >= 1;
     if (arrived) this.seen = true;
     return arrived;
   }
@@ -148,7 +207,7 @@ export function drawHedgehog(ctx: CanvasRenderingContext2D, h: Hedgehog, medium:
    * bustles. The waddle is keyed to how far out it is rather than to the clock,
    * so it settles the moment it arrives instead of trundling on the spot.
    */
-  const moving = h.out > 0.02 && h.out < 0.995;
+  const moving = h.moving;
   /*
    * Fading up out of the shadow under the bush rather than switching on.
    *
@@ -179,127 +238,250 @@ export function drawHedgehog(ctx: CanvasRenderingContext2D, h: Hedgehog, medium:
   // walks left, so left uncorrected it trundled out backwards.
   ctx.scale(h.facing * 1.35, 1.35);
 
-  /** The body: a dome, flat underneath, higher at the rump than the nose. */
+  if (h.look === 'hybrid') {
+    drawHybridHedgehog(ctx, medium, moving, t, sniff);
+    ctx.restore();
+    return;
+  }
+
+  /** A tucked underside and small points across the back: low, but not a melon. */
   const dome = (): void => {
     ctx.beginPath();
-    ctx.moveTo(-11, 0);
-    ctx.quadraticCurveTo(-12.4, -8.6, -4.6, -10.2);
-    ctx.quadraticCurveTo(2.6, -11.4, 7.2, -7.4);
-    ctx.quadraticCurveTo(9.6, -5.4, 10.4, 0);
+    ctx.moveTo(-11.8, -0.4);
+    ctx.quadraticCurveTo(-13.1, -5.9, -9.9, -9);
+    ctx.lineTo(-10.5, -11.1);
+    ctx.lineTo(-7.8, -10.3);
+    ctx.lineTo(-6.7, -12.1);
+    ctx.lineTo(-3.9, -11.2);
+    ctx.lineTo(-2.1, -12.8);
+    ctx.lineTo(0.3, -11.5);
+    ctx.lineTo(2.4, -12.3);
+    ctx.lineTo(4.3, -10.5);
+    ctx.quadraticCurveTo(9.1, -8.2, 10.4, -1.8);
+    ctx.quadraticCurveTo(0.2, -0.3, -11.8, -0.4);
     ctx.closePath();
   };
 
-  /** The face end: a blunt cone off the front of the dome, tipped with a nose. */
+  /** A small rounded face, tucked into the quill coat rather than stuck onto it. */
   const snout = (): void => {
     ctx.beginPath();
-    ctx.moveTo(7.4, -7.6);
-    ctx.quadraticCurveTo(13.4, -6.6, 15.2, -2.6 + sniff * 0.3);
-    ctx.quadraticCurveTo(13.6, 0, 9.4, 0);
+    ctx.moveTo(4.7, -7.8);
+    ctx.quadraticCurveTo(8.2, -8.7, 11.8, -3.2 + sniff * 0.22);
+    ctx.quadraticCurveTo(10.8, -1.35, 7.5, -1.45);
+    ctx.quadraticCurveTo(5.2, -3.5, 4.7, -7.8);
     ctx.closePath();
   };
 
-  /*
-   * Spines, as separate strokes off the back rather than a serrated outline.
-   *
-   * A zigzag edge reads as a saw or a cartoon sun. Strokes leaning back off a
-   * smooth dome read as prickles, and they are the whole silhouette of the
-   * animal, so they get drawn in both media.
-   */
+  /** The quill coat comes forward over the crown, as it does on the reference. */
+  const crown = (): void => {
+    ctx.beginPath();
+    ctx.moveTo(2.2, -11.2);
+    ctx.quadraticCurveTo(6.3, -11.7, 8.8, -8.5);
+    ctx.quadraticCurveTo(7.3, -7.4, 5.4, -6.8);
+    ctx.quadraticCurveTo(3.8, -9.4, 2.2, -11.2);
+    ctx.closePath();
+  };
+
+  /** Short quill marks contained by the round silhouette: prickly, not a mohawk. */
   const spines = (): void => {
-    for (let i = 0; i < 14; i++) {
-      const p = i / 13;
-      /*
-       * Around the *top* of the dome, from the rump forward to the shoulder.
-       *
-       * Canvas y runs downwards, so the back is where sine is subtracted rather
-       * than added — got this the wrong way round first time and the animal
-       * came out wearing a comb under its belly.
-       */
-      const a = Math.PI * (0.97 - p * 0.77);
-      const bx = -0.6 + Math.cos(a) * 10.4;
-      const by = -2.4 - Math.sin(a) * 8;
-      // Out along the surface and swept back towards the rump, longest over the
-      // shoulders where the animal is highest.
-      const lean = 3.2 + Math.sin(p * Math.PI) * 1.9;
+    const quills: readonly (readonly [number, number, number])[] = [
+      [-9.6, -5.1, -1], [-7.5, -9, -0.7], [-4.5, -10.8, -0.4], [-1.2, -11.1, -0.1],
+      [1.8, -10.1, 0.2], [-10.1, -2.3, -0.9], [-7.2, -5.9, -0.6], [-4.1, -7.7, -0.3],
+      [-0.9, -8.2, 0], [1.8, -7, 0.25], [-6.8, -2.8, -0.55], [-3.6, -4.6, -0.25],
+      [-0.2, -5, 0.05], [2.2, -3.7, 0.3],
+    ];
+    for (const [i, [x, y, lean]] of quills.entries()) {
       ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.lineTo(
-        bx + Math.cos(a) * lean - lean * 0.55 + jitter(710 + i, 0.4),
-        by - Math.sin(a) * lean,
-      );
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 2.7 + jitter(710 + i, 0.25), y + lean * 0.75);
       ctx.stroke();
     }
   };
 
-  /** Four feet, barely showing under the skirt of the body. */
-  const feet = (): void => {
-    for (const [i, fx] of [-6.4, -2.2, 3.4, 7].entries()) {
-      const step = moving ? Math.sin(t * 11 + i * 1.6) * 0.9 : 0;
+  /** Only the tips of the paws peek out, and only while it is taking a step. */
+  const walkingFeet = (): void => {
+    if (!moving) return;
+    for (const [i, fx] of [-6.8, -2.4, 3.2, 6.8].entries()) {
+      const step = Math.sin(t * 11 + i * 1.6) * 0.55;
       ctx.beginPath();
-      ctx.moveTo(fx, -0.6);
-      ctx.lineTo(fx + step, 2.1);
+      ctx.moveTo(fx, -0.1);
+      ctx.lineTo(fx + step, 1.35);
       ctx.stroke();
     }
   };
 
   if (medium === 'color') {
     ctx.strokeStyle = SNOUT;
-    ctx.lineWidth = 1.6;
-    feet();
+    ctx.lineWidth = 1.35;
+    walkingFeet();
+
+    ctx.fillStyle = SPINES;
+    dome();
+    ctx.fill();
+
+    ctx.strokeStyle = SPINE_TIP;
+    ctx.lineWidth = 1.25;
+    spines();
 
     ctx.fillStyle = SNOUT;
     snout();
     ctx.fill();
 
     ctx.fillStyle = SPINES;
-    dome();
+    crown();
     ctx.fill();
-
-    // A paler underside, so the dome is not one flat brown lump.
-    ctx.save();
-    dome();
-    ctx.clip();
-    ctx.fillStyle = FUR;
-    ctx.beginPath();
-    ctx.ellipse(-1, -0.6, 10.6, 3.4, 0, 0, TAU);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.strokeStyle = SPINE_TIP;
-    ctx.lineWidth = 1.5;
-    spines();
 
     // The nose, and one small eye. Both are most of the face.
     ctx.fillStyle = NOSE;
     ctx.beginPath();
-    ctx.arc(15.1, -2.6 + sniff * 0.3, 1.5, 0, TAU);
+    ctx.arc(11.8, -3.2 + sniff * 0.22, 1.15, 0, TAU);
     ctx.fill();
     ctx.fillStyle = EYE;
     ctx.beginPath();
-    ctx.arc(8.4, -6.2, 1.15, 0, TAU);
+    ctx.arc(8.2, -4.85, 1.2, 0, TAU);
     ctx.fill();
     // The catchlight is what turns a dot into an eye.
     ctx.fillStyle = 'rgba(255,255,255,.85)';
     ctx.beginPath();
-    ctx.arc(8.8, -6.6, 0.42, 0, TAU);
+    ctx.arc(8.6, -5.25, 0.55, 0, TAU);
     ctx.fill();
   } else {
     ink(ctx, 0.34, 1.1);
-    snout();
-    ctx.stroke();
+    walkingFeet();
     dome();
     ctx.stroke();
     ink(ctx, 0.3, 1);
     spines();
-    feet();
+    snout();
+    ctx.stroke();
+    crown();
+    ctx.stroke();
     ink(ctx, 0.42, 1.4);
     ctx.beginPath();
-    ctx.arc(15.1, -2.6, 1.2, 0, TAU);
+    ctx.arc(11.8, -3.2, 0.95, 0, TAU);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(8.4, -6.2, 0.9, 0, TAU);
+    ctx.arc(8.2, -4.85, 0.9, 0, TAU);
     ctx.stroke();
   }
 
   ctx.restore();
+}
+
+/** Cartoon coat with the smaller, darker face and forehead of `tmp/ezik.png`. */
+function drawHybridHedgehog(
+  ctx: CanvasRenderingContext2D,
+  medium: Medium,
+  moving: boolean,
+  t: number,
+  sniff: number,
+): void {
+  const coat = (): void => {
+    const points: readonly (readonly [number, number])[] = [
+      [-12, -0.4], [-12.8, -5.2], [-10.8, -6.7], [-12, -8.5], [-9.3, -8.3],
+      [-9.5, -11.1], [-7.1, -9.8], [-6.1, -12.2], [-3.8, -10.6], [-2, -12.7],
+      [0, -10.9], [2.4, -12], [3.5, -9.8], [6.2, -10.1], [5.5, -7.8],
+      [8.2, -7.1], [6.7, -5.5], [9.2, -4], [7.2, -2.8], [8.2, -1.1],
+    ];
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.quadraticCurveTo(-0.5, -0.2, -12, -0.4);
+    ctx.closePath();
+  };
+  const face = (): void => {
+    ctx.beginPath();
+    ctx.moveTo(4.4, -7.6);
+    ctx.quadraticCurveTo(8.3, -8.1, 12.1, -3.1 + sniff * 0.2);
+    ctx.quadraticCurveTo(10.7, -1.25, 7.1, -1.35);
+    ctx.quadraticCurveTo(5.1, -3.4, 4.4, -7.6);
+    ctx.closePath();
+  };
+  const crown = (): void => {
+    ctx.beginPath();
+    ctx.moveTo(1.8, -10.8);
+    ctx.lineTo(4, -10.2);
+    ctx.lineTo(4.8, -9.2);
+    ctx.lineTo(6.1, -9.5);
+    ctx.lineTo(6.4, -8.2);
+    ctx.lineTo(8, -8.1);
+    ctx.lineTo(7.1, -6.8);
+    ctx.lineTo(5.2, -6.4);
+    ctx.quadraticCurveTo(3.8, -8.8, 1.8, -10.8);
+    ctx.closePath();
+  };
+  const marks = (): void => {
+    const lines: readonly (readonly [number, number, number, number])[] = [
+      [-8.5, -7.5, -6.2, -8.4], [-5.1, -9.2, -2.8, -10], [-1.4, -8.4, 1, -8.8],
+      [2.1, -7, 4.4, -6.5], [-8.6, -4.2, -6.2, -4.8], [-4.8, -5.7, -2.2, -5.9],
+      [-1.2, -4.7, 1.2, -4.3], [2.5, -3.5, 4.5, -2.8], [-5.6, -2.5, -3.2, -2.8],
+    ];
+    for (const [x0, y0, x1, y1] of lines) {
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo((x0 + x1) / 2, (y0 + y1) / 2 - 0.5, x1, y1);
+      ctx.stroke();
+    }
+  };
+  const feet = (): void => {
+    if (!moving) return;
+    for (const [i, x] of [-6.2, -2.1, 3, 6].entries()) {
+      const step = Math.sin(t * 11 + i * 1.5) * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, -0.1);
+      ctx.lineTo(x + step, 1.25);
+      ctx.stroke();
+    }
+  };
+
+  if (medium === 'color') {
+    ctx.strokeStyle = '#c9904d';
+    ctx.lineWidth = 1.25;
+    feet();
+    ctx.fillStyle = '#985526';
+    coat();
+    ctx.fill();
+    ctx.strokeStyle = '#6e3d20';
+    ctx.lineWidth = 1.1;
+    marks();
+    ctx.fillStyle = '#8d6d53';
+    face();
+    ctx.fill();
+
+    // The coat reaches over the forehead, like the real hedgehog reference.
+    ctx.fillStyle = '#985526';
+    crown();
+    ctx.fill();
+
+    ctx.fillStyle = '#251d1a';
+    ctx.beginPath();
+    ctx.arc(8.25, -4.75, 1.05, 0, TAU);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(12.1, -3.1 + sniff * 0.2, 1.05, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.8)';
+    ctx.beginPath();
+    ctx.arc(8.58, -5.08, 0.42, 0, TAU);
+    ctx.fill();
+    return;
+  }
+
+  ink(ctx, 0.35, 1.05);
+  feet();
+  coat();
+  ctx.stroke();
+  ink(ctx, 0.26, 0.8);
+  marks();
+  face();
+  ctx.stroke();
+  crown();
+  ctx.stroke();
+  ink(ctx, 0.42, 1.15);
+  ctx.beginPath();
+  ctx.arc(8.25, -4.75, 0.8, 0, TAU);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(12.1, -3.1, 0.9, 0, TAU);
+  ctx.stroke();
 }

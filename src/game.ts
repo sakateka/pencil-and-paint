@@ -453,6 +453,17 @@ export class Game {
     const w = this.walker;
     const screenX = this.camera.toScreenX(w.x);
     const screenY = this.camera.toScreenY(w.y);
+    const perch = this.perched;
+    if (perch) {
+      // A bench or haystack owns the resting pose. Pin the invisible walking
+      // body to the same point so collision resolution cannot shove the colour
+      // source away from the drawing while somebody is lying still.
+      w.x = perch.x;
+      w.y = perch.y;
+      w.vx = 0;
+      w.vy = 0;
+      return;
+    }
     /*
      * You are sitting down. Someone fishing does not wander off mid-cast, and
      * on a phone the drag that steers is also the drag you make reaching for
@@ -473,7 +484,7 @@ export class Game {
       w.vy = 0;
       return;
     }
-    const stopped = this.fishing.active || this.rest.resting || this.vigil.sitting || this.perched;
+    const stopped = this.fishing.active || this.rest.resting || this.vigil.sitting;
     const dir = stopped ? ZERO : pushed;
     const pushing = dir.x !== 0 || dir.y !== 0;
 
@@ -730,6 +741,14 @@ export class Game {
       // say so rather than relying on that.
       if (this.perched) return false;
       perch.sitDown();
+      // The resting drawing is anchored to the seat, so the walker — and thus
+      // the colour they carry — belongs there too. Otherwise approaching the
+      // hay from its north side moves the invisible colour source fifty units
+      // closer to the hedgehog and bypasses its four-pot distance gate.
+      this.walker.x = perch.x;
+      this.walker.y = perch.y;
+      this.walker.vx = 0;
+      this.walker.vy = 0;
       this.events.onSitStart(perch.note);
       return true;
     }

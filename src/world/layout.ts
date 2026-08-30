@@ -54,13 +54,12 @@ export const HAYSTACK = { x: 2585, y: 590 } as const;
 /**
  * The bush above the haystack, and the hedgehog under it.
  *
- * North of the hay and near enough that lying back on it puts the bush inside
- * the colour from the very first minute — the walker on the hay is about a
- * hundred and ten units away, and the colour reaches a hundred and fifty-eight
- * before a single pot is found. A hedgehog you could only meet after collecting
- * half the valley would be a hedgehog almost nobody meets.
+ * Far enough north that the colour from the hay reaches it with the fourth pot,
+ * not before. From the resting point the bush is 248.5 units away; the colour,
+ * including the hedgehog's padding and its five-unit pulse, reaches at most 239
+ * with three pots and at least 249 with four.
  */
-export const HEDGEHOG = { x: 2612, y: 468 } as const;
+export const HEDGEHOG = { x: 2612, y: 348 } as const;
 
 export interface AnimalSpawn {
   kind: AnimalKind;
