@@ -27,9 +27,10 @@ import { run as cuckoo } from './cuckoo.test.js';
 const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch, hedgehog, cuckoo, i18n];
 
 /**
- * Runs every suite against the production build, served over HTTP the way a
- * static host would. Testing `dist/` rather than the dev server means the thing
- * under test is the thing that ships.
+ * Runs every suite against a fresh production build, served over HTTP the way
+ * a static host would. `npm test` builds into `tmp/dist` first (see the
+ * scripts in package.json), so what is under test is always the current
+ * source, never a stale `dist/` left over from an earlier build.
  */
 async function main() {
   const dist = process.env.PENCIL_DIST

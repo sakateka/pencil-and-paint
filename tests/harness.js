@@ -8,9 +8,9 @@ import { extname, join, normalize } from 'node:path';
  *
  * This checkout is shared by two accounts and `dist/` grants write only to its
  * owner, so whoever builds second cannot empty the other's output. Rather than
- * fight over it: `npm run build:tmp` and `npm run test:tmp` work entirely in
- * `tmp/dist`, leaving `dist/` to whoever runs plain `npm run build` — which is
- * also what `npm run preview` serves.
+ * fight over it: `npm test` builds into and tests from `tmp/dist`, leaving
+ * `dist/` to whoever runs plain `npm run build` — which is also what
+ * `npm run preview` serves.
  */
 const ROOT = process.env.PENCIL_DIST
   ? `${process.env.PENCIL_DIST.replace(/\/?$/, '/')}`
