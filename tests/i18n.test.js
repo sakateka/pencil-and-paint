@@ -38,7 +38,7 @@ export async function run(url) {
       const said = {};
       for (const lang of pencil.i18n.languages()) {
         pencil.i18n.setLanguage(lang);
-        said[lang] = pencil.i18n.say('prompt.pet');
+        said[lang] = pencil.i18n.say('prompt.fish');
       }
       pencil.i18n.setLanguage('en');
       return said;

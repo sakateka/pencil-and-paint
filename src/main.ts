@@ -421,6 +421,30 @@ async function boot(): Promise<void> {
     void owlHoot.play().catch(() => undefined);
   });
 
+  /*
+   * The cat, touched on the canvas the way the owl is.
+   *
+   * She used to answer the E key, like everything else that is within reach —
+   * but petting is the one moment in the valley where touch is the whole
+   * point, and a keypress is not a stroke. The click has to land on her (an
+   * ellipse around her sleeping shape, generous as the owl's) and the walker
+   * has to be close enough to reach her, which the game is asked, not
+   * measured here. Everything else — the purr, the hearts, the buzz — follows
+   * from `pet`, the way it always did.
+   */
+  canvas.addEventListener('click', (event) => {
+    const box = canvas.getBoundingClientRect();
+    const x = ((event.clientX - box.left) / box.width) * renderer.width;
+    const y = ((event.clientY - box.top) / box.height) * renderer.height;
+    const cat = game.catInReach();
+    if (!cat) return;
+    const size = cat.scale * game.camera.zoom;
+    const dx = (x - game.camera.toScreenX(cat.x)) / (19 * size);
+    const dy = (y - (game.camera.toScreenY(cat.y) - 10 * size)) / (16 * size);
+    if (dx * dx + dy * dy > 1) return;
+    game.pet();
+  });
+
   function start(): void {
     if (!ui.dismissIntro()) return;
     game.running = true;

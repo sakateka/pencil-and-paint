@@ -59,7 +59,7 @@ const PURR_EARSHOT = 200;
  * HUD should not have to learn about each of them separately.
  */
 export interface Interaction {
-  readonly kind: 'pet' | 'fish' | 'rest' | 'draw' | 'climb' | 'sit';
+  readonly kind: 'fish' | 'rest' | 'draw' | 'climb' | 'sit';
   /**
    * What to say, as a dictionary key rather than a phrase.
    *
@@ -532,8 +532,14 @@ export class Game {
     return Math.hypot(this.cat.x - this.walker.x, this.cat.y - this.walker.y - 6);
   }
 
-  /** The cat, if the walker is standing close enough to reach her. */
-  private catInReach(): Animal | null {
+  /**
+   * The cat, if the walker is standing close enough to reach her.
+   *
+   * The same question the owl is asked, and it lives here for the same reason:
+   * reach is a rule of the valley, so the touch handler asks rather than
+   * measures.
+   */
+  catInReach(): Animal | null {
     return this.distanceToCat < PET_RADIUS ? this.cat : null;
   }
 
@@ -591,8 +597,6 @@ export class Game {
   /** What is within reach from here, for the prompt on screen. */
   get interaction(): Interaction | null {
     if (!this.running) return null;
-    const cat = this.catInReach();
-    if (cat) return { kind: 'pet', say: cat.purr > 0 ? 'prompt.purring' : 'prompt.pet' };
     /*
      * Nothing is offered while you are lying down. There is genuinely nothing
      * to do, and a prompt saying so is an invitation to press a key that does
@@ -699,23 +703,32 @@ export class Game {
   }
 
   /**
-   * Do whatever is within reach. True if anything happened.
+   * Stroke her, from a touch on the canvas.
    *
    * Petting an already-purring cat is not a mistake — it tops her back up, and
    * she gets another heart out of it.
    */
+  pet(): boolean {
+    if (!this.running) return false;
+    const cat = this.catInReach();
+    if (!cat) return false;
+    const first = this.pets === 0;
+    this.pets++;
+    cat.purr = PURR_SECONDS;
+    this.particles.heartburst(cat.x, cat.y);
+    this.events.onPet(first);
+    return true;
+  }
+
+  /**
+   * Do whatever is within reach. True if anything happened.
+   *
+   * The cat is not one of them: she answers a touch on herself rather than a
+   * key — see `pet` — so standing beside her offers nothing here, the same way
+   * standing under the owl offers nothing.
+   */
   interact(): boolean {
     if (!this.running) return false;
-
-    const cat = this.catInReach();
-    if (cat) {
-      const first = this.pets === 0;
-      this.pets++;
-      cat.purr = PURR_SECONDS;
-      this.particles.heartburst(cat.x, cat.y);
-      this.events.onPet(first);
-      return true;
-    }
 
     if (this.fishing.active) {
       if (!this.fishing.strike()) return false;

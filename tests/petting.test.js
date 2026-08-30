@@ -22,6 +22,7 @@ export async function run(url) {
         distance: cat ? Math.round(Math.hypot(cat.x - game.walker.x, cat.y - game.walker.y)) : 0,
         prompt: game.interaction,
         petted: game.interact(),
+        touched: game.pet(),
       };
     });
 
@@ -29,6 +30,7 @@ export async function run(url) {
     suite.atLeast(away.distance, 200, 'the walker starts nowhere near her');
     suite.equal(away.prompt, null, 'nothing is offered from across the valley');
     suite.ok(!away.petted, 'and nothing happens if you try anyway');
+    suite.ok(!away.touched, 'touching her from here does nothing either');
 
     // Stand next to her.
     const near = await game.evaluate((pencil) => {
@@ -40,8 +42,11 @@ export async function run(url) {
     });
 
     suite.ok(near.awake, 'standing beside her, the colour has reached her');
-    suite.equal(near.prompt?.kind, 'pet', 'the prompt offers itself');
-    suite.equal(near.prompt?.say, 'prompt.pet', 'and says what it is');
+    suite.equal(
+      near.prompt,
+      null,
+      'and nothing is offered: she answers a touch on herself, not a prompt',
+    );
     suite.equal(near.purr, 0, 'she is not purring yet');
     suite.equal(near.pets, 0, 'and has not been petted');
 
@@ -49,13 +54,13 @@ export async function run(url) {
       const { game } = pencil;
       const cat = game.herd.animals.find((a) => a.kind === 'cat');
       const before = { x: cat.x, y: cat.y };
-      const took = game.interact();
+      const took = game.pet();
       pencil.renderOnce(); // a purring cat must draw without complaint
       const started = cat.purr;
 
       // A second of her enjoying it.
       for (let i = 0; i < 60; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
-      const during = { purr: cat.purr, say: game.interaction?.say };
+      const during = { purr: cat.purr, offer: game.interaction };
       pencil.renderOnce();
 
       // Three seconds in she is on the second murrr, and still going.
@@ -88,7 +93,7 @@ export async function run(url) {
     );
     suite.ok(stroked.during.purr > 0, 'still purring a second later', `${stroked.during.purr}`);
     suite.ok(stroked.during.purr < stroked.started, 'but running down');
-    suite.equal(stroked.during.say, 'prompt.purring', 'and the prompt says so');
+    suite.equal(stroked.during.offer, null, 'and still nothing is offered while she purrs');
     suite.ok(stroked.midway > 0, 'three seconds in she is still going', `${stroked.midway}`);
     suite.equal(stroked.after, 0, 'six seconds on, she has settled again');
     suite.equal(stroked.moved, 0, 'she never gets up');
@@ -195,8 +200,21 @@ export async function run(url) {
       `${Math.round(sound.bytes / 1024)}KB`,
     );
 
-    // The on-screen prompt is the phone's only way in, so click the real thing.
-    await game.page.waitForSelector('#action:not(.hidden)', { timeout: 5000 });
+    /*
+     * The way in is a touch on her, on the canvas — the same gesture that
+     * wakes the owl — so click the real thing, at her screen position.
+     */
+    const touchable = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const cat = game.herd.animals.find((a) => a.kind === 'cat');
+      game.teleport(cat.x + 24, cat.y + 14);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      pencil.renderOnce();
+      return {
+        x: game.camera.toScreenX(cat.x),
+        y: game.camera.toScreenY(cat.y) - 10 * cat.scale * game.camera.zoom,
+      };
+    });
 
     // A phone should buzz for it. There is no motor in a headless browser, so
     // what is asserted is that the call is made and what it asks for.
@@ -213,13 +231,13 @@ export async function run(url) {
       x: pencil.game.walker.x,
       y: pencil.game.walker.y,
     }));
-    await game.page.click('#action');
+    await game.page.mouse.click(touchable.x, touchable.y);
     const after = await game.evaluate((pencil) => {
       const cat = pencil.game.herd.animals.find((a) => a.kind === 'cat');
       return { pets: pencil.game.pets, purr: cat.purr, x: pencil.game.walker.x, y: pencil.game.walker.y };
     });
 
-    suite.equal(after.pets, before.pets + 1, 'tapping the prompt pets her too');
+    suite.equal(after.pets, before.pets + 1, 'touching her on the canvas pets her');
     suite.ok(after.purr > 0, 'and she purrs for it');
 
     const buzzes = await game.page.evaluate(() => globalThis.buzzes);
@@ -244,16 +262,41 @@ export async function run(url) {
     suite.equal(
       +Math.hypot(after.x - before.x, after.y - before.y).toFixed(1),
       0,
-      'tapping the prompt does not walk the player anywhere',
+      'touching her does not walk the player anywhere',
     );
+
+    /*
+     * The same touch from across the meadow does nothing at all — the owl's
+     * rule: a touch means being there.
+     */
+    const distant = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      game.teleport(1300, 1330);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      pencil.renderOnce();
+      const cat = game.herd.animals.find((a) => a.kind === 'cat');
+      return {
+        x: game.camera.toScreenX(cat.x),
+        y: game.camera.toScreenY(cat.y) - 10 * cat.scale * game.camera.zoom,
+        pets: game.pets,
+        purr: cat.purr,
+      };
+    });
+    await game.page.mouse.click(distant.x, distant.y);
+    const noStroke = await game.evaluate((pencil) => {
+      const cat = pencil.game.herd.animals.find((a) => a.kind === 'cat');
+      return { pets: pencil.game.pets, purr: cat.purr };
+    });
+    suite.equal(noStroke.pets, distant.pets, 'clicked from far off, nothing happens');
+    suite.equal(noStroke.purr, 0, 'and she does not so much as stir');
 
     /*
      * The E key, on a keyboard that does not have an E where E goes.
      *
      * `e.key` is the character the layout produces, so on a Cyrillic keyboard
-     * the key under your finger reports `у` and every `key === 'e'` in the game
-     * is false — which is also true of W, A, S and D, and is most of how you
-     * move. What a game wants is the physical key.
+     * the key under your finger reports `у` — the game listens for the
+     * physical key, not the letter. It just no longer reaches the cat: she
+     * answers a touch on herself, not a key, and E beside her does nothing.
      */
     const layout = await game.evaluate((pencil) => {
       const cat = pencil.game.herd.animals.find((a) => a.kind === 'cat');
@@ -267,7 +310,7 @@ export async function run(url) {
       return { petted: pencil.game.pets - before };
     });
 
-    suite.equal(layout.petted, 1, 'the E key pets her on a Cyrillic layout too');
+    suite.equal(layout.petted, 0, 'the E key does not pet her any more, on any layout');
 
     /*
      * A purring cat lies heavier, not lighter.
@@ -363,7 +406,7 @@ export async function run(url) {
       const cat = game.herd.animals.find((a) => a.kind === 'cat');
       game.teleport(cat.x + 24, cat.y + 14);
       game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
-      game.interact();
+      game.pet();
       await new Promise((resolve) => setTimeout(resolve, 150));
       const playing = () =>
         [...document.querySelectorAll('audio')].some(

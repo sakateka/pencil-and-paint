@@ -63,9 +63,6 @@ const en: Dictionary = {
   'note.firstFish': 'a small one. you put it back',
   'note.restQuiet': 'the valley is quiet. it is not finished being drawn',
   'note.restBirds': 'somewhere above you, the birds have started up again',
-
-  'prompt.pet': 'pet the cat',
-  'prompt.purring': 'she is purring',
   'prompt.fish': 'fish here',
   'prompt.wait': 'wait for it…',
   'prompt.now': 'now!',
@@ -177,9 +174,6 @@ const es: Dictionary = {
   'note.firstFish': 'es pequeño. lo devuelves al agua',
   'note.restQuiet': 'el valle está en silencio. aún no han terminado de dibujarlo',
   'note.restBirds': 'en algún lugar sobre ti, los pájaros han vuelto a cantar',
-
-  'prompt.pet': 'acariciar a la gata',
-  'prompt.purring': 'está ronroneando',
   'prompt.fish': 'pescar aquí',
   'prompt.wait': 'espera…',
   'prompt.now': '¡ahora!',
@@ -280,9 +274,6 @@ const pt: Dictionary = {
   'note.firstFish': 'é pequeno. voltas a pô-lo na água',
   'note.restQuiet': 'o vale está em silêncio. ainda não acabaram de o desenhar',
   'note.restBirds': 'algures por cima de ti, os pássaros voltaram a cantar',
-
-  'prompt.pet': 'fazer festas à gata',
-  'prompt.purring': 'está a ronronar',
   'prompt.fish': 'pescar aqui',
   'prompt.wait': 'espera…',
   'prompt.now': 'agora!',
@@ -384,9 +375,6 @@ const ru: Dictionary = {
   'note.firstFish': 'маленькая рыбёшка. ты отпускаешь её обратно в воду',
   'note.restQuiet': 'в долине тихо. её ещё не дорисовали',
   'note.restBirds': 'где-то над тобой снова запели птицы',
-
-  'prompt.pet': 'погладить кошку',
-  'prompt.purring': 'она мурлычет',
   'prompt.fish': 'порыбачить здесь',
   'prompt.wait': 'подожди…',
   'prompt.now': 'тяни!',
@@ -518,9 +506,6 @@ const zh: Dictionary = {
   'note.firstFish': '很小的一条。你把它放回水里',
   'note.restQuiet': '山谷静悄悄的。它还没有画完',
   'note.restBirds': '在你头顶的某处，鸟儿又唱了起来',
-
-  'prompt.pet': '摸摸猫',
-  'prompt.purring': '她在轻轻打呼噜',
   'prompt.fish': '在这儿钓鱼',
   'prompt.wait': '耐心等着……',
   'prompt.now': '就是现在！',
