@@ -4,13 +4,12 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 
 /*
- * Defaults to dist/, overridable via PENCIL_DIST.
+ * Which directory to serve, PENCIL_DIST or dist/.
  *
- * This checkout is shared by two accounts and `dist/` grants write only to its
- * owner, so whoever builds second cannot empty the other's output. Rather than
- * fight over it: `npm test` builds into and tests from `tmp/dist`, leaving
- * `dist/` to whoever runs plain `npm run build` — which is also what
- * `npm run preview` serves.
+ * `npm test` never relies on either: run.js builds fresh into its own private
+ * directory under tmp/ — two runs at once never see each other's files — and
+ * passes that directory straight to `serve`. The default here is only a
+ * fallback for callers (the benchmark, say) with no directory of their own.
  */
 const ROOT = process.env.PENCIL_DIST
   ? `${process.env.PENCIL_DIST.replace(/\/?$/, '/')}`
@@ -26,11 +25,11 @@ const MIME = {
   '.webp': 'image/webp',
 };
 
-/** Serve `dist/` the way a static host would, so tests exercise the real build. */
-export async function serve() {
+/** Serve a build directory the way a static host would. */
+export async function serve(root = ROOT) {
   const server = createServer(async (req, res) => {
     const path = (req.url ?? '/').split('?')[0];
-    const file = join(ROOT, normalize(path === '/' ? '/index.html' : path));
+    const file = join(root, normalize(path === '/' ? '/index.html' : path));
     try {
       const body = await readFile(file);
       res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });

@@ -8,10 +8,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:tmp": "tsc --noEmit && vite build --outDir tmp/dist --emptyOutDir",
     "preview": "vite preview --port 4173",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build:tmp && PENCIL_DIST=tmp/dist node tests/run.js",
+    "test": "node tests/run.js",
+    "test:clean": "node tests/cleanup.js",
     "benchmark": "node tests/benchmark.js"
   },
   "devDependencies": {

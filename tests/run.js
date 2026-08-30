@@ -1,4 +1,6 @@
-import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { serve } from './harness.js';
 
 import { run as collision } from './collision.test.js';
@@ -27,21 +29,55 @@ import { run as cuckoo } from './cuckoo.test.js';
 const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch, hedgehog, cuckoo, i18n];
 
 /**
- * Runs every suite against a fresh production build, served over HTTP the way
- * a static host would. `npm test` builds into `tmp/dist` first (see the
- * scripts in package.json), so what is under test is always the current
- * source, never a stale `dist/` left over from an earlier build.
+ * Runs every suite against a production build, served over HTTP the way a
+ * static host would.
+ *
+ * Left to itself it makes the build first — type-checks, then `vite build` —
+ * into a directory of its own under tmp/, so what is under test is always
+ * the current source, never a stale `dist/`, and two runs going at once
+ * never touch each other's files: one run empties out only its own directory.
+ *
+ * Every directory is kept after the run and named in the output, for looking
+ * at what was actually served; `npm run test:clean` is what removes them —
+ * nothing here cleans up after itself automatically.
+ *
+ * Set PENCIL_DIST to point at an existing build (`dist/`, say) and it is
+ * tested exactly as found, without building anything.
  */
+function buildFresh() {
+  // tmp/ is gitignored scratch, so it may not exist yet on a fresh checkout.
+  const scratch = join(import.meta.dirname, '..', 'tmp');
+  mkdirSync(scratch, { recursive: true });
+  const dir = mkdtempSync(join(scratch, 'test-'));
+  const step = (name, ...args) => {
+    const done = spawnSync('npm', ['exec', '--', name, ...args], { stdio: 'inherit' });
+    if (done.status !== 0) {
+      console.error(`build failed in tmp/ test directory ${dir}`);
+      rmSync(dir, { recursive: true, force: true });
+      process.exit(1);
+    }
+  };
+  step('tsc', '--noEmit');
+  step('vite', 'build', '--outDir', dir, '--emptyOutDir');
+  return dir;
+}
+
 async function main() {
-  const dist = process.env.PENCIL_DIST
-    ? `${process.env.PENCIL_DIST.replace(/\/?$/, '/')}index.html`
-    : new URL('../dist/index.html', import.meta.url).pathname;
-  if (!existsSync(dist)) {
-    console.error('No build found. Run `npm run build` first.');
-    process.exit(1);
+  const external = process.env.PENCIL_DIST;
+  let root;
+  let ours = false;
+  if (external) {
+    root = `${external.replace(/\/?$/, '/')}`;
+    if (!existsSync(`${root}index.html`)) {
+      console.error(`No build found at ${root}. Run a build, or unset PENCIL_DIST to make one.`);
+      process.exit(1);
+    }
+  } else {
+    root = buildFresh();
+    ours = true;
   }
 
-  const server = await serve();
+  const server = await serve(root);
   let allPassed = true;
 
   try {
@@ -52,6 +88,8 @@ async function main() {
   } finally {
     await server.close();
   }
+
+  if (ours) console.log(`build served from ${root} — kept; npm run test:clean removes it`);
 
   console.log(allPassed ? '\nall suites passed\n' : '\nFAILURES\n');
   process.exit(allPassed ? 0 : 1);
