@@ -549,19 +549,6 @@ export class Game {
   }
 
   /**
-   * How loud her purr should be from here, 0 to 1.
-   *
-   * Full within arm's reach and gone by the edge of earshot, so walking away
-   * fades her out and walking back brings her in again — she is still purring
-   * either way, you just cannot hear her from over there.
-   */
-  get purrLoudness(): number {
-    if (!this.cat || this.cat.purr <= 0) return 0;
-    const fade = (PURR_EARSHOT - this.distanceToCat) / (PURR_EARSHOT - PET_RADIUS);
-    return clamp(fade, 0, 1);
-  }
-
-  /**
    * Is the walker at the water's edge, with the valley finished?
    *
    * The gate is the whole point of it: fishing is not a thing to do instead of

@@ -306,7 +306,7 @@ async function boot(): Promise<void> {
       // Here, where it is certainly a cat that was touched. Both are inside the
       // tap or keypress that caused it, so the browser allows the motor to run.
       purrsPlayed++;
-      purrSound.play();
+      playPurr();
       buzzPurr();
       if (first) ui.note('note.firstPet');
     },
@@ -444,7 +444,7 @@ async function boot(): Promise<void> {
    * trying to become responsive, and the world bake is still finishing.
    */
   async function fetchSounds(): Promise<void> {
-    for (const sample of [purrSound, birdsong, pond, cuckoo]) {
+    for (const sample of [birdsong, pond, cuckoo]) {
       await whenIdle();
       if (!running) return;
       await sample.preload();
@@ -646,14 +646,6 @@ async function boot(): Promise<void> {
     game.advance(dt, input);
     ui.setAction(game.interaction?.say ?? null);
     ui.setLeave(game.leaving);
-    /*
-     * The purr follows the walker: it fades as you leave her, comes back if you
-     * turn around while she is still going, and stops of its own accord once
-     * she settles — `purrLoudness` is zero for all three of those.
-     */
-    purrSound.level = game.purrLoudness;
-    if (game.purrLoudness === 0) purrSound.stop();
-    purrSound.update(dt);
     birdsong.update(dt);
     pond.update(dt);
     cuckoo.update(dt);
@@ -671,7 +663,7 @@ async function boot(): Promise<void> {
         `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
         hapticStatus(),
-        `purr ${purrSound.status()} · birds ${birdsong.status()} · pond ${pond.status()}`,
+        `purr ${purr ? (purr.paused ? 'idle' : `playing ${purr.volume.toFixed(2)}`) : 'unloaded'} · birds ${birdsong.status()} · pond ${pond.status()}`,
         `cuckoo ${cuckoo.status()}`,
         ...loadReport,
       ]);
@@ -740,8 +732,31 @@ function chime(index: number): void {
  *
  * "Purr (10 sec loopable)" — public domain, via Wikimedia Commons. See
  * CREDITS.md.
+ *
+ * One phrase per stroke, four seconds of it, and the file is the whole story:
+ * its swell and its settle are recorded into it, it does not loop, and nothing
+ * is faded through the browser. That last part is not for want of trying —
+ * moving a sound's volume fifty times a second stepped audibly, a fizz of
+ * clicks whenever the level changed, and a loop clicked at its seam in every
+ * codec it was tried as. A purr is a phrase: it starts when she is stroked,
+ * plays itself out, and finishes wherever the walker has got to by then.
  */
-const purrSound = new Sample(purrUrl, 0.55, 0.9);
+let purr: HTMLAudioElement | undefined;
+function playPurr(): void {
+  if (!purr) {
+    purr = new Audio(purrUrl);
+    purr.preload = 'auto';
+    purr.volume = 0.55;
+    purr.dataset.sound = 'purr.mp3';
+    purr.dataset.level = String(purr.volume);
+    purr.style.display = 'none';
+    document.body.append(purr);
+  }
+  // From the top each time: every stroke is a new murrr, not a resume of the
+  // last one.
+  purr.currentTime = 0;
+  void purr.play().catch(() => undefined);
+}
 
 /**
  * And the birds, which were never anything but a recording.

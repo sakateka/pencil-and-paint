@@ -67,11 +67,17 @@ The cat, when you stroke her.
   [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Purr_(10_sec_loopable).ogg)
 - Licence: **Public domain**
 
-Changes made: trimmed to a six-second loop with the ends crossfaded so it runs
-without a seam, gently shelved at 320 Hz to bring out the rasp a small speaker
-can actually reproduce, low-passed at 1.2 kHz — a purr has nothing above that,
-so everything up there was the recording's own hiss — levelled to a fixed peak
-and encoded as mono MP3.
+Changes made: cut to one four-second phrase, starting where a murrr begins
+and settling before it ends, with the swell at the start and the fade at the
+end recorded into the file itself. Encoded as mono MP3 at 64 kbit/s — small,
+and the baked-in edges hide whatever the codec does at the ends of a file.
+
+It plays once per stroke and nothing touches its volume afterwards. That is
+the fix for a stubborn bug: fading it through the browser stepped audibly (a
+fizz of tiny clicks whenever the level moved, which was whenever you walked),
+and looping it clicked at the seam in every codec it was tried as, lossless
+included. A purr that is a phrase needs neither — it starts when she is
+stroked and plays itself out, wherever the walker has got to by then.
 
 This replaced a synthesiser: an oscillator carrying a harmonic series, two more
 drifting its pitch, two wobbling its loudness, a fifth chopping it at five hertz,

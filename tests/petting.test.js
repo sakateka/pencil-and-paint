@@ -185,7 +185,10 @@ export async function run(url) {
 
     suite.ok(sound.found, 'stroking her asks for it');
     suite.ok(sound.ok, 'and it is there', String(sound.type));
-    suite.ok(sound.loops, 'set to loop, so a long stroke does not run out');
+    suite.ok(
+      !sound.loops,
+      'one phrase per stroke — nothing loops, so nothing can click at a seam',
+    );
     suite.ok(
       sound.bytes > 10000 && sound.bytes < 200000,
       'at a size worth downloading for a cat',
@@ -346,37 +349,36 @@ export async function run(url) {
     );
 
     /*
-     * A purr does not carry across a valley.
+     * A purr is a phrase, not a loop.
      *
-     * The sound is scheduled all at once and then plays itself, so without
-     * this it kept rumbling in your ear from the far side of the world. Its
-     * level follows the walker instead, and once you are properly gone she
-     * settles rather than waiting to be heard again.
+     * It used to follow the walker, faded through the browser's volume
+     * controls — which stepped audibly, a fizz of clicks whenever the level
+     * moved — and it looped, which clicked at the seam in every codec it was
+     * tried as. Now the recording swells and settles itself, plays once per
+     * stroke, and finishes wherever you have walked to by then; only she
+     * herself settles, out of earshot.
      */
-    const earshot = await game.evaluate((pencil) => {
+    const carried = await game.evaluate(async (pencil) => {
       const { game } = pencil;
       const cat = game.herd.animals.find((a) => a.kind === 'cat');
       game.teleport(cat.x + 24, cat.y + 14);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       game.interact();
-      const stand = (x, y) => {
-        game.teleport(x, y);
-        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
-        return +game.purrLoudness.toFixed(2);
-      };
-      const beside = stand(cat.x + 24, cat.y + 14);
-      const nearby = stand(cat.x + 120, cat.y);
-      const away = stand(cat.x + 260, cat.y);
-      return { beside, nearby, away, purr: cat.purr, silentAfter: game.purrLoudness };
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const playing = () =>
+        [...document.querySelectorAll('audio')].some(
+          (a) => a.src.includes('purr') && !a.paused,
+        );
+      const started = playing();
+      game.teleport(cat.x + 400, cat.y);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return { started, stillPlaying: playing(), settled: cat.purr };
     });
 
-    suite.equal(earshot.beside, 1, 'beside her the purr is at full');
-    suite.ok(
-      earshot.nearby > 0 && earshot.nearby < 1,
-      'a few steps off it is quieter',
-      `${earshot.nearby}`,
-    );
-    suite.equal(earshot.away, 0, 'and out of earshot it is gone');
-    suite.equal(earshot.purr, 0, 'by which point she has settled');
+    suite.ok(carried.started, 'stroking her starts the phrase');
+    suite.ok(carried.stillPlaying, 'and walking off does not cut it short');
+    suite.equal(carried.settled, 0, 'though she herself settles once you are gone');
 
     // Walk away and the offer withdraws.
     const left = await game.evaluate((pencil) => {
