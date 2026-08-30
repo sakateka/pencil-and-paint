@@ -72,12 +72,23 @@ export async function run(url) {
     /*
      * Walk up to them. She shies off, as any of the birds would — and the point
      * is where the chick ends up: with her, not scattered the other way.
+     *
+     * The approach is from whichever side of her is outward from the centre of
+     * her run, so she always has the whole field to shy into. She wanders while
+     * the page runs, and the background frames that slip in before this starts
+     * leave her anywhere in the run — approach her from a fixed side and she is
+     * sometimes already at that edge, with nowhere to go: the shy target clamps
+     * to where she stands and she barely stirs.
      */
     const startled = await game.evaluate((pencil) => {
       const { game } = pencil;
       const hen = game.herd.animals.find((a) => a.kind === 'hen');
       const chick = game.herd.animals.find((a) => a.kind === 'chick');
-      game.teleport(hen.x, hen.y + 26);
+      let dx = hen.x - hen.homeX;
+      let dy = hen.y - hen.homeY;
+      const len = Math.hypot(dx, dy) || 1; // at the centre, any side will do
+      if (len < 1) dx = 1;
+      game.teleport(hen.x + (dx / len) * 26, hen.y + (dy / len) * 26);
       const before = { x: hen.x, y: hen.y };
       for (let i = 0; i < 150; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       pencil.renderOnce();
