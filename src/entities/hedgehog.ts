@@ -1,5 +1,5 @@
 import { TAU } from '../core/math';
-import { rr } from '../core/rng';
+import { rnd, rr } from '../core/rng';
 import { ink, jitter } from '../media/ink';
 import { type Medium } from '../media/medium';
 
@@ -23,8 +23,21 @@ const WAIT_ON_HAY = 5;
 /** How long it takes to cover the whole little path. */
 const EMERGING = 3.4;
 
-/** It keeps this much distance from the bush once it has ventured out. */
-const PATROL_NEAR = 0.46;
+/** How far the old straight patrol reached from the bush. */
+const VENTURE = 34;
+const OLD_PATH_X = -VENTURE * 0.9;
+const OLD_PATH_Y = VENTURE;
+
+/**
+ * A circular patch whose diameter is exactly the length of that old path.
+ * The bush and the old far endpoint sit at opposite edges of the circle.
+ */
+const PATCH_DIAMETER = Math.hypot(OLD_PATH_X, OLD_PATH_Y);
+const PATCH_RADIUS = PATCH_DIAMETER / 2;
+const PATCH_CENTRE_X = OLD_PATH_X / 2;
+const PATCH_CENTRE_Y = OLD_PATH_Y / 2;
+const PATROL_SPEED = PATCH_DIAMETER / EMERGING;
+const MIN_WALK = 8;
 
 /** Like the livestock, it spends longer standing around than walking. */
 const PATROL_PAUSE = [2.5, 5] as const;
@@ -38,6 +51,7 @@ const PATROL_PAUSE = [2.5, 5] as const;
  * eventually has somewhere else to be.
  */
 const RETREAT = 6;
+const RETREAT_SPEED = PATCH_DIAMETER / RETREAT;
 
 /**
  * How long it stays out after you get up.
@@ -49,9 +63,7 @@ const LINGER = 1.8;
 
 /** How far into coming out it is still in the shadow under the bush. */
 const UNDER_BUSH = 0.22;
-
-/** How far it trundles out of the bush, in world units. */
-const VENTURE = 34;
+const MIN_FROM_BUSH = PATCH_DIAMETER * UNDER_BUSH;
 
 const SPINES = '#7b6047';
 const SPINE_TIP = '#a48160';
@@ -90,17 +102,27 @@ export class Hedgehog {
   /** Uninterrupted seconds spent lying on the hay. */
   private lyingFor = 0;
 
-  /** +1 away from the bush, -1 back towards it. */
-  private patrolDirection: -1 | 1 = 1;
+  /** Its actual position and current destination inside the circular patch. */
+  private positionX: number;
+  private positionY: number;
+  private targetX: number;
+  private targetY: number;
+  private hasTarget = false;
 
   /** Seconds left to stand and sniff at the end of its little walk. */
   private patrolPause = 0;
+
+  /** Whether getting up has started its final walk home. */
+  private retreating = false;
 
   constructor(
     /** The bush it lives under. */
     readonly x: number,
     readonly y: number,
-  ) {}
+  ) {
+    this.positionX = this.targetX = x;
+    this.positionY = this.targetY = y;
+  }
 
   reset(): void {
     this.look = rr(0, 1) < 0.5 ? 'field' : 'hybrid';
@@ -111,19 +133,90 @@ export class Hedgehog {
     this.moving = false;
     this.idle = 0;
     this.lyingFor = 0;
-    this.patrolDirection = 1;
+    this.positionX = this.targetX = this.x;
+    this.positionY = this.targetY = this.y;
+    this.hasTarget = false;
     this.patrolPause = 0;
+    this.retreating = false;
   }
 
   /** Where it actually is, having come this far out. */
   get atX(): number {
-    // Far enough left that its face does not disappear into the tall pink
-    // flower beside the path when it turns at the end.
-    return this.x - VENTURE * 0.9 * ease(this.out);
+    return this.positionX;
   }
 
   get atY(): number {
-    return this.y + VENTURE * ease(this.out);
+    return this.positionY;
+  }
+
+  /** Pick a point uniformly by area, exactly as livestock choose pasture spots. */
+  private beginPatrol(): void {
+    const centreX = this.x + PATCH_CENTRE_X;
+    const centreY = this.y + PATCH_CENTRE_Y;
+    let targetX = centreX;
+    let targetY = centreY;
+
+    // Do not accept a useless shuffle or a stop still underneath the bush.
+    // Rejection does not bias the remaining patch; it only cuts those holes
+    // out of the same uniform disk used by cows and sheep.
+    for (let attempt = 0; attempt < 16; attempt++) {
+      const angle = rnd() * TAU;
+      const distance = Math.sqrt(rnd()) * PATCH_RADIUS;
+      targetX = centreX + Math.cos(angle) * distance;
+      targetY = centreY + Math.sin(angle) * distance;
+      if (
+        Math.hypot(targetX - this.positionX, targetY - this.positionY) >= MIN_WALK &&
+        Math.hypot(targetX - this.x, targetY - this.y) >= MIN_FROM_BUSH
+      ) {
+        break;
+      }
+    }
+
+    this.targetX = targetX;
+    this.targetY = targetY;
+    this.hasTarget = true;
+    if (Math.abs(targetX - this.positionX) > 1) {
+      this.facing = targetX < this.positionX ? -1 : 1;
+    }
+  }
+
+  /** Walk home from the exact point where the player stopped watching. */
+  private beginRetreat(): void {
+    this.targetX = this.x;
+    this.targetY = this.y;
+    this.hasTarget = true;
+    this.retreating = true;
+    if (Math.abs(this.x - this.positionX) > 1) {
+      this.facing = this.x < this.positionX ? -1 : 1;
+    }
+  }
+
+  /** Move at a livestock-like constant pace and report arrival. */
+  private walk(dt: number, speed: number): boolean {
+    const dx = this.targetX - this.positionX;
+    const dy = this.targetY - this.positionY;
+    const distance = Math.hypot(dx, dy);
+    const step = speed * dt;
+    this.moving = true;
+
+    if (distance <= step || distance < 0.001) {
+      this.positionX = this.targetX;
+      this.positionY = this.targetY;
+      this.hasTarget = false;
+      this.moving = false;
+      this.updateDistance();
+      return true;
+    }
+
+    this.positionX += (dx / distance) * step;
+    this.positionY += (dy / distance) * step;
+    this.updateDistance();
+    return false;
+  }
+
+  /** `out` remains the reveal amount and distance home, not a patrol rail. */
+  private updateDistance(): void {
+    this.out = Math.min(1, Math.hypot(this.positionX - this.x, this.positionY - this.y) / PATCH_DIAMETER);
   }
 
   /**
@@ -139,61 +232,53 @@ export class Hedgehog {
     if (!lit) return false;
     this.clock += dt;
 
-    const before = this.out;
+    let arrived = false;
     this.moving = false;
     if (lying) {
       this.idle = 0;
       this.lyingFor += dt;
 
+      // If somebody lies back down while it is leaving, it first settles in
+      // place. Its next decision will be to turn back out into the grass.
+      if (this.retreating) {
+        this.retreating = false;
+        this.hasTarget = false;
+        this.patrolPause = rr(PATROL_PAUSE[0], PATROL_PAUSE[1]);
+      }
+
       // Five full seconds of stillness first. After that it ambles along the
-      // same short track, like the livestock wandering around their pasture.
+      // same small patch, like the livestock wandering around their pasture.
       if (this.lyingFor >= WAIT_ON_HAY) {
         if (this.patrolPause > 0) {
           this.patrolPause = Math.max(0, this.patrolPause - dt);
-        } else {
-          this.moving = true;
-          this.out += (this.patrolDirection * dt) / EMERGING;
-          if (this.out >= 1) {
-            this.out = 1;
-            this.patrolDirection = -1;
+        }
+        if (this.patrolPause === 0) {
+          if (!this.hasTarget) this.beginPatrol();
+          if (this.walk(dt, PATROL_SPEED)) {
             this.patrolPause = rr(PATROL_PAUSE[0], PATROL_PAUSE[1]);
-            this.moving = false;
-          } else if (this.patrolDirection === -1 && this.out <= PATROL_NEAR) {
-            this.out = PATROL_NEAR;
-            this.patrolDirection = 1;
-            this.patrolPause = rr(PATROL_PAUSE[0], PATROL_PAUSE[1]);
-            this.moving = false;
+            if (!this.seen) {
+              this.seen = true;
+              arrived = true;
+            }
           }
         }
-        // Livestock flip as soon as their horizontal direction changes. The
-        // hedgehog should too; easing this value made it squash into a punkish
-        // end-on sliver every time it turned.
-        this.facing = this.patrolDirection === 1 ? -1 : 1;
       }
     } else {
       this.lyingFor = 0;
       this.patrolPause = 0;
       this.idle += dt;
       if (this.idle > LINGER && this.out > 0) {
-        this.moving = true;
-        this.out = Math.max(0, this.out - dt / RETREAT);
-        this.facing = 1;
-        if (this.out === 0) {
-          this.patrolDirection = 1;
+        if (!this.retreating) this.beginRetreat();
+        if (this.walk(dt, RETREAT_SPEED)) {
+          this.out = 0;
+          this.retreating = false;
           this.facing = -1;
         }
       }
     }
 
-    const arrived = !this.seen && before < 1 && this.out >= 1;
-    if (arrived) this.seen = true;
     return arrived;
   }
-}
-
-/** Slow to start, slow to stop: the gait of something that is not sure. */
-function ease(t: number): number {
-  return t * t * (3 - 2 * t);
 }
 
 export function drawHedgehog(ctx: CanvasRenderingContext2D, h: Hedgehog, medium: Medium): void {

@@ -102,63 +102,118 @@ export async function run(url) {
       };
       const waiting = run(4.9);
       const started = run(0.2);
-      let guard = 0;
-      while (!game.hedgehog.seen && guard++ < 300) run(1 / 60);
-      const arrived = {
-        out: +game.hedgehog.out.toFixed(2),
+      const snapshot = () => ({
+        out: +game.hedgehog.out.toFixed(3),
+        x: game.hedgehog.atX,
+        y: game.hedgehog.atY,
         facing: game.hedgehog.facing,
-        moved: { x: Math.round(game.hedgehog.atX), y: Math.round(game.hedgehog.atY) },
-      };
-      const heldFar = run(1);
-      const heldFarMoving = game.hedgehog.moving;
-      let farPauseFrames = 60;
-      while (game.hedgehog.out === 1 && farPauseFrames++ < 360) run(1 / 60);
-      const returning = run(0.5);
-      const returningFacing = game.hedgehog.facing;
-      let guardNear = 0;
-      while (game.hedgehog.facing === 1 && guardNear++ < 300) run(1 / 60);
-      const heldNear = run(1);
-      const heldNearMoving = game.hedgehog.moving;
-      const heldNearFacing = game.hedgehog.facing;
-      const venturedAgain = run(5.1);
+        moving: game.hedgehog.moving,
+      });
+      let guard = 0;
+      while (!game.hedgehog.seen && guard++ < 600) run(1 / 60);
+      const firstStop = snapshot();
+      run(1);
+      const firstHeld = snapshot();
+      let firstPauseFrames = 60;
+      while (!game.hedgehog.moving && firstPauseFrames++ < 360) run(1 / 60);
+      const firstDeparture = snapshot();
+
+      let walkGuard = 0;
+      while (game.hedgehog.moving && walkGuard++ < 600) run(1 / 60);
+      const secondStop = snapshot();
+      run(1);
+      const secondHeld = snapshot();
+      let secondPauseFrames = 60;
+      while (!game.hedgehog.moving && secondPauseFrames++ < 360) run(1 / 60);
+      const secondDeparture = snapshot();
+
+      // Follow enough destinations to prove that this is an area, not another
+      // disguised rail. The simulation is cheap; these are game-time seconds.
+      const stops = [firstStop, secondStop];
+      const departures = [firstDeparture, secondDeparture];
+      for (let leg = 0; leg < 10; leg++) {
+        let movingGuard = 0;
+        while (game.hedgehog.moving && movingGuard++ < 600) run(1 / 60);
+        stops.push(snapshot());
+        let pauseGuard = 0;
+        while (!game.hedgehog.moving && pauseGuard++ < 360) run(1 / 60);
+        departures.push(snapshot());
+      }
+
+      const home = { x: game.hedgehog.x, y: game.hedgehog.y };
+      const diameter = Math.hypot(34 * 0.9, 34);
+      const radius = diameter / 2;
+      const centre = { x: home.x - (34 * 0.9) / 2, y: home.y + 34 / 2 };
+      const axis = { x: (-34 * 0.9) / diameter, y: 34 / diameter };
+      const projected = stops.map((point) => {
+        const dx = point.x - centre.x;
+        const dy = point.y - centre.y;
+        return {
+          radius: Math.hypot(dx, dy),
+          along: dx * axis.x + dy * axis.y,
+          across: dx * -axis.y + dy * axis.x,
+        };
+      });
+      const span = (values) => Math.max(...values) - Math.min(...values);
+      const steps = stops.slice(1).map((point, index) =>
+        Math.hypot(point.x - stops[index].x, point.y - stops[index].y),
+      );
       return {
         lay,
         waiting,
         started,
-        arrived,
-        heldFar,
-        heldFarMoving,
-        farPause: farPauseFrames / 60,
-        returning,
-        returningFacing,
-        heldNear,
-        heldNearMoving,
-        heldNearFacing,
-        venturedAgain,
+        firstStop,
+        firstHeld,
+        firstDeparture,
+        firstPause: firstPauseFrames / 60,
+        secondStop,
+        secondHeld,
+        secondDeparture,
+        secondPause: secondPauseFrames / 60,
+        stops,
+        departures,
+        diameter,
+        radius,
+        maxRadius: Math.max(...projected.map((point) => point.radius)),
+        alongSpan: span(projected.map((point) => point.along)),
+        acrossSpan: span(projected.map((point) => point.across)),
+        shortestStep: Math.min(...steps),
         seen: game.hedgehog.seen,
-        home: { x: game.hedgehog.x, y: game.hedgehog.y },
+        home,
       };
     });
 
     suite.ok(hay.lay, 'you can lie back on the hay');
     suite.equal(hay.waiting, 0, 'it stays hidden for the first five seconds');
     suite.ok(hay.started > 0 && hay.started < 0.1, 'then it starts to come out', `${hay.started}`);
-    suite.equal(hay.arrived.out, 1, 'until it is all the way out');
-    suite.equal(hay.arrived.facing, 1, 'and turns towards the bush instantly');
+    suite.ok(hay.firstStop.out >= 0.22, 'until it reaches its first clear patch', `${hay.firstStop.out}`);
+    suite.equal(hay.firstStop.moving, false, 'and lies down there');
     suite.ok(hay.seen, 'and that counts as having seen it');
-    suite.equal(hay.heldFar, 1, 'it stops at the far end instead of pacing constantly');
-    suite.equal(hay.heldFarMoving, false, 'and stands still there');
-    suite.ok(hay.farPause >= 2.5 && hay.farPause <= 5.1, 'like livestock, it pauses for a while', `${hay.farPause}s`);
-    suite.ok(hay.returning < 1, 'it ambles back along its little path', `${hay.returning}`);
-    suite.equal(hay.returningFacing, 1, 'and turns towards the bush instantly');
-    suite.equal(hay.heldNear, 0.46, 'it stops again at the near end');
-    suite.equal(hay.heldNearMoving, false, 'rather than immediately pacing back');
-    suite.equal(hay.heldNearFacing, -1, 'with another instant turn');
-    suite.ok(hay.venturedAgain > 0.46, 'then wanders out again', `${hay.venturedAgain}`);
+    suite.equal(hay.firstHeld.x, hay.firstStop.x, 'it does not creep during the first rest');
+    suite.equal(hay.firstHeld.y, hay.firstStop.y, 'in either direction');
+    suite.equal(hay.firstHeld.facing, hay.firstStop.facing, 'and does not turn before setting off');
+    suite.equal(hay.firstHeld.moving, false, 'with its feet tucked away');
+    suite.ok(hay.firstPause >= 2.5 && hay.firstPause <= 5.1, 'like livestock, it pauses for a while', `${hay.firstPause}s`);
+    suite.ok(hay.firstDeparture.moving, 'then starts its next walk');
+    suite.equal(
+      hay.firstDeparture.facing,
+      hay.secondStop.x < hay.firstStop.x ? -1 : 1,
+      'facing the new point only as it sets off',
+    );
+    suite.equal(hay.secondStop.moving, false, 'then lies down at a different point');
+    suite.equal(hay.secondHeld.x, hay.secondStop.x, 'it holds the second resting place');
+    suite.equal(hay.secondHeld.y, hay.secondStop.y, 'without sliding along the old line');
+    suite.equal(hay.secondHeld.facing, hay.secondStop.facing, 'or turning before the next walk');
+    suite.ok(hay.secondPause >= 2.5 && hay.secondPause <= 5.1, 'and takes another livestock-like rest', `${hay.secondPause}s`);
+    suite.ok(hay.secondDeparture.moving, 'before choosing another point');
+    suite.ok(hay.maxRadius <= hay.radius + 0.01, 'every stop stays inside the circular patch', `${hay.maxRadius.toFixed(1)} / ${hay.radius.toFixed(1)}px`);
+    suite.ok(hay.shortestStep >= 7.9, 'the targets are real walks rather than tiny shuffles', `${hay.shortestStep.toFixed(1)}px`);
+    suite.ok(hay.alongSpan > hay.radius * 0.5, 'the stops spread along the old route', `${hay.alongSpan.toFixed(1)}px`);
+    suite.ok(hay.acrossSpan > hay.radius * 0.5, 'and broadly across it as a two-dimensional area', `${hay.acrossSpan.toFixed(1)}px`);
     suite.ok(
-      hay.arrived.moved.y > hay.home.y + 20,
+      Math.hypot(hay.firstStop.x - hay.home.x, hay.firstStop.y - hay.home.y) >= hay.diameter * 0.22,
       'it has left the bush, not appeared inside it',
-      `${hay.arrived.moved.x},${hay.arrived.moved.y} from ${hay.home.x},${hay.home.y}`,
+      `${Math.round(hay.firstStop.x)},${Math.round(hay.firstStop.y)} from ${hay.home.x},${hay.home.y}`,
     );
 
     // And it does not stay for somebody who gets up.
@@ -170,14 +225,30 @@ export async function run(url) {
         for (let i = 0; i < 30; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         return +game.hedgehog.out.toFixed(2);
       })();
-      for (let i = 0; i < 120; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      let retreatFrames = 0;
+      while (game.hedgehog.out >= before && retreatFrames++ < 300) {
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      }
+      for (let i = 0; i < 12; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      }
       const retreating = +game.hedgehog.out.toFixed(2);
       for (let i = 0; i < 480; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
-      return { before: +before.toFixed(2), lingered, retreating, out: +game.hedgehog.out.toFixed(2) };
+      return {
+        before: +before.toFixed(2),
+        lingered,
+        retreating,
+        retreatDelay: retreatFrames / 60,
+        out: +game.hedgehog.out.toFixed(2),
+      };
     });
 
     suite.equal(gone.lingered, gone.before, 'getting up does not frighten it away at once');
-    suite.ok(gone.retreating < gone.lingered, 'then it walks back towards the bush', `${gone.retreating}`);
+    suite.ok(
+      gone.retreating < gone.lingered,
+      'then it walks back towards the bush',
+      `${gone.retreating} after ${gone.retreatDelay.toFixed(1)}s`,
+    );
     suite.equal(gone.out, 0, 'and it is gone');
 
     // Out of the colour it is a drawing of a bush, and nothing happens in one.
