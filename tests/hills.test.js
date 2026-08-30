@@ -141,6 +141,10 @@ export async function run(url) {
        * drift — the motes, most of all — is frozen.
        */
       game.running = false;
+      // The real rAF loop may not have painted the teleported camera yet.
+      // Under a crowded runner the following read can otherwise see the old
+      // frame, even though the simulation state is already the new one.
+      pencil.renderOnce();
       const wall = game.world.colliders.find((c) => c.kind === 'rect' && c.y < 0);
       return {
         away: Math.round(Math.hypot(game.walker.x - wall.x - wall.w / 2, game.walker.y - wall.y)),
