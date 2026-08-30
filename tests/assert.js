@@ -59,10 +59,17 @@ export class Suite {
     // Seconds past a second, milliseconds below it — a fraction of a
     // millisecond is never the interesting part.
     const dur = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`);
+    // Colour only a person at a terminal can see: piped into a file or CI, the
+    // same bytes are escape-code noise forever.
+    const tty = process.stdout.isTTY;
+    const colour = (s, code) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
     console.log(`\n  ${this.name}`);
     for (const r of this.results) {
-      const mark = r.passed ? '  ok  ' : '  FAIL';
-      console.log(`${mark} ${pad(r.description, 52)} ${pad(dur(r.ms), 6)} ${r.detail}`);
+      // `pass` and `FAIL` are the same four letters wide, so the columns line
+      // up whatever came back; the mark is coloured after padding, so the
+      // invisible bytes cannot shift anything.
+      const mark = r.passed ? colour('pass', 32) : colour('FAIL', 31);
+      console.log(`  ${mark}  ${pad(dur(r.ms), 6)} ${pad(r.description, 52)} ${r.detail}`);
     }
     return this.failed.length === 0;
   }
