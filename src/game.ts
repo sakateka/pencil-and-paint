@@ -92,6 +92,17 @@ const PERCH_REACH = 52;
 /** And to the foot of the treehouse to get a hand on the ladder. */
 const TREEHOUSE_REACH = 58;
 
+/**
+ * How near the owl you have to be standing for it to hoot back.
+ *
+ * Measured to the bird itself, which is up a branch: standing at the foot of
+ * its tree is already most of the distance, so this is far wider than the
+ * cat's arm's reach. Generous on purpose — hoots carry, and so does a visitor
+ * who has come all this way. Still short of `NOTICES`, though, so from however
+ * far off it will watch you before it will answer you.
+ */
+const OWL_REACH = 192;
+
 /** Standing still, for when the walker is not the one deciding. */
 const ZERO = { x: 0, y: 0 } as const;
 
@@ -524,6 +535,17 @@ export class Game {
   /** The cat, if the walker is standing close enough to reach her. */
   private catInReach(): Animal | null {
     return this.distanceToCat < PET_RADIUS ? this.cat : null;
+  }
+
+  /**
+   * Close enough to the owl for it to answer a touch.
+   *
+   * The same question the cat is asked, and it lives here for the same reason:
+   * reach is a rule of the valley, so the click handler asks rather than
+   * measures.
+   */
+  owlInReach(): boolean {
+    return Math.hypot(this.walker.x - this.owl.x, this.walker.y - this.owl.y) < OWL_REACH;
   }
 
   /**

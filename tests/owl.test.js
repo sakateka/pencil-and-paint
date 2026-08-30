@@ -124,6 +124,26 @@ export async function run(url) {
       `${watched.rightAgain.look}`,
     );
 
+    const locked = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      // Near enough to touch, so that the click below is refused for one
+      // reason only — the world is not finished — and not for being far away.
+      game.teleport(game.owl.x + 60, game.owl.y + 60);
+      for (let i = 0; i < 30; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      pencil.renderOnce();
+      return {
+        x: game.camera.toScreenX(game.owl.x),
+        y: game.camera.toScreenY(game.owl.y) - 16 * game.owl.scale * game.camera.zoom,
+      };
+    });
+    await game.page.mouse.click(locked.x, locked.y);
+    const beforeWin = await game.evaluate((pencil) => ({
+      flap: pencil.game.owl.flap,
+      sounds: document.querySelectorAll('audio[data-sound="owl-hoot"]').length,
+    }));
+    suite.equal(beforeWin.flap, 0, 'before the whole world is coloured it keeps still');
+    suite.equal(beforeWin.sounds, 0, 'and keeps quiet');
+
     // Far enough off and it stops paying attention, rather than staring across
     // the whole valley.
     const ignored = await game.evaluate((pencil) => {
@@ -148,6 +168,85 @@ export async function run(url) {
       'but out of range it looks about on its own',
       `${ignored.moved}`,
     );
+
+    /*
+     * The same click from across the meadow does nothing at all.
+     *
+     * The old rule was only "the click landed on the owl", which worked from
+     * wherever the camera happened to be. Now the bird answers a touch, and a
+     * touch means being there: from over here it goes on watching, in silence.
+     * The walker is still wherever the block above left them, well awake and
+     * well out of reach.
+     */
+    const distant = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      pencil.renderOnce();
+      return {
+        x: game.camera.toScreenX(game.owl.x),
+        y: game.camera.toScreenY(game.owl.y) - 16 * game.owl.scale * game.camera.zoom,
+      };
+    });
+    await game.page.mouse.click(distant.x, distant.y);
+    const noHoot = await game.evaluate((pencil) => ({
+      flap: pencil.game.owl.flap,
+      sounds: document.querySelectorAll('audio[data-sound="owl-hoot"]').length,
+    }));
+    suite.equal(noHoot.flap, 0, 'clicked at arm’s length it does not stir');
+    suite.equal(noHoot.sounds, 0, 'and does not hoot');
+
+    const target = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      game.collectAll();
+      // Under its branch, near enough that the bird can be touched.
+      game.teleport(game.owl.x, game.owl.y + 60);
+      for (let i = 0; i < 90; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      pencil.renderOnce();
+      return {
+        x: game.camera.toScreenX(game.owl.x),
+        y: game.camera.toScreenY(game.owl.y) - 16 * game.owl.scale * game.camera.zoom,
+      };
+    });
+
+    await game.page.mouse.click(target.x, target.y);
+    const clicked = await game.evaluate((pencil) => {
+      const audio = document.querySelector('audio[data-sound="owl-hoot"]');
+      return {
+        flap: pencil.game.owl.flap,
+        sounds: document.querySelectorAll('audio[data-sound="owl-hoot"]').length,
+        loops: audio?.loop,
+        level: Number(audio?.dataset.level),
+      };
+    });
+
+    suite.ok(clicked.flap > 0, 'touching it starts a wing beat');
+    suite.equal(clicked.sounds, 1, 'and asks for one hoot');
+    suite.ok(!clicked.loops, 'the hoot does not loop');
+    suite.equal(clicked.level, 0.85, 'and plays clearly without shouting');
+
+    const sound = await game.evaluate(async (pencil) => {
+      const audio = document.querySelector('audio[data-sound="owl-hoot"]');
+      if (!audio) return { found: false };
+      const response = await fetch(audio.src);
+      const encoded = await response.arrayBuffer();
+      const context = new AudioContext();
+      const decoded = await context.decodeAudioData(encoded.slice(0));
+      await context.close();
+      for (let i = 0; i < 60; i++) {
+        pencil.game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      }
+      return {
+        found: true,
+        ok: response.ok,
+        bytes: encoded.byteLength,
+        seconds: decoded.duration,
+        flap: pencil.game.owl.flap,
+      };
+    });
+
+    suite.ok(sound.found && sound.ok, 'the recorded hoot is served');
+    suite.ok(sound.bytes > 35000 && sound.bytes < 50000, 'with only the hoot kept', `${sound.bytes} bytes`);
+    suite.ok(sound.seconds > 2.5 && sound.seconds < 3, 'and no stray sound at the tail', `${sound.seconds}s`);
+    suite.equal(sound.flap, 0, 'the wings settle again after the beat');
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {

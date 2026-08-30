@@ -17,6 +17,9 @@ import { PAPER, type Medium } from '../media/medium';
 /** How near you have to be before it takes an interest. */
 const NOTICES = 230;
 
+/** One quick double beat, back at rest before the hoot has died away. */
+const FLAP_SECONDS = 0.8;
+
 export class Owl {
   /** Its own clock, which only runs while the colour has reached it. */
   clock = 0;
@@ -26,6 +29,9 @@ export class Owl {
 
   /** Which way the face is turned: -1 hard left, +1 hard right. */
   look = 1;
+
+  /** Seconds left in the wing beat started by touching it. */
+  flap = 0;
 
   constructor(
     readonly x: number,
@@ -39,8 +45,12 @@ export class Owl {
      * Asleep means asleep, as for every animal: no clock, no blink, no turn.
      * Out in the graphite it is a drawing of an owl and drawings hold still.
      */
-    if (!awake) return;
+    if (!awake) {
+      this.flap = 0;
+      return;
+    }
     this.clock += dt;
+    this.flap = Math.max(0, this.flap - dt);
 
     const noticed = Math.hypot(walkerX - this.x, walkerY - this.y) < NOTICES;
     // Watching you, or — left to itself — looking idly about every few seconds.
@@ -53,6 +63,12 @@ export class Owl {
     // to follow, so this is quick to arrive and then perfectly still.
     this.look += (wanted - this.look) * Math.min(1, dt * 4.5);
   }
+
+  hoot(): boolean {
+    if (!this.awake) return false;
+    this.flap = FLAP_SECONDS;
+    return true;
+  }
 }
 
 export function drawOwl(ctx: CanvasRenderingContext2D, owl: Owl, medium: Medium): void {
@@ -62,6 +78,8 @@ export function drawOwl(ctx: CanvasRenderingContext2D, owl: Owl, medium: Medium)
   // Barely breathing. Any more and it looks like it is panting.
   const breath = 1 + Math.sin(t * 1.1) * 0.022;
   const look = Math.max(-1, Math.min(1, owl.look));
+  const flapAge = 1 - owl.flap / FLAP_SECONDS;
+  const wingBeat = owl.flap > 0 ? Math.sin(flapAge * Math.PI) : 0;
   // How far the face swings across the head.
   const fx = look * 1.9;
 
@@ -106,8 +124,14 @@ export function drawOwl(ctx: CanvasRenderingContext2D, owl: Owl, medium: Medium)
     ctx.lineWidth = wide;
     for (const side of [-1, 1]) {
       ctx.beginPath();
-      ctx.moveTo(side * 8.8, -23.4);
-      ctx.quadraticCurveTo(side * 14.4, -15.4, side * 9.6, -5);
+      // Starts underneath the body so lifting it can never open a white seam.
+      ctx.moveTo(side * 7.4, -23.4);
+      ctx.quadraticCurveTo(
+        side * (14.4 + wingBeat * 3),
+        -15.4 - wingBeat * 4,
+        side * (9.6 + wingBeat * 2.5),
+        -5 - wingBeat * 3,
+      );
       ctx.stroke();
     }
   };

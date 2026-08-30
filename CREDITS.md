@@ -2,7 +2,7 @@
 
 Everything in *Pencil & Paint* is drawn at runtime; the only pictures in it are
 the ones on the easel. Almost everything it makes a noise with is a handful of
-oscillators, too — the pot chimes still are. Four sounds are recordings.
+oscillators, too — the pot chimes still are. Five sounds are recordings.
 
 ## Paintings
 
@@ -15,10 +15,22 @@ requires separate written permission from their copyright holders. See
 
 ## Sound
 
-Four recordings. Three come from Wikimedia Commons; the forest heard from the
-haystack comes from Freesound. Three are public domain. The pond is CC BY, which
-is free to use and charges nothing — its one condition is the credit below,
-which was going to be here regardless.
+Three recordings come from Wikimedia Commons; the forest heard from the
+haystack comes from Freesound. The owl recording was supplied by the project
+owner as public domain, but arrived without source metadata, so that provenance
+has not been independently verified. The pond is CC BY, which is free to use
+and charges nothing — its one condition is the credit below, which was going to
+be here regardless.
+
+### `src/assets/owl-great-horned.mp3`
+
+The owl's great horned owl call, when it is clicked.
+
+- Source: supplied by the project owner; original archive unknown
+- Licence: represented as **Public domain**;
+
+Changes made: the original MP3 stream is kept without re-encoding and its two
+seconds of trailing noise and silence are removed. 2.7 seconds, 44 KiB.
 
 ### `src/assets/cuckoo-intro.mp3`
 

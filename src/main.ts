@@ -23,6 +23,7 @@ import birdsongUrl from './assets/birdsong.mp3';
 import cuckooIntroUrl from './assets/cuckoo-intro.mp3';
 import pondUrl from './assets/pond.mp3';
 import purrUrl from './assets/purr.mp3';
+import owlHootUrl from './assets/owl-great-horned.mp3';
 import { buzzPurr, hapticStatus } from './systems/haptics';
 import { Sample } from './systems/sample';
 import { CuckooAmbience } from './systems/cuckoo';
@@ -395,6 +396,29 @@ async function boot(): Promise<void> {
     onTogglePerf: () => setPerf(!showPerf),
     onInteract: () => interact(),
     onCancel: () => cancel(),
+  });
+
+  let owlHoot: HTMLAudioElement | undefined;
+  canvas.addEventListener('click', (event) => {
+    const box = canvas.getBoundingClientRect();
+    const x = ((event.clientX - box.left) / box.width) * renderer.width;
+    const y = ((event.clientY - box.top) / box.height) * renderer.height;
+    const size = game.owl.scale * game.camera.zoom;
+    const dx = (x - game.camera.toScreenX(game.owl.x)) / (18 * size);
+    const dy = (y - (game.camera.toScreenY(game.owl.y) - 16 * size)) / (22 * size);
+    if (!game.won || !game.owlInReach() || dx * dx + dy * dy > 1 || !game.owl.hoot()) return;
+
+    if (!owlHoot) {
+      owlHoot = new Audio(owlHootUrl);
+      owlHoot.preload = 'auto';
+      owlHoot.volume = 0.85;
+      owlHoot.dataset.sound = 'owl-hoot';
+      owlHoot.dataset.level = String(owlHoot.volume);
+      owlHoot.style.display = 'none';
+      document.body.append(owlHoot);
+    }
+    owlHoot.currentTime = 0;
+    void owlHoot.play().catch(() => undefined);
   });
 
   function start(): void {
