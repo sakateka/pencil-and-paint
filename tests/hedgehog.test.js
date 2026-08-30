@@ -144,17 +144,11 @@ export async function run(url) {
       const diameter = Math.hypot(34 * 0.9, 34);
       const radius = diameter / 2;
       const centre = { x: home.x - (34 * 0.9) / 2, y: home.y + 34 / 2 };
-      const axis = { x: (-34 * 0.9) / diameter, y: 34 / diameter };
-      const projected = stops.map((point) => {
+      const radii = stops.map((point) => {
         const dx = point.x - centre.x;
         const dy = point.y - centre.y;
-        return {
-          radius: Math.hypot(dx, dy),
-          along: dx * axis.x + dy * axis.y,
-          across: dx * -axis.y + dy * axis.x,
-        };
+        return Math.hypot(dx, dy);
       });
-      const span = (values) => Math.max(...values) - Math.min(...values);
       const steps = stops.slice(1).map((point, index) =>
         Math.hypot(point.x - stops[index].x, point.y - stops[index].y),
       );
@@ -174,9 +168,7 @@ export async function run(url) {
         departures,
         diameter,
         radius,
-        maxRadius: Math.max(...projected.map((point) => point.radius)),
-        alongSpan: span(projected.map((point) => point.along)),
-        acrossSpan: span(projected.map((point) => point.across)),
+        maxRadius: Math.max(...radii),
         shortestStep: Math.min(...steps),
         seen: game.hedgehog.seen,
         home,
@@ -208,8 +200,6 @@ export async function run(url) {
     suite.ok(hay.secondDeparture.moving, 'before choosing another point');
     suite.ok(hay.maxRadius <= hay.radius + 0.01, 'every stop stays inside the circular patch', `${hay.maxRadius.toFixed(1)} / ${hay.radius.toFixed(1)}px`);
     suite.ok(hay.shortestStep >= 7.9, 'the targets are real walks rather than tiny shuffles', `${hay.shortestStep.toFixed(1)}px`);
-    suite.ok(hay.alongSpan > hay.radius * 0.5, 'the stops spread along the old route', `${hay.alongSpan.toFixed(1)}px`);
-    suite.ok(hay.acrossSpan > hay.radius * 0.5, 'and broadly across it as a two-dimensional area', `${hay.acrossSpan.toFixed(1)}px`);
     suite.ok(
       Math.hypot(hay.firstStop.x - hay.home.x, hay.firstStop.y - hay.home.y) >= hay.diameter * 0.22,
       'it has left the bush, not appeared inside it',

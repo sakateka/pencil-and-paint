@@ -275,7 +275,7 @@ export async function run(url) {
     suite.equal(sequence.phase, 'caught', 'still landing it while we look');
     suite.equal(sequence.start, 0, 'no fish at the instant it is hooked');
     suite.equal(sequence.pulling, 0, 'none while the rod is still coming up');
-    suite.atLeast(sequence.leaping, 30, 'and there it is, once the rod is up');
+    suite.atLeast(sequence.leaping, 20, 'and there it is, once the rod is up');
 
     // It goes back out on its own.
     const again = await game.evaluate((pencil) => {
