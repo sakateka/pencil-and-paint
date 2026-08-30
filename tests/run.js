@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import { closeBrowser, serve } from './harness.js';
 
@@ -28,6 +29,51 @@ import { run as cuckoo } from './cuckoo.test.js';
 
 const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch, hedgehog, cuckoo, i18n];
 
+// Standard GitHub-hosted Linux runners have 2 vCPU for private repositories
+// and 4 vCPU for public ones. Cap local runs at that public standard too: the
+// suite count should not turn a developer's large workstation into a stress
+// test by default.
+const MAX_STANDARD_RUNNER_CPUS = 4;
+const DEFAULT_SUITE_CONCURRENCY = Math.max(
+  1,
+  Math.min(MAX_STANDARD_RUNNER_CPUS, availableParallelism()),
+);
+
+function suiteConcurrency() {
+  const requested = process.env.PENCIL_SUITE_CONCURRENCY;
+  if (requested === undefined) return DEFAULT_SUITE_CONCURRENCY;
+  const value = Number(requested);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error('PENCIL_SUITE_CONCURRENCY must be a positive integer');
+  }
+  return Math.min(SUITES.length, value);
+}
+
+/** Run suites concurrently, but keep their reports in the declared order. */
+async function runSuites(url, concurrency) {
+  const results = new Array(SUITES.length);
+  let next = 0;
+
+  const worker = async () => {
+    while (true) {
+      const index = next++;
+      if (index >= SUITES.length) return;
+      try {
+        results[index] = { suite: await SUITES[index](url) };
+      } catch (error) {
+        // Let the other workers finish so teardown never races a still-running
+        // browser context; report the rejection with the other suite results.
+        results[index] = { error };
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, SUITES.length) }, worker),
+  );
+  return results;
+}
+
 /**
  * Runs every suite against a production build, served over HTTP the way a
  * static host would.
@@ -40,6 +86,9 @@ const SUITES = [startup, collision, stillness, progression, rendering, devpanel,
  * Every directory is kept after the run and named in the output, for looking
  * at what was actually served; `npm run test:clean` is what removes them —
  * nothing here cleans up after itself automatically.
+ *
+ * Suites run in a bounded pool sized for the standard GitHub runner. Set
+ * PENCIL_SUITE_CONCURRENCY to override it for a particular run.
  *
  * Set PENCIL_DIST to point at an existing build (`dist/`, say) and it is
  * tested exactly as found, without building anything.
@@ -78,13 +127,20 @@ async function main() {
     ours = true;
   }
 
+  const concurrency = suiteConcurrency();
   const server = await serve(root);
   let allPassed = true;
 
   try {
-    for (const suite of SUITES) {
-      const result = await suite(server.url);
-      if (!result.report()) allPassed = false;
+    console.log(`running ${SUITES.length} suites with concurrency ${concurrency}`);
+    const results = await runSuites(server.url, concurrency);
+    for (const [index, result] of results.entries()) {
+      if (result.error) {
+        console.error(`\nsuite ${index + 1} threw:`, result.error);
+        allPassed = false;
+      } else if (!result.suite.report()) {
+        allPassed = false;
+      }
     }
   } finally {
     await closeBrowser();
