@@ -224,6 +224,22 @@
   .overlay h1 { font-size:40px; letter-spacing:1px; margin-bottom:6px; }
   .overlay h2 { font-size:30px; margin-bottom:10px; }
   .overlay p  { font-size:17px; line-height:1.6; opacity:.85; margin-bottom:8px; }
+  /* Leaning in on something. Borrows the overlay's wash and the card, because
+     it is the same gesture as the ending note: the valley waits while you read
+     it. Its canvas is square and sized off the viewport's short side, so the
+     drawing is the same shape on a phone as on a desk. */
+  #closer .card { padding:22px 22px 18px; max-width:min(92vw, 560px); }
+  #closerArt {
+    display:block; margin:0 auto;
+    width:min(78vw, 60vh, 420px); height:min(78vw, 60vh, 420px);
+    border:2px solid rgba(60,55,45,.5); border-radius:12px;
+    background:rgba(255,255,255,.35);
+  }
+  #closerDone { display:inline-flex; align-items:center; gap:9px; }
+  #closerDone .key { padding:2px 8px; font-size:13px; box-shadow:1px 2px 0 rgba(60,55,45,.2); }
+  #closerTitle { font-size:24px; margin:12px 0 2px; }
+  #closerLine  { font-size:16px; line-height:1.5; opacity:.8; }
+
   .keys { display:flex; gap:8px; justify-content:center; margin:14px 0 4px; flex-wrap:wrap; }
   .key {
     border:1.5px solid rgba(60,55,45,.6); border-radius:7px; padding:5px 11px;
@@ -328,6 +344,17 @@
     <path d="M4 20h16v1.5H4z M5.5 11h3v8h-3z M10.5 6h3v13h-3z M15.5 13h3v6h-3z"/>
   </svg>
 </button>
+</div>
+
+<div id="closer" class="overlay hidden">
+  <div class="card">
+    <canvas id="closerArt" width="420" height="420"></canvas>
+    <h2 id="closerTitle"></h2>
+    <p id="closerLine"></p>
+    <button type="button" id="closerDone">
+      <span class="key">Q</span><span data-i18n="closer.done">leave</span>
+    </button>
+  </div>
 </div>
 
 <div id="studio" class="hidden">

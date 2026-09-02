@@ -7,6 +7,7 @@ import {
   LANGUAGES,
   list,
   missingKeys,
+  onLanguageChange,
   setLanguage,
   t,
   translateDom,
@@ -30,6 +31,7 @@ import { CuckooAmbience } from './systems/cuckoo';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
 import { PAINTINGS } from './assets/paintings/index';
+import { Closer } from './closer';
 import { latestDrawing, Studio } from './studio';
 import { Ui } from './ui';
 import { World } from './world/world';
@@ -338,6 +340,10 @@ async function boot(): Promise<void> {
     onElephant: () => ui.note('note.elephant', 7000),
     onHedgehog: () => ui.note('note.hedgehog', 6000),
     onDraw: () => openStudio(),
+    onLookCloser: (subject) => {
+      closer.show(subject);
+      input.suspended = true;
+    },
     onClimb: (inside) => ui.note(inside ? 'note.climbedIn' : 'note.climbedDown'),
     onCatch: (total) => {
       // Up the same scale the pots used, so the valley keeps one voice.
@@ -374,6 +380,16 @@ async function boot(): Promise<void> {
     // open they are somebody standing at an easel, not somebody walking.
     input.suspended = studio.open;
   });
+
+  /*
+   * Leaning in on something takes the walker's keys the same way the drawing
+   * board does, and hands them back on the way out. Q and Escape already close
+   * whatever is open, so nothing else is needed to get out of it.
+   */
+  const closer = new Closer(() => {
+    input.suspended = false;
+  });
+  onLanguageChange(() => closer.retranslate());
 
   function openStudio(): void {
     studio.show(game.collectedHues, game.won);

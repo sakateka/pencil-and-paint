@@ -61,6 +61,16 @@ export const HAYSTACK = { x: 2585, y: 590 } as const;
  */
 export const HEDGEHOG = { x: 2612, y: 348 } as const;
 
+/**
+ * The two things worth leaning in on, so far.
+ *
+ * Exported because looking closer at something has to know where it stands, and
+ * a second copy of the coordinates in another file is a second copy that can be
+ * wrong.
+ */
+export const WELL = { x: 1655, y: 1205 } as const;
+export const SCARECROW = { x: 1900, y: 1148 } as const;
+
 export interface AnimalSpawn {
   kind: AnimalKind;
   x: number;
@@ -335,7 +345,7 @@ export function buildLayout(): Layout {
   scenery.push(makeHayBale(1988, 632, 0.9));
   scenery.push(makeHayBale(2612, 1075, 1.05));
   scenery.push(makeTrough(2090, 985));
-  scenery.push(makeWell(1655, 1205));
+  scenery.push(makeWell(WELL.x, WELL.y));
   scenery.push(makeBench(BENCH.x, BENCH.y));
 
   /*
@@ -376,7 +386,7 @@ export function buildLayout(): Layout {
   scenery.push(makeGardenBed(1975, 1105, 110, 28, 'cabbage'));
   scenery.push(makeGardenBed(1825, 1165, 110, 28, 'onion'));
   scenery.push(makeGardenBed(1975, 1165, 110, 28, 'carrot'));
-  scenery.push(makeScarecrow(1900, 1148));
+  scenery.push(makeScarecrow(SCARECROW.x, SCARECROW.y));
   sites.reserve(1900, 1120, 190);
 
   for (const [x, y] of LAMPS) {

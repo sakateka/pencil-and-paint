@@ -6,6 +6,7 @@ import { Treehouse } from './entities/treehouse';
 import { Herd } from './entities/herd';
 import { Owl } from './entities/owl';
 import { Hedgehog } from './entities/hedgehog';
+import { LOOKABLES, type Lookable } from './world/lookables';
 import { MIRAGE_REACH, Vigil, VIGIL_SECONDS } from './entities/vigil';
 import { Lion } from './entities/lion';
 import { Perch } from './entities/perch';
@@ -59,7 +60,7 @@ const PURR_EARSHOT = 200;
  * HUD should not have to learn about each of them separately.
  */
 export interface Interaction {
-  readonly kind: 'fish' | 'rest' | 'draw' | 'climb' | 'sit';
+  readonly kind: 'fish' | 'rest' | 'draw' | 'climb' | 'sit' | 'look';
   /**
    * What to say, as a dictionary key rather than a phrase.
    *
@@ -125,6 +126,8 @@ export interface GameEvents {
   onSitEnd(note: string): void;
   /** Two minutes of sitting still, rewarded. */
   onElephant(): void;
+  /** Somebody has leaned in on something. */
+  onLookCloser(subject: Lookable): void;
   /** The hedgehog has come right out of its bush. */
   onHedgehog(): void;
   /** A fish has been landed; `total` counts them this playthrough. */
@@ -614,7 +617,33 @@ export class Game {
     if (this.atTheStump()) return { kind: 'sit', say: 'prompt.sit' };
     const perch = this.perchInReach();
     if (perch) return { kind: 'sit', say: perch.say };
+    /*
+     * Last of them all. Everything above is something you *do* to a place, and
+     * looking closer is only ever the least of what is on offer — nobody
+     * standing at the easel wants to be told they could look at it instead.
+     */
+    const subject = this.lookableInReach();
+    if (subject) return { kind: 'look', say: `prompt.look.${subject.id}` };
     return null;
+  }
+
+  /**
+   * The thing worth leaning in on from here, if there is one.
+   *
+   * Nearest first, so that two of them side by side would still offer the one
+   * you are actually standing at. There are two and they are half the valley
+   * apart, but the rule should say so rather than relying on that.
+   */
+  lookableInReach(): Lookable | null {
+    let best: Lookable | null = null;
+    let nearest = Infinity;
+    for (const subject of LOOKABLES) {
+      const away = Math.hypot(this.walker.x - subject.x, this.walker.y - subject.y);
+      if (away >= subject.reach || away >= nearest) continue;
+      nearest = away;
+      best = subject;
+    }
+    return best;
   }
 
   /**
@@ -790,6 +819,16 @@ export class Game {
       this.fishing.start(this.walker.x, this.walker.y, this.world.pond);
       this.faceTheWater();
       this.events.onFishingStart();
+      return true;
+    }
+
+    /*
+     * Last, matching the prompt: everything above is something you do to a
+     * place, and leaning in on it is what is left when there is nothing to do.
+     */
+    const subject = this.lookableInReach();
+    if (subject) {
+      this.events.onLookCloser(subject);
       return true;
     }
 
