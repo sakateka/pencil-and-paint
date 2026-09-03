@@ -6,10 +6,10 @@ import type { Medium } from './medium';
 /**
  * Soft radial blobs, baked once into little canvases.
  *
- * These used to be real `CanvasGradient`s built per shadow, per pot glow and per
- * trail point — around 85 allocations every frame. That is pure garbage, and GC
- * pauses are exactly the kind of thing that surfaces as an occasional stutter
- * rather than a worse average. Baking them costs four small canvases.
+ * These used to be real `CanvasGradient`s built per shadow and per pot glow —
+ * around 85 allocations every frame. That is pure garbage, and GC pauses are
+ * exactly the kind of thing that surfaces as an occasional stutter rather than
+ * a worse average. Baking them costs a few small canvases.
  */
 function softBlob(rgb: string, alpha: number): HTMLCanvasElement {
   const radius = 64;
@@ -24,24 +24,7 @@ function softBlob(rgb: string, alpha: number): HTMLCanvasElement {
 }
 
 const SHADOW = softBlob('40,55,35', 0.34);
-const TRAIL = softBlob('255,255,255', 0.9);
 const glowCache = new Map<Hex, HTMLCanvasElement>();
-
-/** Stretch a baked blob over an ellipse. */
-export function drawBlob(
-  ctx: CanvasRenderingContext2D,
-  sprite: HTMLCanvasElement,
-  x: number,
-  y: number,
-  rx: number,
-  ry: number,
-  alpha = 1,
-): void {
-  ctx.globalAlpha = alpha;
-  ctx.drawImage(sprite, x - rx, y - ry, rx * 2, ry * 2);
-  ctx.globalAlpha = 1;
-}
-
 /** The soft dark patch under anything that moves. */
 export function drawShadowBlob(
   ctx: CanvasRenderingContext2D,
@@ -51,16 +34,6 @@ export function drawShadowBlob(
   ry: number,
 ): void {
   drawBlob(ctx, SHADOW, x, y, rx, ry);
-}
-
-export function drawTrailBlob(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  r: number,
-  alpha: number,
-): void {
-  drawBlob(ctx, TRAIL, x, y, r, r, alpha);
 }
 
 /** The coloured halo around an unfound paint pot. One sprite per hue. */

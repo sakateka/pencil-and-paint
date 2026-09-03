@@ -18,7 +18,6 @@ export async function run(url) {
       const { game, renderer } = pencil;
       renderer.render(game.scene);
       const rect = game.field.computeDirty(
-        game.camera,
         game.camera.toScreenX(game.walker.x),
         game.camera.toScreenY(game.walker.y - 14),
         game.maskRadius * game.camera.zoom,

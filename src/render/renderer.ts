@@ -25,9 +25,9 @@ import type { ColorField, DirtyRect } from './colorField';
 /**
  * How big the scratch surfaces start, in CSS pixels.
  *
- * Enough for the blob and its trail during ordinary play. It is a starting
- * point, not a limit — `ensureScratch` grows them if the colour ever needs
- * more, which it does while the ending floods outwards.
+ * Enough for the haze during ordinary play. It is a starting point, not a
+ * limit — `ensureScratch` grows them if the colour ever needs more, which it
+ * does while the ending floods outwards.
  */
 const INITIAL_SCRATCH_SPAN = 1100;
 
@@ -633,7 +633,7 @@ export class Renderer {
     const { camera, field, world } = scene;
     const { ctx, scale, temp } = this;
 
-    const dirty = field.computeDirty(camera, centreX, centreY, radius, this.width, this.height);
+    const dirty = field.computeDirty(centreX, centreY, radius, this.width, this.height);
     if (dirty.empty) return;
 
     // The blob outgrows the scratch while the ending floods outwards. Without
@@ -643,7 +643,7 @@ export class Renderer {
 
     this.time(
       'mask',
-      () => field.build(scene.elapsed, camera, centreX, centreY, radius, scale),
+      () => field.build(scene.elapsed, centreX, centreY, radius, scale),
       field.surface.ctx,
     );
     const compositeStarted = performance.now();

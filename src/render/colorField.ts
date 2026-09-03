@@ -1,15 +1,19 @@
 import { createSurface, type Surface } from '../core/canvas';
 import { TAU } from '../core/math';
-import { drawTrailBlob } from '../media/sprites';
-import type { Camera } from './camera';
 
 /**
- * The shape of the colour: a soft, breathing blob around the walker, plus a
- * short tail of where they have just been.
+ * The shape of the colour: a soft, breathing haze around the walker.
  *
  * This is rendered into its own canvas and then used as an alpha mask — the
  * coloured world is drawn, `destination-in` punches it through this, and what
  * survives is laid over the pencil drawing.
+ *
+ * It used to drag a tail of blobs behind the walker, marking where they had
+ * just been. That made the colour behave like a liquid being sloshed about,
+ * with a lump of it chasing the walker and slopping past them on every stop.
+ * The colour is meant to read as light rather than fluid, so nothing here
+ * depends on movement any more: the haze is the same shape standing still as at
+ * a run, and the only thing that changes it is the slow breathing of its rim.
  */
 
 /** The region of the screen the colour touches this frame. */
@@ -20,17 +24,6 @@ export interface DirtyRect {
   height: number;
   empty: boolean;
 }
-
-interface TrailPoint {
-  x: number;
-  y: number;
-  life: number;
-}
-
-/** How many trail points to keep. Each one is a blob drawn into the mask. */
-const MAX_TRAIL = 12;
-const TRAIL_INTERVAL = 0.085;
-const TRAIL_FADE = 0.85;
 
 /** Points around the blob's rim. Enough to look organic, few enough to be cheap. */
 const RIM_SEGMENTS = 54;
@@ -58,8 +51,6 @@ export const MASK_SCALE = 0.5;
 
 export class ColorField {
   readonly surface: Surface;
-  private trail: TrailPoint[] = [];
-  private sampleTimer = 0;
   private readonly dirty: DirtyRect = { x: 0, y: 0, width: 0, height: 0, empty: true };
 
   constructor() {
@@ -92,25 +83,6 @@ export class ColorField {
     return this.dirty;
   }
 
-  clearTrail(): void {
-    this.trail.length = 0;
-    this.sampleTimer = 0;
-  }
-
-  /** Drop a mark where the walker is, if they are moving and it is time. */
-  recordTrail(dt: number, x: number, y: number, speed: number): void {
-    this.sampleTimer += dt;
-    if (this.sampleTimer > TRAIL_INTERVAL && speed > 30) {
-      this.sampleTimer = 0;
-      this.trail.push({ x, y, life: 1 });
-      if (this.trail.length > MAX_TRAIL) this.trail.shift();
-    }
-    for (const p of this.trail) p.life -= dt * TRAIL_FADE;
-    let n = 0;
-    for (const p of this.trail) if (p.life > 0) this.trail[n++] = p;
-    this.trail.length = n;
-  }
-
   /**
    * The screen rectangle the colour occupies this frame.
    *
@@ -121,7 +93,6 @@ export class ColorField {
    * the difference between compositing 100% of the pixels and about 10%.
    */
   computeDirty(
-    camera: Camera,
     centreX: number,
     centreY: number,
     radius: number,
@@ -132,16 +103,6 @@ export class ColorField {
     let y0 = centreY - radius * 1.14;
     let x1 = centreX + radius * 1.14;
     let y1 = centreY + radius * 1.14;
-
-    for (const p of this.trail) {
-      const tx = camera.toScreenX(p.x);
-      const ty = camera.toScreenY(p.y - 10);
-      const tr = radius * 0.42 * (0.45 + p.life * 0.55) * 1.1;
-      if (tx - tr < x0) x0 = tx - tr;
-      if (ty - tr < y0) y0 = ty - tr;
-      if (tx + tr > x1) x1 = tx + tr;
-      if (ty + tr > y1) y1 = ty + tr;
-    }
 
     x0 = Math.max(0, Math.floor(x0));
     y0 = Math.max(0, Math.floor(y0));
@@ -159,7 +120,6 @@ export class ColorField {
   /** Paint the mask for this frame, inside the dirty rectangle. */
   build(
     t: number,
-    camera: Camera,
     centreX: number,
     centreY: number,
     radius: number,
@@ -178,17 +138,6 @@ export class ColorField {
     ctx.rect(d.x, d.y, d.width, d.height);
     ctx.clip();
 
-    // `lighter` so overlapping trail marks accumulate towards opaque rather
-    // than punching holes in each other.
-    ctx.globalCompositeOperation = 'lighter';
-
-    for (const p of this.trail) {
-      const tx = camera.toScreenX(p.x);
-      const ty = camera.toScreenY(p.y - 10);
-      const tr = radius * 0.42 * (0.45 + p.life * 0.55);
-      drawTrailBlob(ctx, tx, ty, tr, 0.8 * p.life);
-    }
-
     const grad = ctx.createRadialGradient(
       centreX,
       centreY,
@@ -197,10 +146,19 @@ export class ColorField {
       centreY,
       radius,
     );
+    /*
+     * A long, even fade rather than a lit disc with a soft lip.
+     *
+     * The old ramp held full opacity out to half the radius and then fell away
+     * over the last quarter, which reads as a spotlight — an edge, wherever you
+     * put it. Fog has no edge: it thins the whole way out, so most of the radius
+     * is spent fading and no ring of the mask is where the colour visibly stops.
+     */
     grad.addColorStop(0.0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.52, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.74, 'rgba(255,255,255,.82)');
-    grad.addColorStop(0.89, 'rgba(255,255,255,.38)');
+    grad.addColorStop(0.42, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.62, 'rgba(255,255,255,.9)');
+    grad.addColorStop(0.78, 'rgba(255,255,255,.62)');
+    grad.addColorStop(0.91, 'rgba(255,255,255,.28)');
     grad.addColorStop(1.0, 'rgba(255,255,255,0)');
     ctx.fillStyle = grad;
     ctx.beginPath();

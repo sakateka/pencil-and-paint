@@ -271,7 +271,6 @@ export class Game {
     this.wonAt = 0;
     this.startedAt = this.elapsed;
     this.particles.clear();
-    this.field.clearTrail();
     this.fishing.packUp();
     this.fishing.forget();
     this.rest.getUp();
@@ -357,7 +356,6 @@ export class Game {
     if (!this.running) return;
 
     this.moveWalker(dt, input);
-    this.field.recordTrail(dt, this.walker.x, this.walker.y, this.speed);
 
     for (const pot of this.pots) {
       if (pot.found) continue;
@@ -886,7 +884,6 @@ export class Game {
     this.walker.vx = 0;
     this.walker.vy = 0;
     this.camera.snapTo(x, y);
-    this.field.clearTrail();
   }
 
   private collectPots(): void {
