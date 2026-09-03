@@ -25,6 +25,65 @@ function softBlob(rgb: string, alpha: number): HTMLCanvasElement {
 
 const SHADOW = softBlob('40,55,35', 0.34);
 const glowCache = new Map<Hex, HTMLCanvasElement>();
+const discCache = new Map<string, HTMLCanvasElement>();
+
+/**
+ * A flat disc, baked once per colour.
+ *
+ * Particles used to be filled `arc` paths, and there is a reason to care beyond
+ * the fill itself: an accelerated canvas keeps a cache of the paths it has
+ * turned into GPU geometry, and a mote at a new fractional position with a new
+ * fractional radius is a path it has never seen. Dozens of them a frame, plus
+ * twenty-six at once when a pot is found, and the cache misses often enough
+ * that Firefox's own profiler gives up and drops the canvas onto the software
+ * path for the rest of the session — which is the stutter, arriving during a
+ * splash and never leaving.
+ *
+ * A disc scaled out of a sprite is a texture blit and caches nothing. Baked
+ * large so that shrinking it to a two-pixel mote stays round.
+ */
+function disc(colour: string): HTMLCanvasElement {
+  let sprite = discCache.get(colour);
+  if (!sprite) {
+    const radius = 32;
+    const { canvas, ctx } = createSurface(radius * 2, radius * 2);
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    // A pixel in from the edge, so the antialiased rim is not clipped.
+    ctx.arc(radius, radius, radius - 1, 0, Math.PI * 2);
+    ctx.fill();
+    sprite = canvas;
+    discCache.set(colour, sprite);
+  }
+  return sprite;
+}
+
+/** One round particle, in any colour, without a path. */
+export function drawDisc(
+  ctx: CanvasRenderingContext2D,
+  colour: string,
+  x: number,
+  y: number,
+  r: number,
+): void {
+  ctx.drawImage(disc(colour), x - r, y - r, r * 2, r * 2);
+}
+
+/** Stretch a baked blob over an ellipse. */
+export function drawBlob(
+  ctx: CanvasRenderingContext2D,
+  sprite: HTMLCanvasElement,
+  x: number,
+  y: number,
+  rx: number,
+  ry: number,
+  alpha = 1,
+): void {
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(sprite, x - rx, y - ry, rx * 2, ry * 2);
+  ctx.globalAlpha = 1;
+}
+
 /** The soft dark patch under anything that moves. */
 export function drawShadowBlob(
   ctx: CanvasRenderingContext2D,

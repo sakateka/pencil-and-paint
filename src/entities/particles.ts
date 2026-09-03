@@ -1,5 +1,6 @@
 import { clamp, TAU } from '../core/math';
 import { rr } from '../core/rng';
+import { drawDisc } from '../media/sprites';
 
 /**
  * Paint splashes when a pot is found, and drifting motes of colour that follow
@@ -154,17 +155,11 @@ export class Particles {
         ? 1
         : clamp(1 - Math.hypot(m.x - walkerX, m.y - walkerY) / (litRadius * 0.95), 0, 1);
       ctx.globalAlpha = fade * nearness;
-      ctx.fillStyle = m.colour;
-      ctx.beginPath();
-      ctx.arc(m.x, m.y, m.radius, 0, TAU);
-      ctx.fill();
+      drawDisc(ctx, m.colour, m.x, m.y, m.radius);
     }
     for (const p of this.splashes) {
       ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
-      ctx.fillStyle = p.colour;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.radius, 0, TAU);
-      ctx.fill();
+      drawDisc(ctx, p.colour, p.x, p.y, p.radius);
     }
     // Hearts swell as they appear and fade as they go, so the burst has a shape
     // rather than three dots switching on.
