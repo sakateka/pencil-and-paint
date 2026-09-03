@@ -32,6 +32,54 @@ const RENDER_SCALE = 1;
 /** Frames slower than this are counted as dropped (a 60Hz frame is 16.7ms). */
 const SLOW_FRAME_MS = 26;
 
+/**
+ * Frames worth keeping a full record of. Below the dropped-frame threshold on
+ * purpose: a frame at 20ms has already missed vsync and is part of the stutter,
+ * and by the time one is bad enough to count as dropped the interesting
+ * question is what the ones before it were doing.
+ */
+const WATCH_FRAME_MS = 20;
+
+/** How many bad frames to keep. Enough to see whether they agree with each other. */
+const WORST_KEPT = 8;
+
+/**
+ * Quiet period after the game starts, before bad frames are kept.
+ *
+ * The first second of play bakes the sprites for whatever is on screen, and
+ * those frames are tens of milliseconds each. They are a real cost but a
+ * one-off one, and left in they simply win: eight warm-up frames would fill the
+ * list and push out the twenty-five millisecond hitch during a walk that
+ * somebody actually complained about.
+ */
+const WARM_UP_MS = 1500;
+
+/**
+ * One slow frame, kept whole.
+ *
+ * Averages cannot answer "why did it jerk just then", because the jerk is one
+ * frame in a thousand and an average is what buries it. Every report gathered
+ * for this game so far showed a healthy mean while the player was watching the
+ * game stutter — one profile had exactly one frame over 20ms in 23 seconds, and
+ * a `report()` showed 60.06fps and `slow 0/59` in a session whose own counter
+ * said seven frames had already been dropped before the measurement started.
+ * So the bad frames are kept as they happen, whenever they happen, and the
+ * report hands them over regardless of what the last second and a half looked
+ * like.
+ */
+export interface SlowFrame {
+  /** Seconds since the page loaded, so several can be told apart. */
+  at: number;
+  frameMs: number;
+  drawMs: number;
+  simMs: number;
+  /** Which render path ran, and over how much of the screen. */
+  path: string;
+  dirty: string;
+  /** This frame's stage costs, unaveraged. */
+  stages: Record<string, number>;
+}
+
 export interface PerfSnapshot {
   fps: number;
   frameMs: number;
@@ -72,10 +120,34 @@ export class Performance {
 
   readonly scale = RENDER_SCALE;
 
+  /**
+   * The worst frames of the whole session, worst first.
+   *
+   * Not a window. A stutter noticed at minute three is still in here at minute
+   * ten, which is the entire point — the player reports it long after it
+   * happened, and asking them to catch one inside a 90-frame probe has failed
+   * every time it has been tried.
+   */
+  readonly worstFrames: SlowFrame[] = [];
+
+  /** When bad frames start counting. See `WARM_UP_MS`. */
+  private watchFrom = 0;
+
   /** Clear the counters; warm-up is not a measurement. */
   pardonWarmUp(): void {
     this.windowFrames = 0;
     this.slowFrames = 0;
+    this.worstFrames.length = 0;
+    this.watchFrom = performance.now() + WARM_UP_MS;
+  }
+
+  /** Keep this frame if it is among the worst seen. */
+  considerFrame(frame: SlowFrame): void {
+    if (frame.frameMs < WATCH_FRAME_MS) return;
+    if (frame.at * 1000 < this.watchFrom) return;
+    this.worstFrames.push(frame);
+    this.worstFrames.sort((a, b) => b.frameMs - a.frameMs);
+    if (this.worstFrames.length > WORST_KEPT) this.worstFrames.length = WORST_KEPT;
   }
 
   recordDraw(ms: number): void {

@@ -162,10 +162,67 @@ export class Renderer {
   private readonly ran = new Set<keyof StageTimings>();
 
 
+  /**
+   * This frame's stage costs, unaveraged.
+   *
+   * `stages` is a running average, which is the right thing for reading a
+   * steady state and the wrong thing entirely for catching a spike: a single
+   * forty-millisecond frame folded in at one part in ten shows up as a four
+   * millisecond bump and is gone again in a dozen frames. Every diagnosis in
+   * bugs/ so far was made from the averages, and every one of them was made
+   * from a window that happened not to contain the problem. These are the
+   * numbers a slow frame is actually made of.
+   */
+  readonly frameStages: StageTimings = {
+    worldBlit: 0,
+    live: 0,
+    mask: 0,
+    composite: 0,
+    occluders: 0,
+    paper: 0,
+    bakes: 0,
+    colourTiles: 0,
+    colourLive: 0,
+    maskPunch: 0,
+    blitOut: 0,
+  };
+
+  /**
+   * Wait for each stage's canvas work before timing the next one.
+   *
+   * Off by default and costly when on, so it is a diagnostic rather than a
+   * setting: forcing a readback is exactly the stall being investigated.
+   *
+   * Canvas calls are queued and finish later, so a timer around them measures
+   * how long it took to *ask*. That is not a small error, it is a
+   * misattribution: nothing reads the main canvas back during a frame, so the
+   * world blit's real cost escapes its timer entirely and reads 0.11ms for a
+   * full screen, while the scratch is copied back within the same frame and
+   * every deferred operation on it lands on whichever stage happened to
+   * trigger the flush. Two reports from the same machine minutes apart split
+   * the identical work as colourTiles 4.59 / maskPunch 4.36 and then as
+   * colourTiles 7.5 / maskPunch 0.95. Only their sum ever meant anything.
+   *
+   * With this on, each stage's number is its own.
+   */
+  settleStages = false;
+
+  /** Force this context's queued work to finish, if stage timing is honest. */
+  private settle(ctx: CanvasRenderingContext2D): void {
+    if (!this.settleStages) return;
+    // One pixel is enough: a read of any kind waits for everything before it.
+    ctx.getImageData(0, 0, 1, 1);
+  }
+
   /** Blend a sample into the running average for one stage. */
-  private time<T>(stage: keyof StageTimings, fn: () => T): T {
+  private time<T>(
+    stage: keyof StageTimings,
+    fn: () => T,
+    settleOn: CanvasRenderingContext2D = this.ctx,
+  ): T {
     const started = performance.now();
     const result = fn();
+    this.settle(settleOn);
     this.blend(stage, performance.now() - started);
     return result;
   }
@@ -173,6 +230,7 @@ export class Renderer {
   /** Fold one sample into a stage's running average, and mark it as having run. */
   private blend(stage: keyof StageTimings, ms: number): void {
     this.stages[stage] = this.stages[stage] * 0.9 + ms * 0.1;
+    this.frameStages[stage] = ms;
     this.ran.add(stage);
   }
 
@@ -280,12 +338,19 @@ export class Renderer {
     const { ctx, scale } = this;
 
     camera.frame(this.width, this.height, scale);
+    this.scrollSubPixel(camera);
 
     const centreX = camera.toScreenX(walker.x);
     const centreY = camera.toScreenY(walker.y - 14);
     const radius = scene.maskRadius * camera.zoom;
     const flooded = radius > Math.hypot(this.width, this.height) * 0.85;
     this.lastFlooded = flooded;
+
+    // A stage that does not run this frame must read zero, not last frame's
+    // cost — the same trap `decayIdle` exists to avoid for the averages.
+    for (const key of Object.keys(this.frameStages) as (keyof StageTimings)[]) {
+      this.frameStages[key] = 0;
+    }
 
     // No clear: the world blit below covers every pixel of the viewport, and on
     // an opaque canvas a full-screen clear is a full-screen write for nothing.
@@ -388,7 +453,34 @@ export class Renderer {
     });
 
     this.stages.bakes = world.bakeCount;
+    this.frameStages.bakes = world.bakeCount;
     this.decayIdle();
+  }
+
+  /** The offset last written to the element, so an unchanged one is not rewritten. */
+  private scrolledBy = '';
+
+  /**
+   * Put back the fraction of a pixel the camera's snap threw away.
+   *
+   * The frame was drawn from a whole-pixel origin, so the image sits a fraction
+   * of a pixel away from where the camera actually is; sliding the canvas
+   * element back by that much lands it where it belongs. The compositor already
+   * has this layer and offsets it in hardware, so the smooth scroll is free —
+   * whereas asking the canvas to draw at a fractional origin costs 5.2x on
+   * Firefox. See `subX` in render/camera.ts for what this is fixing.
+   *
+   * The shift is never more than half a pixel, so at most half a pixel of the
+   * page shows past one edge. The page behind is the same paper colour and the
+   * vignette darkens the edges anyway, so there is nothing to see there.
+   */
+  private scrollSubPixel(camera: Camera): void {
+    const x = -camera.subX;
+    const y = -camera.subY;
+    const next = x || y ? `translate3d(${x.toFixed(3)}px, ${y.toFixed(3)}px, 0)` : '';
+    if (next === this.scrolledBy) return;
+    this.scrolledBy = next;
+    this.canvas.style.transform = next;
   }
 
   private blitWorld(
@@ -549,8 +641,10 @@ export class Renderer {
     // and a wide stripe of the screen simply never gets its colour.
     this.ensureScratch(dirty, field);
 
-    this.time('mask', () =>
-      field.build(scene.elapsed, camera, centreX, centreY, radius, scale),
+    this.time(
+      'mask',
+      () => field.build(scene.elapsed, camera, centreX, centreY, radius, scale),
+      field.surface.ctx,
     );
     const compositeStarted = performance.now();
 
@@ -584,11 +678,13 @@ export class Renderer {
       dirty.width,
       dirty.height,
     );
+    this.settle(t);
     this.blend('colourTiles', performance.now() - part);
     part = performance.now();
     camera.applyTransform(t);
     this.drawLive(t, scene, 'color');
     t.restore();
+    this.settle(t);
     this.blend('colourLive', performance.now() - part);
     part = performance.now();
 
@@ -620,6 +716,7 @@ export class Renderer {
     );
     t.restore();
     t.globalCompositeOperation = 'source-over';
+    this.settle(t);
     this.blend('maskPunch', performance.now() - part);
     part = performance.now();
 
@@ -635,6 +732,7 @@ export class Renderer {
       dirty.width * scale,
       dirty.height * scale,
     );
+    this.settle(ctx);
     this.blend('blitOut', performance.now() - part);
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     this.blend('composite', performance.now() - compositeStarted);

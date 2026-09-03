@@ -107,6 +107,38 @@ export interface DebugHandle {
   /** Whether the performance readout is showing. */
   isPerfOn(): boolean;
   /**
+   * Wait for each render stage's canvas work before timing the next, and say
+   * whether it is now on.
+   *
+   * Canvas calls are queued, so by default a stage is timed around asking for
+   * work rather than around doing it, and the cost lands on whichever later
+   * call forces a flush. Switch this on for a capture when the question is
+   * *which* stage is expensive; leave it off otherwise, because forcing a
+   * readback every stage is itself the kind of stall being looked for.
+   */
+  settleStages(on: boolean): boolean;
+  /**
+   * Time the same colour-world blit into a fresh offscreen canvas and into the
+   * displayed one, and return both numbers plus the session's drawMs and a
+   * per-blit-flushed variant for the displayed canvas.
+   *
+   * The four numbers together separate the two ways `intoDisplayed` can be
+   * slow. If the per-blit-flushed figure is dozens of times the batched one,
+   * the cost is one synchronisation wait landing on whichever call forces the
+   * flush — the cross-process checkpoint of bug7 — rather than per-blit work;
+   * compare with `drawMs` to know whether the session had stepped at all.
+   * Freezes the page for up to a second on a slow session — that is the
+   * measurement. Pass true to blit the full viewport instead of the last
+   * dirty rectangle.
+   */
+  roundtrip(full?: boolean): {
+    region: string;
+    drawMs: number;
+    intoScratch: number;
+    intoDisplayed: number;
+    displayedFlushEach: number;
+  };
+  /**
    * The shape of a purr, `age` seconds in.
    *
    * Exposed because the phrasing — three swells with quiet between them, each

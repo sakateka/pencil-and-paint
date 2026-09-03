@@ -1,4 +1,5 @@
 import { BUILD_ID } from './buildInfo';
+import { context2d } from './core/canvas';
 import { rng } from './core/rng';
 import { exposeForTests } from './debug';
 import {
@@ -551,11 +552,26 @@ async function boot(): Promise<void> {
         scale: renderer.scale,
         dpr: globalThis.devicePixelRatio || 1,
         zoom: round(game.camera.zoom),
-        dirty: `${d.width}x${d.height}`,
-        dirtyPctOfScreen: screen ? Math.round((d.width * d.height * 100) / screen) : 0,
+        /*
+         * On the flooded path the composite never runs, so `lastDirty` is
+         * whatever it was before the flood — once reported as 1864x1131 on a
+         * 1864x798 viewport, 142% of a screen, which is not a stale number but
+         * a wrong one. Exactly the trap `decayIdle` exists to avoid for the
+         * stage timings; the dirty rectangle had the same disease.
+         */
+        dirty: renderer.lastFlooded ? `${renderer.width}x${renderer.height}` : `${d.width}x${d.height}`,
+        dirtyPctOfScreen: renderer.lastFlooded
+          ? 100
+          : screen
+            ? Math.round((d.width * d.height * 100) / screen)
+            : 0,
         awake: game.herd.animals.reduce((n, a) => n + (a.awake ? 1 : 0), 0),
         canvases: c.tiles + c.sprites,
         canvasMb: c.mb,
+        // Whether this capture's stage numbers are honest (see settleStages).
+        // A capture taken with it on costs a readback per stage and its
+        // proportions mean something different from an ordinary one's.
+        settleStages: renderer.settleStages,
         ...Object.fromEntries(Object.entries(renderer.stages).map(([k, v]) => [k, round(v)])),
       };
     },
@@ -576,11 +592,26 @@ async function boot(): Promise<void> {
        * Which third of the frame is at fault, stated rather than implied. The
        * rules are the ones written out over `otherMs` in systems/perf.ts.
        */
+      /*
+       * The frame rate is not allowed to end the argument on its own.
+       *
+       * This used to read `fps > 50 ? healthy`, and that shortcut reported a
+       * session at 54.05fps as "healthy — a large `other` here is idle time"
+       * while `drawMs` was 18.22 of an 18.5ms frame and `other` was 0.23. It
+       * named the wrong third of the frame at the one moment it mattered. A
+       * frame that is nearly all ours is worth saying so about even when it is
+       * fast, because it is one hiccup away from not being.
+       */
+      const worst = perf.worstFrames;
+      const heavyDraw = drawMs > frameMs * 0.4;
       const verdict =
-        fps > 50
+        fps > 50 && !heavyDraw
           ? 'healthy — a large `other` here is idle time, not work'
-          : drawMs > frameMs * 0.4
-            ? 'the renderer: drawing is most of a slow frame'
+          : heavyDraw
+            ? fps > 50
+              ? `drawing is ${Math.round((drawMs / frameMs) * 100)}% of the frame — fast enough now, `
+                + 'but there is no headroom left for a spike'
+              : 'the renderer: drawing is most of a slow frame'
             : simMs > frameMs * 0.4
               ? 'the simulation: game.advance is most of a slow frame'
               : 'NOT this codebase — the main thread finishes early and something '
@@ -603,6 +634,11 @@ async function boot(): Promise<void> {
           },
           frame: snap,
           watched,
+          /*
+           * The whole session's bad frames, not the last second and a half of
+           * it. This is the part to read first when the complaint is a stutter.
+           */
+          worstFrames: worst,
           bake: {
             summary: world.bakeSummary,
             longestSliceMs: world.longestSliceMs,
@@ -647,6 +683,85 @@ async function boot(): Promise<void> {
     rngEndState: () => rng.seed,
     longestBakeSliceMs: () => world.longestSliceMs,
     isPerfOn: () => showPerf,
+    /*
+     * Make the stage timings honest, at a price.
+     *
+     * Off, each stage is timed around queued canvas calls and so measures how
+     * long it took to ask rather than to do — which is why the same work has
+     * been reported as colourTiles 4.59 / maskPunch 4.36 in one capture and
+     * colourTiles 7.5 / maskPunch 0.95 in the next. On, each stage waits for its
+     * own canvas before the next is timed. Forcing a readback is itself the kind
+     * of stall under investigation, so this is a diagnostic to switch on for a
+     * capture, not a setting to leave on.
+     */
+    settleStages: (on: boolean) => {
+      renderer.settleStages = on;
+      return renderer.settleStages;
+    },
+    /*
+     * The one-paste A/B for bug7's slow state: the same blit, once into a
+     * brand-new offscreen canvas and once into the displayed one, each with the
+     * queue forced to completion so the timer measures work rather than
+     * queueing. If the displayed canvas alone is slow, the cost is the
+     * browser's cross-process canvas pipeline, not the amount of things drawn.
+     *
+     * Sized off the last dirty rectangle so it measures the region the
+     * composite actually works over, falling back to most of the viewport when
+     * there is none. The blits into the displayed canvas scribble over one
+     * frame; the render at the end paints it back.
+     */
+    roundtrip: (full = false) => {
+      const { world, camera, field } = game;
+      const d = field.lastDirty;
+      const W = Math.max(64, Math.round(Math.min(full ? renderer.width : d.empty ? 850 : d.width, renderer.width)));
+      const H = Math.max(64, Math.round(Math.min(full ? renderer.height : d.empty ? 778 : d.height, renderer.height)));
+      const scratch = document.createElement('canvas');
+      scratch.width = W;
+      scratch.height = H;
+      const sc = context2d(scratch);
+      const main = renderer.context;
+      const flush = (c: CanvasRenderingContext2D) => void c.getImageData(0, 0, 1, 1);
+      const blit = (c: CanvasRenderingContext2D) => {
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        world.drawRegion(c, 'color', camera.viewX, camera.viewY, W / camera.zoom, H / camera.zoom, 0, 0, W, H);
+      };
+      const batched = (c: CanvasRenderingContext2D) => {
+        for (let i = 0; i < 10; i++) blit(c);
+        flush(c);
+        const started = performance.now();
+        for (let i = 0; i < 60; i++) blit(c);
+        flush(c);
+        return Math.round(((performance.now() - started) / 60) * 1000) / 1000;
+      };
+      /*
+       * Ten blits, each followed by its own forced flush. If the displayed
+       * canvas's slowness is one checkpoint wait landing on the flush, each of
+       * these pays it in full and the number explodes; if it is per-blit work,
+       * this stays near the batched figure. Ten, because a wait of ten
+       * milliseconds each is already a hundred milliseconds of frozen page.
+       */
+      const flushEach = () => {
+        for (let i = 0; i < 3; i++) {
+          blit(main);
+          flush(main);
+        }
+        const started = performance.now();
+        for (let i = 0; i < 10; i++) {
+          blit(main);
+          flush(main);
+        }
+        return Math.round(((performance.now() - started) / 10) * 1000) / 1000;
+      };
+      const out = {
+        region: `${W}x${H}`,
+        drawMs: Math.round(perf.snapshot().drawMs * 100) / 100,
+        intoScratch: batched(sc),
+        intoDisplayed: batched(main),
+        displayedFlushEach: flushEach(),
+      };
+      renderer.render(game.scene);
+      return out;
+    },
     purrStrength,
     purrsPlayed: () => purrsPlayed,
     i18n: {
@@ -682,7 +797,19 @@ async function boot(): Promise<void> {
     if (!running) return;
     // Test clocks (and a resumed tab) can move performance.now() backwards;
     // never let that rewind the simulation.
-    const dt = Math.min(MAX_STEP, Math.max(0, (now - last) / 1000));
+    /*
+     * Two different numbers, and conflating them hid every bad frame this game
+     * has ever had.
+     *
+     * `dt` is how far the world is allowed to move, capped so that a stall does
+     * not teleport anyone. `elapsedMs` is how long the frame actually took.
+     * Feeding the capped one to the performance counters meant a 90ms hitch was
+     * recorded as 50ms, the worst frames were flattened to exactly the cap, and
+     * `recordFrame`'s own guard against tab-switches — anything at or above
+     * 60ms — could never once fire, because nothing above 50 could reach it.
+     */
+    const elapsedMs = Math.max(0, now - last);
+    const dt = Math.min(MAX_STEP, elapsedMs / 1000);
     last = now;
 
     const simStart = performance.now();
@@ -712,8 +839,37 @@ async function boot(): Promise<void> {
         ...loadReport,
       ]);
     }
-    perf.recordDraw(performance.now() - drawStart);
-    perf.recordFrame(dt * 1000);
+    const drawMs = performance.now() - drawStart;
+    perf.recordDraw(drawMs);
+    perf.recordFrame(elapsedMs);
+    /*
+     * Keep the bad ones whole. `recordFrame` folds this into an average, which
+     * is what every previous investigation had to work from and why none of
+     * them could see a spike; this keeps the frame itself, stage by stage.
+     */
+    /*
+     * A far looser cap than `recordFrame`'s sixty milliseconds. That one keeps
+     * a tab-switch out of a rolling average, where one outlier poisons every
+     * later reading; here the outliers are the entire subject, and a seventy
+     * millisecond hitch is precisely the frame worth keeping. Half a second
+     * still excludes a switched tab or a breakpoint.
+     */
+    if (elapsedMs < 500) {
+      const d = game.field.lastDirty;
+      perf.considerFrame({
+        at: Math.round(performance.now()) / 1000,
+        frameMs: Math.round(elapsedMs * 100) / 100,
+        drawMs: Math.round(drawMs * 100) / 100,
+        simMs: Math.round((drawStart - simStart) * 100) / 100,
+        path: renderer.lastFlooded ? 'flooded' : 'composite',
+        dirty: renderer.lastFlooded ? `${renderer.width}x${renderer.height}` : `${d.width}x${d.height}`,
+        stages: Object.fromEntries(
+          Object.entries(renderer.frameStages)
+            .filter(([, v]) => v > 0.05)
+            .map(([k, v]) => [k, Math.round(v * 100) / 100]),
+        ),
+      });
+    }
 
     requestAnimationFrame(frame);
   }

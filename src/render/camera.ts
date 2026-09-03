@@ -22,6 +22,26 @@ export class Camera {
    */
   zoom = 1;
 
+  /**
+   * The fraction of a pixel the snap below threw away, in CSS pixels.
+   *
+   * Snapping the origin keeps the world blit on the one-to-one fast path, and
+   * that is worth keeping — measured on Firefox, a fractional source rectangle
+   * costs 5.2x a whole-pixel one. But snapping also quantises the *scroll*: a
+   * camera tracking a walker at 3.5px a frame moves 4,3,4,3, and that half-pixel
+   * oscillation at thirty hertz reads as the whole view shivering while you
+   * walk. It does so at a flawless sixty frames a second, which is why no
+   * profile ever showed it — nothing about it is slow, and the thing that is
+   * uneven is distance, not time.
+   *
+   * So the remainder is not discarded. The renderer hands it to the compositor
+   * as a transform on the canvas element, which slides a whole layer by a
+   * fraction of a pixel in hardware for nothing. Whole pixels for the blit,
+   * fractions for the eye.
+   */
+  subX = 0;
+  subY = 0;
+
   constructor(
     x: number,
     y: number,
@@ -48,7 +68,9 @@ export class Camera {
    *
    * The origin is snapped to whole device pixels. A fractional source rectangle
    * makes `drawImage` resample even when the scale is one to one, and the world
-   * blit is far too big to pay that for a fraction of a pixel of camera smoothness.
+   * blit is far too big to pay that for a fraction of a pixel of camera
+   * smoothness. What the snap discards is kept in `subX`/`subY` and put back by
+   * the compositor, so the smoothness costs nothing either.
    */
   frame(viewportWidth: number, viewportHeight: number, pixelScale = 1): void {
     this.zoom = Math.max(1, viewportWidth / this.worldWidth, viewportHeight / this.worldHeight);
@@ -71,8 +93,12 @@ export class Camera {
       this.worldHeight - this.viewHeight / 2,
     );
     const quantum = 1 / (this.zoom * pixelScale);
-    this.viewX = Math.round((cx - this.viewWidth / 2) / quantum) * quantum;
-    this.viewY = Math.round((cy - this.viewHeight / 2) / quantum) * quantum;
+    const rawX = cx - this.viewWidth / 2;
+    const rawY = cy - this.viewHeight / 2;
+    this.viewX = Math.round(rawX / quantum) * quantum;
+    this.viewY = Math.round(rawY / quantum) * quantum;
+    this.subX = (rawX - this.viewX) * this.zoom;
+    this.subY = (rawY - this.viewY) * this.zoom;
   }
 
   toScreenX(worldX: number): number {
