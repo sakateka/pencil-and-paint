@@ -1,5 +1,4 @@
 import { TAU } from '../core/math';
-import { PENCIL } from '../media/medium';
 import { STONE, STONE_EDGE, STRAW, STRAW_EDGE, WATER, WOOD, WOOD_EDGE } from './palette';
 import { SCARECROW, WELL } from './layout';
 
@@ -40,10 +39,14 @@ export const CLOSE_SPAN = 200;
 /**
  * Down the well.
  *
- * The joke is at the bottom, and it is the whole reason the well is on this
- * list: the water gives you back your own face, and it gives it back in pencil.
- * Nothing this valley reflects has been coloured in yet — you carry the colour,
- * and you cannot carry it into your own reflection.
+ * Straight down, which is the one view of it standing height cannot give you:
+ * courses of stone running away and narrowing, moss as far down as the light
+ * reaches, and cold water a long way below that.
+ *
+ * There was a reflection of the walker in the water here for a while. It read
+ * as a smudge floating in the dark rather than as anybody, and it broke up the
+ * depth the courses had just spent seven rings establishing — so the water is
+ * water again.
  */
 function drawWell(ctx: CanvasRenderingContext2D): void {
   // The shaft, seen straight down: stones in courses, narrowing into the dark.
@@ -112,32 +115,6 @@ function drawWell(ctx: CanvasRenderingContext2D): void {
   ctx.ellipse(0, 12, 33, 27, 0, 0, TAU);
   ctx.fill();
 
-  /*
-   * And you, looking back, in graphite.
-   *
-   * Drawn small and simply — a head, shoulders, and the suggestion of a face —
-   * because a reflection at the bottom of a well is not a portrait. Kept to
-   * PENCIL on purpose: see above.
-   */
-  ctx.save();
-  ctx.globalAlpha = 0.5;
-  ctx.strokeStyle = PENCIL;
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.arc(0, 6, 8, 0, TAU);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(-13, 26);
-  ctx.quadraticCurveTo(0, 15, 13, 26);
-  ctx.stroke();
-  ctx.globalAlpha = 0.36;
-  ctx.beginPath();
-  ctx.arc(-3, 5, 1.4, 0, TAU);
-  ctx.moveTo(5, 5);
-  ctx.arc(4, 5, 1.4, 0, TAU);
-  ctx.stroke();
-  ctx.restore();
-
   // The ripples that say it is water and not a mirror.
   ctx.strokeStyle = 'rgba(214,238,247,.4)';
   ctx.lineWidth = 1.4;
@@ -184,46 +161,58 @@ function drawWell(ctx: CanvasRenderingContext2D): void {
   ctx.stroke();
 }
 
+const SACKING = '#d8c49a';
+const SACKING_EDGE = '#a4906a';
+
+/** Where the flat of the brim sits — the crown rises from it, the head through it. */
+const BRIM_Y = -52;
+
+/**
+ * The head, as one shape, because four things are cut to it.
+ *
+ * Tall enough that its top goes up past the brim and is lost under the crown,
+ * which is what makes the hat look worn rather than balanced on top.
+ */
+function head(ctx: CanvasRenderingContext2D): void {
+  ctx.beginPath();
+  ctx.ellipse(0, 2, 60, 64, 0, 0, TAU);
+}
+
 /**
  * The scarecrow's face.
  *
  * Somebody made this, and at standing height you cannot see that they gave it
- * two odd buttons and a mouth sewn on crooked. The bird on the hat brim is the
- * rest of the joke: it has been there a while and has no intention of moving.
+ * two odd buttons and a mouth sewn on crooked by hand.
  */
 function drawScarecrow(ctx: CanvasRenderingContext2D): void {
-  // The hat brim, across the top.
+  /*
+   * A hat is a disc with a head through the middle of it, and the drawing has
+   * to be built in that order or it never sits right.
+   *
+   * The whole brim goes down first, so its far edge is behind everything. Then
+   * the head, rising up through the hole in it. Then the crown, on top of the
+   * skull. Then the near half of the brim again, over the face — because the
+   * edge nearest you passes in front of the forehead, and that one overlap is
+   * the entire difference between a worn hat and a hat floating above a ball.
+   */
+  const brim = (from: number, to: number): void => {
+    ctx.beginPath();
+    ctx.ellipse(0, BRIM_Y, 92, 20, 0, from, to);
+    ctx.closePath();
+  };
+
   ctx.fillStyle = STRAW;
-  ctx.beginPath();
-  ctx.ellipse(0, -52, 92, 20, 0, 0, TAU);
+  brim(0, TAU);
   ctx.fill();
   ctx.strokeStyle = STRAW_EDGE;
   ctx.lineWidth = 2.2;
   ctx.stroke();
-  ctx.fillStyle = STRAW_EDGE;
-  ctx.globalAlpha = 0.28;
-  ctx.beginPath();
-  ctx.ellipse(0, -50, 92, 20, 0, 0, TAU);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  // The crown of it, going up out of the frame.
-  ctx.fillStyle = STRAW;
-  ctx.beginPath();
-  ctx.moveTo(-40, -54);
-  ctx.lineTo(-32, -100);
-  ctx.lineTo(32, -100);
-  ctx.lineTo(40, -54);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = STRAW_EDGE;
-  ctx.stroke();
 
-  // The sacking head.
-  ctx.fillStyle = '#d8c49a';
-  ctx.beginPath();
-  ctx.ellipse(0, 6, 62, 58, 0, 0, TAU);
+  // The sacking head, whose top disappears into the hat.
+  ctx.fillStyle = SACKING;
+  head(ctx);
   ctx.fill();
-  ctx.strokeStyle = '#a4906a';
+  ctx.strokeStyle = SACKING_EDGE;
   ctx.lineWidth = 2.4;
   ctx.stroke();
 
@@ -231,17 +220,62 @@ function drawScarecrow(ctx: CanvasRenderingContext2D): void {
   ctx.strokeStyle = 'rgba(140,120,88,.34)';
   ctx.lineWidth = 1;
   ctx.save();
-  ctx.beginPath();
-  ctx.ellipse(0, 6, 62, 58, 0, 0, TAU);
+  head(ctx);
   ctx.clip();
   for (let i = -70; i <= 70; i += 7) {
     ctx.beginPath();
-    ctx.moveTo(i, -56);
+    ctx.moveTo(i, -62);
     ctx.lineTo(i, 68);
-    ctx.moveTo(-70, i + 6);
-    ctx.lineTo(70, i + 6);
+    ctx.moveTo(-70, i + 2);
+    ctx.lineTo(70, i + 2);
     ctx.stroke();
   }
+  ctx.restore();
+
+  // The crown, sitting on the skull.
+  ctx.fillStyle = STRAW;
+  ctx.beginPath();
+  ctx.moveTo(-41, BRIM_Y);
+  ctx.lineTo(-35, -96);
+  ctx.lineTo(35, -96);
+  ctx.lineTo(41, BRIM_Y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = STRAW_EDGE;
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+
+  /*
+   * And the near half of the brim, back over the face.
+   *
+   * The straight edge of this half-disc lies exactly along the middle of the
+   * brim already drawn, in the same colour, so it leaves no seam — it simply
+   * lifts the front of the brim in front of the head.
+   */
+  ctx.fillStyle = STRAW;
+  brim(0, Math.PI);
+  ctx.fill();
+  ctx.fillStyle = STRAW_EDGE;
+  ctx.globalAlpha = 0.28;
+  ctx.beginPath();
+  ctx.ellipse(0, BRIM_Y + 2, 92, 20, 0, 0, Math.PI);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = STRAW_EDGE;
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.ellipse(0, BRIM_Y, 92, 20, 0, 0, Math.PI);
+  ctx.stroke();
+
+  // The shadow it throws across the forehead, just under that near edge.
+  ctx.save();
+  head(ctx);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(96,80,56,.22)';
+  ctx.beginPath();
+  ctx.ellipse(0, -30, 92, 22, 0, 0, TAU);
+  ctx.fill();
   ctx.restore();
 
   /*
@@ -297,49 +331,10 @@ function drawScarecrow(ctx: CanvasRenderingContext2D): void {
   for (let i = 0; i < 11; i++) {
     const sx = -48 + i * 9.6;
     ctx.beginPath();
-    ctx.moveTo(sx, 58);
-    ctx.lineTo(sx + Math.sin(i * 2.3) * 9, 58 + 16 + Math.cos(i * 1.7) * 6);
+    ctx.moveTo(sx, 60);
+    ctx.lineTo(sx + Math.sin(i * 2.3) * 9, 60 + 16 + Math.cos(i * 1.7) * 6);
     ctx.stroke();
   }
-
-  /*
-   * And the bird, sitting on the brim, entirely unbothered.
-   *
-   * Which is the other thing you cannot see from the path, and rather the point
-   * of a scarecrow that has been standing in one field for a long time.
-   */
-  ctx.save();
-  ctx.translate(58, -62);
-  ctx.fillStyle = '#5e5348';
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 15, 10, -0.16, 0, TAU);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(-11, -7, 7, 0, TAU);
-  ctx.fill();
-  // Tail, cocked up over the brim.
-  ctx.beginPath();
-  ctx.moveTo(12, -1);
-  ctx.lineTo(27, -9);
-  ctx.lineTo(13, 4);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#f2b33d';
-  ctx.beginPath();
-  ctx.moveTo(-17, -7);
-  ctx.lineTo(-25, -5);
-  ctx.lineTo(-17, -3);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#f6f1e4';
-  ctx.beginPath();
-  ctx.arc(-13, -9, 2.2, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = '#2f2723';
-  ctx.beginPath();
-  ctx.arc(-13, -9, 1.1, 0, TAU);
-  ctx.fill();
-  ctx.restore();
 }
 
 /**
