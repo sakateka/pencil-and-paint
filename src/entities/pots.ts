@@ -88,24 +88,38 @@ function drawPotAt(ctx: CanvasRenderingContext2D, p: Pot, t: number, medium: Med
  */
 export function drawPot(ctx: CanvasRenderingContext2D, p: Pot, medium: Medium): void {
   if (p.awake) {
-    p.frozenSprite = null;
     withBoil(true, () => drawPotAt(ctx, p, p.clock, medium, 1));
     return;
   }
   if (medium === 'color') return; // masked out anyway
-  ctx.drawImage(frozenPotSprite(p), p.x - SPRITE_ORIGIN_X, p.y - SPRITE_ORIGIN_Y);
+  // The bob is left out of the sprite, so it is applied on the way out.
+  const bob = Math.sin(p.clock * 2.2 + p.phase) * 3.5;
+  ctx.drawImage(frozenPotSprite(p), p.x - SPRITE_ORIGIN_X, p.y + bob - SPRITE_ORIGIN_Y);
 }
 
+/**
+ * The still life, baked once and kept.
+ *
+ * It used to be thrown away the moment the colour reached the pot and baked
+ * again when the colour left, because the bob was baked into it and the pot's
+ * clock had moved on in between. `awake` is recomputed from the lit radius
+ * every tick with no hysteresis, so a pot sitting on the edge of the circle
+ * allocated a fresh canvas on every step in and out — which at the edge is
+ * every frame. Each new canvas is a new texture for the browser to upload, and
+ * that churn is what drives an accelerated canvas past its cache-miss ratio and
+ * drops the whole session onto the software path.
+ *
+ * So the bob is left out of the bake — `-phase / 2.2` is the moment it passes
+ * through zero — and applied when the sprite is drawn. Nothing else in the
+ * still life moves, and the jitter is seeded from the phase rather than the
+ * clock, so what is left never needs baking twice.
+ */
 function frozenPotSprite(p: Pot): HTMLCanvasElement {
   if (p.frozenSprite) return p.frozenSprite;
   const { canvas, ctx } = createSurface(SPRITE_WIDTH, SPRITE_HEIGHT);
   ctx.translate(SPRITE_ORIGIN_X, SPRITE_ORIGIN_Y);
-  const atX = p.x;
-  const atY = p.y;
   const local = { ...p, x: 0, y: 0 };
-  withBoil(false, () => drawPotAt(ctx, local, p.clock, 'sketch', 1));
-  void atX;
-  void atY;
+  withBoil(false, () => drawPotAt(ctx, local, -p.phase / 2.2, 'sketch', 1));
   p.frozenSprite = canvas;
   return canvas;
 }
