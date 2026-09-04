@@ -120,6 +120,31 @@ function haze(): HTMLCanvasElement {
  */
 let hazeUrl: string | undefined;
 
+/**
+ * How coarsely the mask may be sized, in CSS pixels.
+ *
+ * Moving a mask is cheap: the compositor offsets an image it already has.
+ * *Resizing* one is not — the image has to be rasterised again at the new
+ * scale, and at a device pixel ratio of two that is several hundred thousand
+ * pixels. The colour radius both breathes and pulses, so the exact size
+ * differs every single frame, which asked for that every single frame.
+ *
+ * Measured on the user's machine with `pencil.layers()`: the whole colour
+ * layer was half a core, and freezing the mask took it to a fifth of one.
+ * Compositing the layer itself was almost free, and so was the third layer
+ * that carries the walker — it was the resizing.
+ *
+ * Four pixels, against a blob some four hundred across, so the size settles a
+ * few times a second instead of sixty. What it costs is that the breathing
+ * arrives in one-percent steps rather than smoothly, on an edge that is a long
+ * soft fade with nothing in it to step against.
+ */
+const MASK_STEP = 4;
+
+function quantiseMaskSize(size: number): number {
+  return Math.round(size / MASK_STEP) * MASK_STEP;
+}
+
 /** The baked haze itself, for anything that must apply the mask by hand. */
 export function hazeMask(): HTMLCanvasElement {
   return haze();
@@ -216,7 +241,11 @@ export class ColorField {
     // The breathing, which used to be in the shape itself and then in the
     // transform of the punch. Same number, applied to the mask's size.
     const breath = 1 + Math.sin(t * 0.33) * 0.014;
-    const size = ((radius * breath) / HAZE_RADIUS) * SPRITE_RADIUS * 2;
-    return { size, left: centreX - size / 2, top: centreY - size / 2 };
+    const size = quantiseMaskSize(((radius * breath) / HAZE_RADIUS) * SPRITE_RADIUS * 2);
+    return {
+      size,
+      left: Math.round(centreX - size / 2),
+      top: Math.round(centreY - size / 2),
+    };
   }
 }
