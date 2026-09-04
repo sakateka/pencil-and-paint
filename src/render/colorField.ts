@@ -164,22 +164,28 @@ export class ColorField {
    * rotated. So the breathing was taken out and the turn was given up, and the
    * blob sat there perfectly still for a year.
    *
-   * Both can come back now, and the next commit brings them; this one only
-   * moves the frame, and a change of engine and a change of how the game looks
-   * are two things to be able to judge separately.
+   * Both are back. They cost nothing: a sprite that is scaled and turned is a
+   * sprite, and the shader does not care what shape it was handed.
    */
   hazeAt(
     centreX: number,
     centreY: number,
     radius: number,
-    // Read from the next commit, which is what puts the movement back.
-    _elapsed: number,
+    elapsed: number,
   ): { x: number; y: number; radius: number; angle: number } {
     return {
       x: centreX,
       y: centreY,
-      radius,
-      angle: 0,
+      /* Four units either side of the true radius, a cycle every four
+         seconds. Deliberately *visual only*: `litRadius` is what the game asks
+         when it wants to know whether something has been reached, and that is
+         not touched here. The rule is that nothing happens outside the colour,
+         and a haze that breathed the reach in and out would make the edge of
+         the rule wobble. */
+      radius: radius + Math.sin(elapsed * 1.55) * 4,
+      /* One turn every two minutes, so the rim's wobble never sits still long
+         enough to read as a shape. */
+      angle: elapsed * (TAU / 120),
     };
   }
 }
