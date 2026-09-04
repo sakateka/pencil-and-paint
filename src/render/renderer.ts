@@ -342,12 +342,14 @@ export class Renderer {
     this.width = width;
     this.height = height;
     this.scale = scale;
-    for (const surface of [this.canvas, this.colourCanvas, this.overCanvas]) {
+    for (const surface of [this.canvas, this.overCanvas]) {
       surface.width = Math.max(1, Math.round(width * scale));
       surface.height = Math.max(1, Math.round(height * scale));
       surface.style.width = `${width}px`;
       surface.style.height = `${height}px`;
     }
+    // The colour layer sizes itself to the blob, every frame it draws one.
+    this.colourSize = 0;
     this.buildPaper();
   }
 
@@ -444,6 +446,13 @@ export class Renderer {
        * visible. That is the saving the flooded path always had, kept.
        */
       // Nothing to cut it to: the colour has covered the window.
+      /*
+       * Nothing to cut it to: the colour has covered the window. The layer
+       * goes back to being the size of the window for this, which is also the
+       * only time it is ever that big.
+       */
+      this.sizeColourToWindow();
+      this.moveColour(0, 0, camera);
       this.maskColour(null);
       this.time('worldBlit', () => this.blitWorld(colour, world, 'color', camera), colour);
       this.time(
@@ -584,11 +593,15 @@ export class Renderer {
     const next = x || y ? `translate3d(${x.toFixed(3)}px, ${y.toFixed(3)}px, 0)` : '';
     if (next === this.scrolledBy) return;
     this.scrolledBy = next;
-    // Both layers, by the same fraction. They are drawn from one camera and
-    // have to move as one thing — a pencil layer half a pixel from its colour
-    // is worse than either of them being half a pixel out.
+    /*
+     * The pencil and the layer above it, by the same fraction. They are drawn
+     * from one camera and have to move as one thing.
+     *
+     * Not the colour layer: it is not the size of the window any more and
+     * carries its own translation, which already has this fraction folded into
+     * it. See `placeColour`.
+     */
     this.canvas.style.transform = next;
-    this.colourCanvas.style.transform = next;
     this.overCanvas.style.transform = next;
   }
 
@@ -735,58 +748,83 @@ export class Renderer {
   }
 
   /**
-   * Draw the coloured world onto the upper layer and cut it to the haze.
+   * Draw the coloured world onto its own layer, which is the shape of the haze.
    *
-   * All of it inside the dirty rectangle, and all of it on the layer that is
-   * shown. There is no scratch surface any more and no mask surface either:
-   * the colour is drawn straight where it belongs, and `destination-in`
-   * against the baked haze sprite cuts it back in place.
+   * The colour layer is not the size of the window. It is exactly the box the
+   * haze occupies, it wears the haze as a CSS mask pinned to its own edges,
+   * and it is put where it belongs with a `transform`.
    *
-   * What that removed, per frame: a full write of the dirty rectangle into an
-   * offscreen canvas, a full write of the mask into another, and the copy back
-   * over the top. Two of those three surfaces were rewritten every frame and
-   * then read as a texture in the same frame, which is the one thing an
-   * accelerated canvas cannot cache — see the note on the class.
+   * That arrangement is the whole point, and it took three goes to reach.
+   * `destination-in` on the canvas cost fourteen milliseconds a frame, because
+   * Firefox's accelerated canvas cannot do it and demotes the layer to
+   * software for good. A CSS mask fixed that and cost half a core in the
+   * compositor instead, because `mask-position` and `mask-size` were rewritten
+   * every frame and every rewrite repaints the masked layer — a cost that grows
+   * with the blob, which is why it was bearable at the first paint pot and
+   * 130% of a core by the thirteenth.
+   *
+   * Measured on the machine with the fault: freezing the mask dropped it to
+   * the floor, and so did removing the layer altogether. A mask that does not
+   * change is nearly free over a canvas that does.
+   *
+   * So nothing about the mask changes any more. The size is `100% 100%` of an
+   * element sized to the blob; the element is resized once per paint pot, when
+   * the radius actually changes; and the only thing written per frame is
+   * `transform`, which a compositor answers by moving a layer it already has.
    */
   private compositeColor(scene: Scene, centreX: number, centreY: number, radius: number): void {
     const { camera, field, world } = scene;
     const { colour, scale } = this;
 
-    const dirty = field.computeDirty(centreX, centreY, radius, this.width, this.height);
-    if (dirty.empty) {
-      // Off screen entirely. The layer still holds the last colour it painted,
-      // so the mask has to be taken down to nothing rather than left where it
-      // was — otherwise a stale blob hangs at the edge.
-      this.maskColour({ size: 0, left: 0, top: 0 });
-      return;
-    }
+    // Kept for the diagnostics and the tests, which ask how much of the screen
+    // the colour covers. The layer itself is not clamped to the window: it may
+    // hang off the edge, and the browser clips it there for nothing.
+    field.computeDirty(centreX, centreY, radius, this.width, this.height);
 
     const compositeStarted = performance.now();
     let part = performance.now();
 
+    const box = field.maskAt(centreX, centreY, radius);
     /*
-     * The clip, in device pixels. It bounds the work to the blob's box: the
-     * live things drawn below would otherwise paint right across the layer,
-     * where the mask hides them anyway.
+     * Ordinarily the layer is cut to the blob. During the ending's flood it is
+     * not: the radius climbs every frame there, and an element resized every
+     * frame is a fresh allocation every frame — measured in the bunny walk as
+     * eight dropped frames in the two seconds of the sweep, at sizes up to
+     * four thousand pixels square. So past the size of the window the layer
+     * goes back to being the window, and the mask is placed on it by hand for
+     * those couple of seconds. Both halves are cheap; only doing both at once
+     * would not be.
      */
-    colour.save();
-    colour.setTransform(1, 0, 0, 1, 0, 0);
-    colour.beginPath();
-    colour.rect(dirty.x * scale, dirty.y * scale, dirty.width * scale, dirty.height * scale);
-    colour.clip();
+    const fits = box.size <= Math.max(this.width, this.height);
+    const left = fits ? box.left : 0;
+    const top = fits ? box.top : 0;
+    if (fits) this.sizeColourTo(box.size);
+    else this.sizeColourToWindow();
+    this.moveColour(left, top, camera);
+    this.maskColour(fits ? 'fit' : box);
+    if (this.colourSize <= 0) return;
 
-    colour.setTransform(scale, 0, 0, scale, 0, 0);
+    /*
+     * The element's own origin. Everything below draws in screen coordinates,
+     * as it did when this was the whole window, and this transform is what
+     * puts the window's coordinates onto a canvas that is only a corner of it.
+     *
+     * No clip: the edges of the canvas are the clip, and they cost nothing.
+     */
+    const width = fits ? box.size : this.width;
+    const height = fits ? box.size : this.height;
+    colour.setTransform(scale, 0, 0, scale, -left * scale, -top * scale);
     world.drawRegion(
       colour,
       'color',
-      camera.viewX + dirty.x / camera.zoom,
-      camera.viewY + dirty.y / camera.zoom,
-      dirty.width / camera.zoom,
-      dirty.height / camera.zoom,
-      dirty.x,
-      dirty.y,
-      dirty.width,
-      dirty.height,
+      camera.viewX + left / camera.zoom,
+      camera.viewY + top / camera.zoom,
+      width / camera.zoom,
+      height / camera.zoom,
+      left,
+      top,
+      width,
+      height,
     );
     this.settle(colour);
     this.blend('colourTiles', performance.now() - part);
@@ -796,58 +834,87 @@ export class Renderer {
     this.drawLive(colour, scene, 'color');
     this.settle(colour);
     this.blend('colourLive', performance.now() - part);
-    part = performance.now();
 
-    colour.restore();
-
-    // The cut itself: a style on the element, done by the compositor.
-    if (!this.skipPunch) this.maskColour(field.maskAt(centreX, centreY, radius));
-    this.blend('maskPunch', performance.now() - part);
-
-    colour.setTransform(scale, 0, 0, scale, 0, 0);
     this.blend('composite', performance.now() - compositeStarted);
   }
 
-  /** The mask description last written to the element, so it is not rewritten. */
-  private maskedBy = '';
-  /** Where the mask sits, kept so a test can reproduce it off-screen. */
-  private maskWhere: { size: number; left: number; top: number } | null = null;
-
-  /**
-   * Paint the mask into a context, the way the compositor applies it.
-   *
-   * For `pencil.composited()` only. The mask is a style on an element now, so
-   * reading the colour canvas back gives the whole painted rectangle rather
-   * than the shape of the light — a test looking for graphite outside the haze
-   * would find colour there and be wrong about what the player sees.
-   */
-  drawMaskInto(ctx: CanvasRenderingContext2D): void {
-    const at = this.maskWhere;
-    if (!at) {
-      // No mask: the ending, where the colour covers everything.
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, this.colourCanvas.width, this.colourCanvas.height);
-      return;
-    }
-    const s = this.scale;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(hazeMask(), at.left * s, at.top * s, at.size * s, at.size * s);
+  /** Give the colour layer the whole window, for the ending. */
+  private sizeColourToWindow(): void {
+    if (this.colourSize === -1) return;
+    this.colourSize = -1;
+    this.colourCanvas.width = Math.max(1, Math.round(this.width * this.scale));
+    this.colourCanvas.height = Math.max(1, Math.round(this.height * this.scale));
+    this.colourCanvas.style.width = `${this.width}px`;
+    this.colourCanvas.style.height = `${this.height}px`;
   }
 
+  /** The size the colour element is cut to, in CSS pixels. Zero before the first frame. */
+  private colourSize = 0;
+  /** The translation last written to the colour element. */
+  private colourAt = '';
+
   /**
-   * Put the haze on the colour element as a CSS mask.
+   * Size the colour layer to the haze and put it where the haze is.
    *
-   * Four properties rather than the shorthand, because only two of them change
-   * from frame to frame and the browser is better off being told exactly that.
-   * Written only when the string differs, like the sub-pixel scroll.
-   *
-   * `null` takes the mask off entirely — for the ending, where the colour has
-   * covered the window and there is nothing left to cut it to.
+   * The resize is the expensive half and happens once per paint pot; the move
+   * is the cheap half and happens every frame. Keeping those two apart is the
+   * fix. The camera's discarded fraction of a pixel is folded into the move,
+   * because this element is no longer carried along by `scrollSubPixel`.
    */
-  private maskColour(at: { size: number; left: number; top: number } | null): void {
+  private sizeColourTo(size: number): void {
+    if (size === this.colourSize) return;
+    this.colourSize = size;
+    const pixels = Math.max(1, Math.round(size * this.scale));
+    this.colourCanvas.width = pixels;
+    this.colourCanvas.height = pixels;
+    this.colourCanvas.style.width = `${size}px`;
+    this.colourCanvas.style.height = `${size}px`;
+  }
+
+  /** Put the colour layer where it belongs, carrying the camera's lost fraction. */
+  private moveColour(left: number, top: number, camera: Camera): void {
+    this.colourLeft = left;
+    this.colourTop = top;
+    const x = left - camera.subX;
+    const y = top - camera.subY;
+    const next = `translate3d(${x.toFixed(3)}px, ${y.toFixed(3)}px, 0)`;
+    if (next === this.colourAt) return;
+    this.colourAt = next;
+    this.colourCanvas.style.transform = next;
+  }
+
+/**
+   * How the haze is put on the colour element.
+   *
+   *   'fit'   pinned to the element's own edges, because the element IS the
+   *           blob. Written once per paint pot, when the element is resized.
+   *   a box   placed by hand on a window-sized element. Only the ending's
+   *           flood, where the radius climbs every frame.
+   *   null    no mask at all: the colour has covered the window.
+   */
+  private maskedBy = '';
+  private maskWhere: 'fit' | { size: number; left: number; top: number } | null = null;
+
+  /**
+   * Put the haze on the colour element, move it, or take it off.
+   *
+   * The `fit` case is the one that matters and the one the frame is built
+   * around. Every rewrite of a mask property repaints the masked layer, and
+   * that repaint grows with the blob — measured on the machine with the fault
+   * at half a core by the first paint pot and 130% of one by the thirteenth,
+   * while freezing the mask dropped it to the floor. So in ordinary play
+   * nothing here is written per frame: the mask is `100% 100%` of an element
+   * that is exactly the blob, and the blob is moved by `transform`, which a
+   * compositor answers by offsetting a layer it already has.
+   */
+  private maskColour(at: 'fit' | { size: number; left: number; top: number } | null): void {
     if (this.freezeMask && this.maskedBy) return;
-    const next = at ? `${at.size.toFixed(2)} ${at.left.toFixed(2)} ${at.top.toFixed(2)}` : '';
+    const next =
+      at === null
+        ? 'none'
+        : at === 'fit'
+          ? 'fit'
+          : `${at.size.toFixed(2)} ${at.left.toFixed(2)} ${at.top.toFixed(2)}`;
     this.maskWhere = at;
     if (next === this.maskedBy) return;
     this.maskedBy = next;
@@ -857,14 +924,14 @@ export class Renderer {
       webkitMaskPosition: string;
       webkitMaskRepeat: string;
     };
-    if (!at) {
+    if (at === null) {
       style.maskImage = 'none';
       style.webkitMaskImage = 'none';
       return;
     }
     const url = `url(${hazeMaskUrl()})`;
-    const size = `${at.size.toFixed(2)}px ${at.size.toFixed(2)}px`;
-    const position = `${at.left.toFixed(2)}px ${at.top.toFixed(2)}px`;
+    const size = at === 'fit' ? '100% 100%' : `${at.size.toFixed(2)}px ${at.size.toFixed(2)}px`;
+    const position = at === 'fit' ? '0 0' : `${at.left.toFixed(2)}px ${at.top.toFixed(2)}px`;
     style.maskImage = url;
     style.maskRepeat = 'no-repeat';
     style.maskSize = size;
@@ -874,6 +941,37 @@ export class Renderer {
     style.webkitMaskSize = size;
     style.webkitMaskPosition = position;
   }
+
+  /**
+   * Paint the mask into a context, the way the compositor applies it.
+   *
+   * For `pencil.composited()` only. The mask is a style on an element now, so
+   * reading the colour canvas back gives the whole painted square rather than
+   * the shape of the light.
+   */
+  drawMaskInto(ctx: CanvasRenderingContext2D): void {
+    const at = this.maskWhere;
+    const s = this.scale;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (at === null) {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, this.colourCanvas.width, this.colourCanvas.height);
+      return;
+    }
+    if (at === 'fit') {
+      ctx.drawImage(hazeMask(), 0, 0, this.colourCanvas.width, this.colourCanvas.height);
+      return;
+    }
+    ctx.drawImage(hazeMask(), at.left * s, at.top * s, at.size * s, at.size * s);
+  }
+
+    /** Where the colour layer sits on screen, in CSS pixels. For `composited`. */
+  get colourOrigin(): { left: number; top: number } {
+    return { left: this.colourLeft, top: this.colourTop };
+  }
+
+  private colourLeft = 0;
+  private colourTop = 0;
 
   /**
    * Tall scenery standing in front of the walker, laid back over them.
@@ -900,13 +998,13 @@ export class Renderer {
   }
 
   /**
-   * Draw into a different canvas from now on, and start the scratch afresh.
+   * Draw on a different set of elements from now on.
    *
-   * For the rescue in `systems/rescue.ts`. Every surface is replaced, not just
-   * the displayed one: Firefox's decision to stop accelerating is made per
-   * canvas, and the scratch and the paper are canvases the frame leans on just
-   * as hard. The old ones are shrunk to a pixel on the way out so the memory
-   * goes back now rather than whenever the collector gets round to it.
+   * For `pencil.rescue()`. Every layer is replaced: the browser's decision to
+   * stop accelerating is made per canvas, and leaving one of the three behind
+   * leaves a third of the frame on the software path. The old ones are shrunk
+   * to a pixel on the way out so the memory goes back now rather than whenever
+   * the collector gets round to it.
    *
    * The caller must `resize` afterwards — nothing here knows the viewport.
    */
@@ -926,10 +1024,13 @@ export class Renderer {
     this.colour = context2d(colourCanvas, { alpha: true });
     this.over = context2d(overCanvas, { alpha: true });
     this.maskedBy = '';
+    this.maskWhere = null;
+    this.colourSize = 0;
+    this.colourAt = '';
     this.paper = createSurface(1, 1);
   }
 
-  /** Release both layers and the paper. See `World.dispose`. */
+  /** Release every layer and the paper. See `World.dispose`. */
   dispose(): void {
     for (const canvas of [this.canvas, this.colourCanvas, this.overCanvas, this.paper.canvas]) {
       canvas.width = 1;
@@ -940,8 +1041,8 @@ export class Renderer {
   /**
    * Direct access for the diagnostics overlay, which draws last.
    *
-   * The upper layer, because "last" now means the topmost of two — a readout
-   * drawn on the pencil would sit underneath the colour and the paper.
+   * The topmost layer: a readout drawn on the pencil would sit underneath the
+   * colour and the paper.
    */
   get context(): CanvasRenderingContext2D {
     return this.over;

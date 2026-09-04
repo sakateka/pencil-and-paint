@@ -889,7 +889,14 @@ async function boot(): Promise<void> {
       cut.ctx.globalCompositeOperation = 'destination-in';
       renderer.drawMaskInto(cut.ctx);
       cut.ctx.globalCompositeOperation = 'source-over';
-      shot.ctx.drawImage(cut.canvas, -x, -y);
+      // The colour layer is the size of the blob and sits where the blob is,
+      // so it has to be put back at that offset rather than at the origin.
+      const origin = renderer.colourOrigin;
+      shot.ctx.drawImage(
+        cut.canvas,
+        Math.round(origin.left * renderer.scale) - x,
+        Math.round(origin.top * renderer.scale) - y,
+      );
       cut.canvas.width = 1;
       cut.canvas.height = 1;
       shot.ctx.drawImage(overElement, -x, -y);
