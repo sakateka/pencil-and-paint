@@ -110,6 +110,10 @@ function haze(): HTMLCanvasElement {
   return hazeSprite;
 }
 
+/** Throw the baked haze away, so the next frame bakes it again. */
+export function forgetHaze(): void {
+  hazeSprite = undefined;
+}
 
 /**
  * How coarsely the mask may be drawn, against the device pixel grid.
@@ -130,6 +134,21 @@ export class ColorField {
     this.surface = createSurface(1, 1);
   }
 
+  /**
+   * Start again on a brand-new surface, throwing the baked haze away with it.
+   *
+   * For the rescue in `systems/rescue.ts`: a canvas Firefox has given up on
+   * stays given up on for as long as it exists, and that includes the offscreen
+   * ones. The sprite goes too, because it was baked into a texture belonging to
+   * the old set.
+   */
+  renew(): void {
+    const { width, height } = this.surface.canvas;
+    this.surface.canvas.width = 1;
+    this.surface.canvas.height = 1;
+    this.surface = createSurface(width, height);
+    forgetHaze();
+  }
 
   /**
    * The mask is only ever painted inside the dirty rectangle, so it is

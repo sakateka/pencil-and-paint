@@ -116,8 +116,8 @@ export interface StageTimings {
 }
 
 export class Renderer {
-  private readonly ctx: CanvasRenderingContext2D;
-  private readonly temp: Surface;
+  private ctx: CanvasRenderingContext2D;
+  private temp: Surface;
 
   /** Viewport in CSS pixels. */
   width = 0;
@@ -265,9 +265,9 @@ export class Renderer {
    * is the cheapest full-screen operation there is — a pattern fill and a
    * gradient every frame would have given most of the saving back.
    */
-  private readonly paper: Surface;
+  private paper: Surface;
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  constructor(private canvas: HTMLCanvasElement) {
     // Opaque. The compositor can then copy rather than blend a full-screen
     // layer every frame. This was transparent for a while because a resize
     // clears the canvas and an opaque one clears to black, which flashed — but
@@ -779,6 +779,28 @@ export class Renderer {
       const sprite = world.spriteFor(occluder, lit ? 'color' : 'sketch');
       ctx.drawImage(sprite.canvas, sprite.x, sprite.y);
     }
+  }
+
+  /**
+   * Draw into a different canvas from now on, and start the scratch afresh.
+   *
+   * For the rescue in `systems/rescue.ts`. Every surface is replaced, not just
+   * the displayed one: Firefox's decision to stop accelerating is made per
+   * canvas, and the scratch and the paper are canvases the frame leans on just
+   * as hard. The old ones are shrunk to a pixel on the way out so the memory
+   * goes back now rather than whenever the collector gets round to it.
+   *
+   * The caller must `resize` afterwards — nothing here knows the viewport.
+   */
+  attach(canvas: HTMLCanvasElement): void {
+    for (const old of [this.canvas, this.temp.canvas, this.paper.canvas]) {
+      old.width = 1;
+      old.height = 1;
+    }
+    this.canvas = canvas;
+    this.ctx = context2d(canvas, { alpha: false });
+    this.temp = createSurface(1, 1);
+    this.paper = createSurface(1, 1);
   }
 
   /** Release the scratch surfaces. See `World.dispose`. */

@@ -62,26 +62,49 @@ export class Input {
   suspended = false;
 
   constructor(
-    private readonly canvas: HTMLCanvasElement,
+    private canvas: HTMLCanvasElement,
     private readonly handlers: InputHandlers,
   ) {
     addEventListener('keydown', this.onKeyDown);
     addEventListener('keyup', this.onKeyUp);
     addEventListener('blur', this.onBlur);
+    this.listen(canvas);
+  }
+
+  private listen(canvas: HTMLCanvasElement): void {
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('pointercancel', this.onPointerUp);
   }
 
+  private unlisten(canvas: HTMLCanvasElement): void {
+    canvas.removeEventListener('pointerdown', this.onPointerDown);
+    canvas.removeEventListener('pointermove', this.onPointerMove);
+    canvas.removeEventListener('pointerup', this.onPointerUp);
+    canvas.removeEventListener('pointercancel', this.onPointerUp);
+  }
+
+  /**
+   * Follow the game onto a different canvas.
+   *
+   * The renderer may replace the canvas mid-session — see `systems/rescue.ts`.
+   * A finger already down is let go of first: the pointer was captured by an
+   * element that is about to leave the document, and nothing will ever tell us
+   * it came up.
+   */
+  retarget(canvas: HTMLCanvasElement): void {
+    this.unlisten(this.canvas);
+    this.pointer = null;
+    this.canvas = canvas;
+    this.listen(canvas);
+  }
+
   dispose(): void {
     removeEventListener('keydown', this.onKeyDown);
     removeEventListener('keyup', this.onKeyUp);
     removeEventListener('blur', this.onBlur);
-    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
-    this.canvas.removeEventListener('pointermove', this.onPointerMove);
-    this.canvas.removeEventListener('pointerup', this.onPointerUp);
-    this.canvas.removeEventListener('pointercancel', this.onPointerUp);
+    this.unlisten(this.canvas);
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {

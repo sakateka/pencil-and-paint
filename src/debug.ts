@@ -42,6 +42,15 @@ export interface DebugHandle {
    */
   build: string;
   /**
+   * Throw this canvas away and draw on a new one, and say what happened.
+   *
+   * The same thing `systems/rescue.ts` does on its own when the frames go soft.
+   * By hand it is the only way to see the effect deliberately — and the only
+   * honest A/B of whether a session's stutter was the browser's fallback: if a
+   * rebuild fixes it, it was.
+   */
+  rescue(): string;
+  /**
    * Everything worth knowing about the current frame, flat enough to read.
    *
    * Deliberately one object of plain values: a browser console collapses

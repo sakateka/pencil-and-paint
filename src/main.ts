@@ -31,6 +31,7 @@ import { Sample } from './systems/sample';
 import { CuckooAmbience } from './systems/cuckoo';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
+import { Rescue } from './systems/rescue';
 import { PAINTINGS } from './assets/paintings/index';
 import { Closer } from './closer';
 import { latestDrawing, Studio } from './studio';
@@ -146,6 +147,12 @@ async function boot(): Promise<void> {
   let loadReport: string[] = [];
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('missing #game canvas');
+  /*
+   * The canvas being drawn on *now*. Not the same object for the whole session:
+   * `rebuildCanvas` swaps in a fresh element when the browser stops
+   * accelerating this one.
+   */
+  let canvasElement: HTMLCanvasElement = canvas;
 
   /*
    * Language first, before anything is shown.
@@ -258,6 +265,7 @@ async function boot(): Promise<void> {
   }
   const renderer = new Renderer(canvas);
   const perf = new Performance();
+  const rescue = new Rescue(() => rebuildCanvas());
   let showPerf = false;
   const statsButton = document.querySelector<HTMLButtonElement>('#stats');
   const hintPanel = document.querySelector<HTMLElement>('#hint');
@@ -416,51 +424,94 @@ async function boot(): Promise<void> {
   });
 
   let owlHoot: HTMLAudioElement | undefined;
-  canvas.addEventListener('click', (event) => {
-    const box = canvas.getBoundingClientRect();
-    const x = ((event.clientX - box.left) / box.width) * renderer.width;
-    const y = ((event.clientY - box.top) / box.height) * renderer.height;
-    const size = game.owl.scale * game.camera.zoom;
-    const dx = (x - game.camera.toScreenX(game.owl.x)) / (18 * size);
-    const dy = (y - (game.camera.toScreenY(game.owl.y) - 16 * size)) / (22 * size);
-    if (!game.won || !game.owlInReach() || dx * dx + dy * dy > 1 || !game.owl.hoot()) return;
 
-    if (!owlHoot) {
-      owlHoot = new Audio(owlHootUrl);
-      owlHoot.preload = 'auto';
-      owlHoot.volume = 0.85;
-      owlHoot.dataset.sound = 'owl-hoot';
-      owlHoot.dataset.level = String(owlHoot.volume);
-      owlHoot.style.display = 'none';
-      document.body.append(owlHoot);
-    }
-    owlHoot.currentTime = 0;
-    void owlHoot.play().catch(() => undefined);
-  });
-
-  /*
-   * The cat, touched on the canvas the way the owl is.
+  /**
+   * Everything bound to the canvas element itself, in one place.
    *
-   * She used to answer the E key, like everything else that is within reach —
-   * but petting is the one moment in the valley where touch is the whole
-   * point, and a keypress is not a stroke. The click has to land on her (an
-   * ellipse around her sleeping shape, generous as the owl's) and the walker
-   * has to be close enough to reach her, which the game is asked, not
-   * measured here. Everything else — the purr, the hearts, the buzz — follows
-   * from `pet`, the way it always did.
+   * Called again with a fresh element whenever the rescue rebuilds the canvas
+   * — see `systems/rescue.ts`. The old element is dropped from the document at
+   * the same moment, which takes its listeners with it, so nothing is removed
+   * here.
    */
-  canvas.addEventListener('click', (event) => {
-    const box = canvas.getBoundingClientRect();
-    const x = ((event.clientX - box.left) / box.width) * renderer.width;
-    const y = ((event.clientY - box.top) / box.height) * renderer.height;
-    const cat = game.catInReach();
-    if (!cat) return;
-    const size = cat.scale * game.camera.zoom;
-    const dx = (x - game.camera.toScreenX(cat.x)) / (19 * size);
-    const dy = (y - (game.camera.toScreenY(cat.y) - 10 * size)) / (16 * size);
-    if (dx * dx + dy * dy > 1) return;
-    game.pet();
-  });
+  function bindCanvas(surface: HTMLCanvasElement): void {
+    input.retarget(surface);
+
+    /** Where on the drawing this click landed, in the renderer's own pixels. */
+    const at = (event: MouseEvent) => {
+      const box = surface.getBoundingClientRect();
+      return {
+        x: ((event.clientX - box.left) / box.width) * renderer.width,
+        y: ((event.clientY - box.top) / box.height) * renderer.height,
+      };
+    };
+
+    surface.addEventListener('click', (event) => {
+      const { x, y } = at(event);
+      const size = game.owl.scale * game.camera.zoom;
+      const dx = (x - game.camera.toScreenX(game.owl.x)) / (18 * size);
+      const dy = (y - (game.camera.toScreenY(game.owl.y) - 16 * size)) / (22 * size);
+      if (!game.won || !game.owlInReach() || dx * dx + dy * dy > 1 || !game.owl.hoot()) return;
+
+      if (!owlHoot) {
+        owlHoot = new Audio(owlHootUrl);
+        owlHoot.preload = 'auto';
+        owlHoot.volume = 0.85;
+        owlHoot.dataset.sound = 'owl-hoot';
+        owlHoot.dataset.level = String(owlHoot.volume);
+        owlHoot.style.display = 'none';
+        document.body.append(owlHoot);
+      }
+      owlHoot.currentTime = 0;
+      void owlHoot.play().catch(() => undefined);
+    });
+
+    /*
+     * The cat, touched on the canvas the way the owl is.
+     *
+     * She used to answer the E key, like everything else that is within reach —
+     * but petting is the one moment in the valley where touch is the whole
+     * point, and a keypress is not a stroke. The click has to land on her (an
+     * ellipse around her sleeping shape, generous as the owl's) and the walker
+     * has to be close enough to reach her, which the game is asked, not
+     * measured here. Everything else — the purr, the hearts, the buzz — follows
+     * from `pet`, the way it always did.
+     */
+    surface.addEventListener('click', (event) => {
+      const { x, y } = at(event);
+      const cat = game.catInReach();
+      if (!cat) return;
+      const size = cat.scale * game.camera.zoom;
+      const dx = (x - game.camera.toScreenX(cat.x)) / (19 * size);
+      const dy = (y - (game.camera.toScreenY(cat.y) - 10 * size)) / (16 * size);
+      if (dx * dx + dy * dy > 1) return;
+      game.pet();
+    });
+  }
+  bindCanvas(canvas);
+
+  /**
+   * Hand the game a brand-new canvas.
+   *
+   * The whole point is the element, not what is drawn on it: Firefox's decision
+   * to stop accelerating a canvas lives with that canvas and dies with it, so a
+   * fresh one is drawn on the GPU again. Everything downstream of the element —
+   * the renderer's surfaces, the mask, the pointer listeners — follows it, and
+   * the frame after this one paints the same picture it would have painted
+   * anyway.
+   */
+  function rebuildCanvas(): void {
+    if (!running) return;
+    const fresh = document.createElement('canvas');
+    fresh.id = canvasElement.id;
+    fresh.className = canvasElement.className;
+    canvasElement.replaceWith(fresh);
+    canvasElement = fresh;
+    renderer.attach(fresh);
+    game.field.renew();
+    bindCanvas(fresh);
+    resize();
+    renderer.render(game.scene);
+  }
 
   function start(): void {
     if (!ui.dismissIntro()) return;
@@ -468,6 +519,7 @@ async function boot(): Promise<void> {
     // Building the world and baking the first sprites is a one-off cost and
     // must not be mistaken for a slow machine.
     perf.pardonWarmUp();
+    rescue.pardonWarmUp();
     void fetchSounds();
   }
 
@@ -528,6 +580,17 @@ async function boot(): Promise<void> {
     input,
     renderOnce: () => renderer.render(game.scene),
     build: BUILD_ID,
+    /*
+     * Rebuild the canvas by hand, and say what the rescue thinks of the frames.
+     *
+     * `pencil.rescue()` is the only way to try this deliberately: the automatic
+     * one waits for a second and a half of slow frames, and asking somebody to
+     * reproduce a browser's private decision on demand has never once worked.
+     */
+    rescue: () => {
+      rescue.force();
+      return rescue.status();
+    },
     snapshot: () => {
       const p = perf.snapshot();
       const d = game.field.lastDirty;
@@ -833,6 +896,7 @@ async function boot(): Promise<void> {
         `world ${ms(s.worldBlit)}  live ${ms(s.live)}  mask ${ms(s.mask)}`,
         `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
+        rescue.status(),
         hapticStatus(),
         `purr ${purr ? (purr.paused ? 'idle' : `playing ${purr.volume.toFixed(2)}`) : 'unloaded'} · birds ${birdsong.status()} · pond ${pond.status()}`,
         `cuckoo ${cuckoo.status()}`,
@@ -842,6 +906,11 @@ async function boot(): Promise<void> {
     const drawMs = performance.now() - drawStart;
     perf.recordDraw(drawMs);
     perf.recordFrame(elapsedMs);
+    /*
+     * Last, and after the overlay: if the frames have gone soft this asks for a
+     * new canvas, and everything above holds a reference to the old one.
+     */
+    if (game.running) rescue.frame(elapsedMs);
     /*
      * Keep the bad ones whole. `recordFrame` folds this into an average, which
      * is what every previous investigation had to work from and why none of
