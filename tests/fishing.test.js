@@ -246,7 +246,9 @@ export async function run(url) {
       game.fishing.hooked = 'roach';
       game.particles.clear(); // the splash is nearly the fish's colour
 
-      const ctx = renderer.context;
+      // Both layers stacked: the frame is three canvas elements now and
+      // none of them holds the whole picture on its own.
+      const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
       const fishPixels = () => {
         pencil.renderOnce();
         const x0 = Math.round((game.camera.toScreenX(game.walker.x) - 34) * renderer.scale);

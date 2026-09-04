@@ -148,12 +148,15 @@ async function boot(): Promise<void> {
   if (!canvas) throw new Error('missing #game canvas');
   const colourCanvas = document.querySelector<HTMLCanvasElement>('#colour');
   if (!colourCanvas) throw new Error('missing #colour canvas');
+  const overCanvas = document.querySelector<HTMLCanvasElement>('#over');
+  if (!overCanvas) throw new Error('missing #over canvas');
   /*
    * The two layers being drawn on *now*. Not the same objects for the whole
    * session: `pencil.rescue()` swaps in fresh elements by hand.
    */
   let canvasElement: HTMLCanvasElement = canvas;
   let colourElement: HTMLCanvasElement = colourCanvas;
+  let overElement: HTMLCanvasElement = overCanvas;
 
   /*
    * Language first, before anything is shown.
@@ -264,7 +267,7 @@ async function boot(): Promise<void> {
      */
     loadReport = ['', ...report.split('\n')];
   }
-  const renderer = new Renderer(canvas, colourCanvas);
+  const renderer = new Renderer(canvas, colourCanvas, overCanvas);
   const perf = new Performance();
   let showPerf = false;
   const statsButton = document.querySelector<HTMLButtonElement>('#stats');
@@ -508,7 +511,8 @@ async function boot(): Promise<void> {
     };
     canvasElement = replace(canvasElement);
     colourElement = replace(colourElement);
-    renderer.attach(canvasElement, colourElement);
+    overElement = replace(overElement);
+    renderer.attach(canvasElement, colourElement, overElement);
     game.field.renew();
     bindCanvas(canvasElement);
     resize();
@@ -837,7 +841,20 @@ async function boot(): Promise<void> {
     composited: (x: number, y: number, width: number, height: number) => {
       const shot = createSurface(width, height);
       shot.ctx.drawImage(canvasElement, -x, -y);
-      shot.ctx.drawImage(colourElement, -x, -y);
+      /*
+       * The colour layer through its own mask. The compositor applies it to
+       * the element, so reading the canvas back gives the whole painted
+       * rectangle — including the corners the player never sees.
+       */
+      const cut = createSurface(colourElement.width, colourElement.height);
+      cut.ctx.drawImage(colourElement, 0, 0);
+      cut.ctx.globalCompositeOperation = 'destination-in';
+      renderer.drawMaskInto(cut.ctx);
+      cut.ctx.globalCompositeOperation = 'source-over';
+      shot.ctx.drawImage(cut.canvas, -x, -y);
+      cut.canvas.width = 1;
+      cut.canvas.height = 1;
+      shot.ctx.drawImage(overElement, -x, -y);
       return shot.ctx.getImageData(0, 0, width, height);
     },
     /*

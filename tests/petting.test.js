@@ -327,7 +327,9 @@ export async function run(url) {
       game.teleport(cat.x + 34, cat.y + 34);
       game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       game.particles.clear(); // the darkest heart is nearly her colour
-      const ctx = renderer.context;
+      // Both layers stacked: the frame is three canvas elements now and
+      // none of them holds the whole picture on its own.
+      const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
 
       /*
        * The centroid of her coat, not its top edge.

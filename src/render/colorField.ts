@@ -110,9 +110,30 @@ function haze(): HTMLCanvasElement {
   return hazeSprite;
 }
 
+/**
+ * The same haze, as something CSS can use as a mask.
+ *
+ * Encoded once. It is a readback and a PNG encode of a 584px square, which is
+ * a few milliseconds at startup and nothing ever again — against
+ * `destination-in` on the displayed canvas, which was measured at fourteen
+ * milliseconds a frame for ever.
+ */
+let hazeUrl: string | undefined;
+
+/** The baked haze itself, for anything that must apply the mask by hand. */
+export function hazeMask(): HTMLCanvasElement {
+  return haze();
+}
+
+export function hazeMaskUrl(): string {
+  hazeUrl ??= haze().toDataURL('image/png');
+  return hazeUrl;
+}
+
 /** Throw the baked haze away, so the next frame bakes it again. */
 export function forgetHaze(): void {
   hazeSprite = undefined;
+  hazeUrl = undefined;
 }
 
 export class ColorField {
@@ -168,60 +189,34 @@ export class ColorField {
   }
 
   /**
-   * Cut the colour back to the shape of the haze, in place.
+   * Where the haze sits on screen this frame, in CSS pixels.
    *
-   * `destination-in` against the baked sprite, straight onto the layer the
-   * colour was drawn into. There used to be a mask surface in between: the
-   * haze was painted into it every frame and then read back as the source of
-   * this same operation.
+   * The colour is not cut by the canvas any more. It used to be
+   * `destination-in` against the baked sprite, drawn straight onto the layer —
+   * which reads well and was measured, on the machine that has the fault, at
+   * fourteen milliseconds a frame against half a millisecond without it. An
+   * accelerated canvas in Firefox does not do that operation on the GPU, and
+   * asking for it drops the whole layer to the software rasteriser
+   * permanently. Every other thing the layer did was innocent: with the punch
+   * gone and the clear and the paper left in, the frame was 0.5ms.
    *
-   * That surface was one of the two things this renderer did that could not
-   * possibly be cached. Firefox keeps its accelerated canvas only while the
-   * textures it draws from keep hitting a cache (`profile-cache-miss-ratio`),
-   * and a surface rewritten every frame is a guaranteed miss every frame — so
-   * a mask and a scratch, both full of fresh pixels, were enough to lose the
-   * whole session to the software rasteriser. The sprite is baked once and
-   * never touched again, so this hits for ever.
+   * So the cut is the compositor's job now: the same sprite, as a CSS mask on
+   * the element. The canvas is left doing nothing but source-over blits, which
+   * is the one path that is reliably accelerated.
    *
-   * The caller owns the clip: outside it `destination-in` would clear the
-   * entire layer, which is the full-screen work being avoided.
+   * What was lost with it is the slow spin — a CSS mask cannot be rotated. The
+   * rim's wobble is baked into the sprite and survives, and the breathing is
+   * the mask's size, so what went is one turn every two minutes.
    */
-  punch(
-    ctx: CanvasRenderingContext2D,
-    t: number,
-    centreX: number,
-    centreY: number,
-    radius: number,
-    scale: number,
-  ): void {
-    const s = scale;
-    const sprite = haze();
-    ctx.globalCompositeOperation = 'destination-in';
-
-    /*
-     * The breathing, which used to be in the shape itself.
-     *
-     * The rim is baked now, so it cannot wobble — but a mask that is bit for bit
-     * the same every frame reads as a stencil held over the drawing. So the
-     * whole sprite turns, very slowly, and swells a little as it goes: the same
-     * fog, drifting. Both are transforms on one blit and cost nothing, and
-     * turning suits fog better than a rippling edge ever did.
-     */
-    const spin = t * 0.055;
+  maskAt(t: number, centreX: number, centreY: number, radius: number): {
+    size: number;
+    left: number;
+    top: number;
+  } {
+    // The breathing, which used to be in the shape itself and then in the
+    // transform of the punch. Same number, applied to the mask's size.
     const breath = 1 + Math.sin(t * 0.33) * 0.014;
-    const k = ((radius * breath) / HAZE_RADIUS) * s;
-
-    // Screen space: the colour layer is the size of the window, so the centre
-    // of the haze is simply where the walker is on screen.
-    ctx.setTransform(
-      k * Math.cos(spin),
-      k * Math.sin(spin),
-      -k * Math.sin(spin),
-      k * Math.cos(spin),
-      centreX * s,
-      centreY * s,
-    );
-    ctx.drawImage(sprite, -SPRITE_RADIUS, -SPRITE_RADIUS);
-    ctx.globalCompositeOperation = 'source-over';
+    const size = ((radius * breath) / HAZE_RADIUS) * SPRITE_RADIUS * 2;
+    return { size, left: centreX - size / 2, top: centreY - size / 2 };
   }
 }
