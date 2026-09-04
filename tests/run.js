@@ -26,8 +26,9 @@ import { run as hills } from './hills.test.js';
 import { run as perch } from './perch.test.js';
 import { run as hedgehog } from './hedgehog.test.js';
 import { run as cuckoo } from './cuckoo.test.js';
+import { run as ending } from './ending.test.js';
 
-const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch, hedgehog, cuckoo, i18n];
+const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch, hedgehog, cuckoo, ending, i18n];
 
 // Standard GitHub-hosted Linux runners have 2 vCPU for private repositories
 // and 4 vCPU for public ones. Cap local runs at that public standard too: the

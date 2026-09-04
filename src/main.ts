@@ -843,7 +843,7 @@ async function boot(): Promise<void> {
      *
      *   pencil.layers({ over: false })    is a third layer what costs?
      *   pencil.layers({ colour: false })
-     *   pencil.layers({ mask: false })    is the mask re-rasterised per frame?
+     *   pencil.layers({ mask: false })    is wearing a CSS mask what costs?
      *   pencil.layers({ paper: false })   is the full-screen grain blend?
      *   pencil.layers({ clear: false })
      *   pencil.layers({})                 put everything back
@@ -852,8 +852,8 @@ async function boot(): Promise<void> {
      */
     layers: (patch?: Record<string, boolean>) => {
       const p = patch ?? {};
-      if (p.mask === undefined) renderer.freezeMask = false;
-      else renderer.freezeMask = !p.mask;
+      if (p.mask === undefined) renderer.noMask = false;
+      else renderer.noMask = !p.mask;
       if (p.paper === undefined) renderer.skipPaper = false;
       else renderer.skipPaper = !p.paper;
       if (p.clear === undefined) renderer.skipClear = false;
@@ -861,7 +861,7 @@ async function boot(): Promise<void> {
       renderer.showLayer('colour', p.colour !== false);
       renderer.showLayer('over', p.over !== false);
       return {
-        mask: !renderer.freezeMask,
+        mask: !renderer.noMask,
         paper: !renderer.skipPaper,
         clear: !renderer.skipClear,
         colour: p.colour !== false,

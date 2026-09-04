@@ -249,16 +249,19 @@ export class Renderer {
   skipPaper = false;
 
   /**
-   * Freeze the mask where it is instead of moving it with the walker.
+   * Take the mask off the colour layer entirely.
    *
-   * The one suspect our own timers cannot see. `mask-size` changes every frame
-   * — the colour radius breathes and pulses — and if the browser rasterises
-   * the mask afresh each time, that is a few hundred thousand pixels a frame
-   * done somewhere no profiler in this codebase is looking. With this on the
-   * blob stops following, which is wrong and obvious, and the only question
-   * being asked is what happens to the CPU.
+   * The colour shows as a hard-edged square, which is obviously wrong and is
+   * the point: it asks whether wearing a CSS mask at all is what costs, as
+   * against everything else the layer does. Nothing in this codebase can time
+   * that — it happens in another process after we stop drawing — so the
+   * instrument is `top` and the method is subtraction.
+   *
+   * This used to freeze the mask instead of removing it, which answered a
+   * question that no longer exists: nothing about the mask is written per
+   * frame any more, so freezing it changes nothing at all.
    */
-  freezeMask = false;
+  noMask = false;
 
   /** Force this context's queued work to finish, if stage timing is honest. */
   private settle(ctx: CanvasRenderingContext2D): void {
@@ -795,6 +798,7 @@ export class Renderer {
      * those couple of seconds. Both halves are cheap; only doing both at once
      * would not be.
      */
+    if (box.size <= 0) return;
     const fits = box.size <= Math.max(this.width, this.height);
     const left = fits ? box.left : 0;
     const top = fits ? box.top : 0;
@@ -802,7 +806,6 @@ export class Renderer {
     else this.sizeColourToWindow();
     this.moveColour(left, top, camera);
     this.maskColour(fits ? 'fit' : box);
-    if (this.colourSize <= 0) return;
 
     /*
      * The element's own origin. Everything below draws in screen coordinates,
@@ -840,16 +843,25 @@ export class Renderer {
 
   /** Give the colour layer the whole window, for the ending. */
   private sizeColourToWindow(): void {
-    if (this.colourSize === -1) return;
-    this.colourSize = -1;
+    if (this.colourSize === 'window') return;
+    this.colourSize = 'window';
     this.colourCanvas.width = Math.max(1, Math.round(this.width * this.scale));
     this.colourCanvas.height = Math.max(1, Math.round(this.height * this.scale));
     this.colourCanvas.style.width = `${this.width}px`;
     this.colourCanvas.style.height = `${this.height}px`;
   }
 
-  /** The size the colour element is cut to, in CSS pixels. Zero before the first frame. */
-  private colourSize = 0;
+  /**
+   * What the colour element is currently cut to: a size in CSS pixels, or the
+   * whole window during the ending's flood. Zero before the first frame.
+   *
+   * A number and a state, kept in one field on purpose — they are the two ways
+   * the element can be sized and only one can be true. This was a `-1`
+   * sentinel for a day, and a `<= 0` guard two lines away read it as "nothing
+   * to draw" and skipped the colour for the whole of the flood: the screen
+   * went to pencil for three quarters of a second and then to full colour.
+   */
+  private colourSize: number | 'window' = 0;
   /** The translation last written to the colour element. */
   private colourAt = '';
 
@@ -862,7 +874,7 @@ export class Renderer {
    * because this element is no longer carried along by `scrollSubPixel`.
    */
   private sizeColourTo(size: number): void {
-    if (size === this.colourSize) return;
+    if (this.colourSize === size) return;
     this.colourSize = size;
     const pixels = Math.max(1, Math.round(size * this.scale));
     this.colourCanvas.width = pixels;
@@ -908,7 +920,7 @@ export class Renderer {
    * compositor answers by offsetting a layer it already has.
    */
   private maskColour(at: 'fit' | { size: number; left: number; top: number } | null): void {
-    if (this.freezeMask && this.maskedBy) return;
+    if (this.noMask) at = null;
     const next =
       at === null
         ? 'none'
