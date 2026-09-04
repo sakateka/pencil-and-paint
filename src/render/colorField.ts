@@ -13,7 +13,7 @@ import { TAU } from '../core/math';
  * with a lump of it chasing the walker and slopping past them on every stop.
  * The colour is meant to read as light rather than fluid, so nothing here
  * depends on movement any more: the haze is the same shape standing still as at
- * a run, and the only thing that changes it is the slow breathing of its rim.
+ * a run, and the only thing that changes it is its slow drift.
  */
 
 /** The region of the screen the colour touches this frame. */
@@ -29,14 +29,87 @@ export interface DirtyRect {
 const RIM_SEGMENTS = 54;
 
 /** The wobble that keeps the edge from looking like a spotlight. */
-function rimScale(angle: number, t: number): number {
+function rimScale(angle: number): number {
   return (
     1 +
-    Math.sin(angle * 3 + t * 0.7) * 0.055 +
-    Math.sin(angle * 5 - t * 0.45) * 0.035 +
-    Math.sin(angle * 8 + t * 0.25) * 0.018
+    Math.sin(angle * 3) * 0.055 +
+    Math.sin(angle * 5 - 1.7) * 0.035 +
+    Math.sin(angle * 8 + 0.9) * 0.018
   );
 }
+
+/**
+ * The gradient's outer radius inside the sprite, and how far the sprite reaches.
+ *
+ * The rim wobbles out to about 1.11 of the gradient radius, so the sprite is cut
+ * a little wider than that and the shape never touches its own edge. `1.14` in
+ * `computeDirty` is the same margin, which is why the two numbers must move
+ * together.
+ */
+const HAZE_RADIUS = 256;
+const SPRITE_RADIUS = 292;
+
+let hazeSprite: HTMLCanvasElement | undefined;
+
+/**
+ * The haze, baked once.
+ *
+ * This used to be built afresh every frame — a `createRadialGradient` and a
+ * fifty-four point polygon whose every vertex moved with the breathing — and
+ * that turns out to be the most expensive habit in the whole renderer, for a
+ * reason that has nothing to do with how long the fill takes.
+ *
+ * An accelerated canvas caches the paths it has turned into GPU geometry, and
+ * Firefox watches how often that cache misses. A path with fifty-four new
+ * coordinates is a miss, every frame, for ever — and when misses dominate for
+ * long enough the browser gives up on the canvas and drops it onto the software
+ * rasteriser, permanently, for the rest of the session. That is the stutter
+ * people have been reporting, and it explains the part that never made sense:
+ * it arrives while *standing still*, because standing still does not stop the
+ * mask being redrawn from scratch sixty times a second.
+ *
+ * Baked, the mask is one texture. The frame blits it, and blitting caches
+ * nothing.
+ */
+function haze(): HTMLCanvasElement {
+  if (hazeSprite) return hazeSprite;
+  const size = SPRITE_RADIUS * 2;
+  const { canvas, ctx } = createSurface(size, size);
+  ctx.translate(SPRITE_RADIUS, SPRITE_RADIUS);
+
+  const grad = ctx.createRadialGradient(0, 0, HAZE_RADIUS * 0.12, 0, 0, HAZE_RADIUS);
+  /*
+   * A long, even fade rather than a lit disc with a soft lip.
+   *
+   * The old ramp held full opacity out to half the radius and then fell away
+   * over the last quarter, which reads as a spotlight — an edge, wherever you
+   * put it. Fog has no edge: it thins the whole way out, so most of the radius
+   * is spent fading and no ring of the mask is where the colour visibly stops.
+   */
+  grad.addColorStop(0.0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.42, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.62, 'rgba(255,255,255,.9)');
+  grad.addColorStop(0.78, 'rgba(255,255,255,.62)');
+  grad.addColorStop(0.91, 'rgba(255,255,255,.28)');
+  grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+
+  ctx.beginPath();
+  for (let i = 0; i <= RIM_SEGMENTS; i++) {
+    const a = (i / RIM_SEGMENTS) * TAU;
+    const k = rimScale(a) * HAZE_RADIUS;
+    const x = Math.cos(a) * k;
+    const y = Math.sin(a) * k;
+    if (i) ctx.lineTo(x, y);
+    else ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  hazeSprite = canvas;
+  return hazeSprite;
+}
+
 
 /**
  * How coarsely the mask may be drawn, against the device pixel grid.
@@ -50,12 +123,13 @@ function rimScale(angle: number, t: number): number {
 export const MASK_SCALE = 0.5;
 
 export class ColorField {
-  readonly surface: Surface;
+  surface: Surface;
   private readonly dirty: DirtyRect = { x: 0, y: 0, width: 0, height: 0, empty: true };
 
   constructor() {
     this.surface = createSurface(1, 1);
   }
+
 
   /**
    * The mask is only ever painted inside the dirty rectangle, so it is
@@ -128,52 +202,38 @@ export class ColorField {
     const { ctx } = this.surface;
     const d = this.dirty;
     const s = scale * MASK_SCALE;
+    const sprite = haze();
 
     // Painted at a local origin: the surface holds only the dirty rectangle.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, d.width * s + 2, d.height * s + 2);
-    ctx.setTransform(s, 0, 0, s, -d.x * s, -d.y * s);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(d.x, d.y, d.width, d.height);
-    ctx.clip();
 
-    const grad = ctx.createRadialGradient(
-      centreX,
-      centreY,
-      radius * 0.12,
-      centreX,
-      centreY,
-      radius,
-    );
     /*
-     * A long, even fade rather than a lit disc with a soft lip.
+     * The breathing, which used to be in the shape itself.
      *
-     * The old ramp held full opacity out to half the radius and then fell away
-     * over the last quarter, which reads as a spotlight — an edge, wherever you
-     * put it. Fog has no edge: it thins the whole way out, so most of the radius
-     * is spent fading and no ring of the mask is where the colour visibly stops.
+     * The rim is baked now, so it cannot wobble — but a mask that is bit for bit
+     * the same every frame reads as a stencil held over the drawing. So the
+     * whole sprite turns, very slowly, and swells a little as it goes: the same
+     * fog, drifting. Both are transforms on one blit and cost nothing, and
+     * turning suits fog better than a rippling edge ever did.
      */
-    grad.addColorStop(0.0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.42, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.62, 'rgba(255,255,255,.9)');
-    grad.addColorStop(0.78, 'rgba(255,255,255,.62)');
-    grad.addColorStop(0.91, 'rgba(255,255,255,.28)');
-    grad.addColorStop(1.0, 'rgba(255,255,255,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    for (let i = 0; i <= RIM_SEGMENTS; i++) {
-      const a = (i / RIM_SEGMENTS) * TAU;
-      const k = rimScale(a, t);
-      const x = centreX + Math.cos(a) * radius * k;
-      const y = centreY + Math.sin(a) * radius * k;
-      if (i) ctx.lineTo(x, y);
-      else ctx.moveTo(x, y);
-    }
-    ctx.closePath();
-    ctx.fill();
+    const spin = t * 0.055;
+    const breath = 1 + Math.sin(t * 0.33) * 0.014;
+    const k = ((radius * breath) / HAZE_RADIUS) * s;
 
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.restore();
+    /*
+     * No clip. The surface is allocated to the dirty rectangle, so its own edges
+     * already are the clip — and a `rect` and `clip` per frame is another path
+     * per frame, which is the thing this file exists to stop doing.
+     */
+    ctx.setTransform(
+      k * Math.cos(spin),
+      k * Math.sin(spin),
+      -k * Math.sin(spin),
+      k * Math.cos(spin),
+      (centreX - d.x) * s,
+      (centreY - d.y) * s,
+    );
+    ctx.drawImage(sprite, -SPRITE_RADIUS, -SPRITE_RADIUS);
   }
 }
