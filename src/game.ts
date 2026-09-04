@@ -297,11 +297,29 @@ export class Game {
     return isSpotClear(x, y, pad, this.world.colliders);
   }
 
-  /** The colour radius, breathing gently and reaching further when walking. */
+  /**
+   * The colour radius. One number per pot found, and otherwise still.
+   *
+   * It used to breathe — a slow sine of five units, and ten more while walking
+   * — and that is gone on the user's word: "let it be static, it jerks and it
+   * looks bad."
+   *
+   * The jerk was not the breathing itself but what the breathing had become
+   * expensive enough to need. The colour is cut to shape by a CSS mask now,
+   * and a mask that changes size is rasterised again at device resolution
+   * every time it does; with the radius moving every frame that was half a
+   * core in the compositor, rising to nearly a whole one by the thirteenth pot
+   * as the blob grew. Quantising the size bought the cost back and spent it on
+   * a visible step instead, which is what was complained about.
+   *
+   * Still is better than either. The size changes fourteen times a session
+   * now, once per pot, and stands perfectly still in between — which is also
+   * the honest reading of the rule this world runs on: the colour reaches as
+   * far as the paint you have found, and not further because you happen to be
+   * walking.
+   */
   get litRadius(): number {
-    const moving = Math.hypot(this.walker.vx, this.walker.vy) > 6;
-    const pulse = Math.sin(this.elapsed * 1.6) * 5 + (moving ? 10 : 0);
-    return BASE_RADIUS + this.radiusBoost + pulse;
+    return BASE_RADIUS + this.radiusBoost;
   }
 
   /** The radius the mask actually uses, including the ending's flood. */

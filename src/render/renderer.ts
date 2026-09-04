@@ -801,7 +801,7 @@ export class Renderer {
     colour.restore();
 
     // The cut itself: a style on the element, done by the compositor.
-    if (!this.skipPunch) this.maskColour(field.maskAt(scene.elapsed, centreX, centreY, radius));
+    if (!this.skipPunch) this.maskColour(field.maskAt(centreX, centreY, radius));
     this.blend('maskPunch', performance.now() - part);
 
     colour.setTransform(scale, 0, 0, scale, 0, 0);
