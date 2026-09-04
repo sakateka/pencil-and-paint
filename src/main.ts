@@ -768,17 +768,25 @@ async function boot(): Promise<void> {
     /*
      * Which part of the colour layer is the expensive one.
      *
-     * The layer costs seventy times what the pencil layer below it does, for a
-     * fifteenth of the pixels, and three things it does are candidates: a
+     * The layer costs many times what the pencil layer below it does for a
+     * fraction of the pixels. Three things it does are candidates: a
      * full-screen clear of a transparent canvas every frame, a full-screen
      * blend of the paper over it, and `destination-in` — which an accelerated
-     * canvas may not support at all, in which case the whole layer falls to
-     * software for the frame.
+     * canvas may not support at all.
      *
-     * Each is turned off in turn for a second and a half of real frames and
-     * `drawMs` read back, so the answer is a subtraction rather than an
-     * argument. The picture is wrong while it runs — smeared, or hard-edged,
-     * or without its grain — and right again at the end.
+     * EACH CASE STARTS ON A BRAND-NEW ELEMENT, and that is the whole design.
+     * The browser's decision to stop accelerating a canvas is permanent for
+     * the life of that canvas, so switching an operation off part way through
+     * a session measures the cost of doing it on a canvas already lost to
+     * software — which is not the question. The question is whether doing it
+     * at all is what loses the canvas, and only a fresh one can answer that.
+     * The first version of this measured the wrong thing and said the punch
+     * was worth three milliseconds when the layer was already twenty.
+     *
+     * Warm-up matters for the same reason: the fallback is decided over ten
+     * frames, so each case runs long enough to be judged and then measured.
+     * The picture is wrong while it runs — smeared, or hard-edged, or without
+     * its grain — and right again at the end.
      */
     layerCost: async (frames = 90) => {
       const probe = globalThis.pencil?.probe;
@@ -800,13 +808,23 @@ async function boot(): Promise<void> {
         renderer.skipPunch = false;
         renderer.skipPaper = false;
         set();
+        // A fresh pair of layers, then long enough for the browser to make up
+        // its mind about them before anything is recorded.
+        rebuildCanvas();
+        await probe(frames);
         const watched = await probe(frames);
         runs[label] = Math.round((watched.drawMs ?? 0) * 100) / 100;
       }
       renderer.skipClear = false;
       renderer.skipPunch = false;
       renderer.skipPaper = false;
-      return { drawMs: runs, dirty: `${game.field.lastDirty.width}x${game.field.lastDirty.height}`, view: `${renderer.width}x${renderer.height}` };
+      rebuildCanvas();
+      return {
+        drawMs: runs,
+        note: 'each case on a brand-new canvas, warmed up before measuring',
+        dirty: `${game.field.lastDirty.width}x${game.field.lastDirty.height}`,
+        view: `${renderer.width}x${renderer.height}`,
+      };
     },
     settleStages: (on: boolean) => {
       renderer.settleStages = on;
