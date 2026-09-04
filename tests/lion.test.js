@@ -159,7 +159,9 @@ export async function run(url) {
      */
     const sample = (pencil) => {
       const { game } = pencil;
-      const ctx = document.querySelector('#game').getContext('2d');
+      // Both layers stacked: the frame is two canvas elements now and neither
+      // of them holds the whole picture on its own.
+      const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
       const sx = Math.round(game.camera.toScreenX(game.lion.x) * pencil.renderer.scale);
       const sy = Math.round(game.camera.toScreenY(game.lion.y) * pencil.renderer.scale);
       const R = 56;

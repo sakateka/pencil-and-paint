@@ -42,12 +42,13 @@ export interface DebugHandle {
    */
   build: string;
   /**
-   * Throw this canvas away and draw on a new one, and say what happened.
+   * Throw both layers away and draw on new ones, and say what happened.
    *
-   * The same thing `systems/rescue.ts` does on its own when the frames go soft.
-   * By hand it is the only way to see the effect deliberately — and the only
-   * honest A/B of whether a session's stutter was the browser's fallback: if a
-   * rebuild fixes it, it was.
+   * By hand only. There used to be a `Rescue` doing this automatically when the
+   * frames went soft; it was measured on the machine with the fault and bought
+   * ten to fifteen seconds once and about a second thereafter, so it was taken
+   * out. Still the cheapest A/B of whether a session's stutter is the browser's
+   * software fallback: if a rebuild helps at all, it is.
    */
   rescue(): string;
   /**
@@ -126,6 +127,19 @@ export interface DebugHandle {
    * readback every stage is itself the kind of stall being looked for.
    */
   settleStages(on: boolean): boolean;
+  /**
+   * The finished frame, both layers stacked, as the player sees it.
+   *
+   * The renderer draws on two canvas elements now — pencil below, colour and
+   * everything above it on top — and the compositor is what puts them
+   * together, so neither element on its own holds the picture. A test reading
+   * `#game` for the walker finds nothing there, and reading `#colour` for the
+   * graphite outside the haze finds nothing there either. This stacks them the
+   * same way and hands back the pixels.
+   *
+   * In device pixels, like `getImageData`: multiply by `renderer.scale` first.
+   */
+  composited(x: number, y: number, width: number, height: number): ImageData;
   /**
    * Time the same colour-world blit into a fresh offscreen canvas and into the
    * displayed one, and return both numbers plus the session's drawMs and a

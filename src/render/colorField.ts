@@ -1,4 +1,4 @@
-import { createSurface, type Surface } from '../core/canvas';
+import { createSurface } from '../core/canvas';
 import { TAU } from '../core/math';
 
 /**
@@ -115,60 +115,17 @@ export function forgetHaze(): void {
   hazeSprite = undefined;
 }
 
-/**
- * How coarsely the mask may be drawn, against the device pixel grid.
- *
- * The mask is pure alpha: a soft radial gradient and a handful of blurred
- * blobs, with no edge in it sharper than the fade itself. Painting that at full
- * device resolution is the single most expensive thing in the frame once the
- * colour has grown, and every one of those pixels is thrown away into a smooth
- * ramp. Half-resolution is a quarter of the work and the upscale is invisible.
- */
-export const MASK_SCALE = 0.5;
-
 export class ColorField {
-  surface: Surface;
   private readonly dirty: DirtyRect = { x: 0, y: 0, width: 0, height: 0, empty: true };
 
-  constructor() {
-    this.surface = createSurface(1, 1);
-  }
-
   /**
-   * Start again on a brand-new surface, throwing the baked haze away with it.
+   * Throw the baked haze away, so the next frame bakes it again.
    *
-   * For the rescue in `systems/rescue.ts`: a canvas Firefox has given up on
-   * stays given up on for as long as it exists, and that includes the offscreen
-   * ones. The sprite goes too, because it was baked into a texture belonging to
-   * the old set.
+   * For `pencil.rescue()`, which hands the game a brand-new set of canvases:
+   * the sprite is a canvas of its own and may as well come from the new set.
    */
   renew(): void {
-    const { width, height } = this.surface.canvas;
-    this.surface.canvas.width = 1;
-    this.surface.canvas.height = 1;
-    this.surface = createSurface(width, height);
     forgetHaze();
-  }
-
-  /**
-   * The mask is only ever painted inside the dirty rectangle, so it is
-   * allocated at that size rather than at the size of the window.
-   *
-   * This matters more than it looks. A full-viewport scratch surface is around
-   * five megabytes, and Firefox spends real time shuttling canvas buffers about
-   * — a profile from a machine reporting slow frames had two thirds of its
-   * busiest thread in raw memcpy and buffer mapping. Allocating what is used
-   * cuts that surface to a fraction.
-   */
-  resize(width: number, height: number): void {
-    /*
-     * Rounded up, with a pixel to spare. The composite reads back a sub-rect of
-     * `ceil(dirty * scale * MASK_SCALE)`; a surface a pixel short of that leaves
-     * the last row transparent, and where the dirty rectangle is clamped to the
-     * edge of the window that is a stripe of pencil down the side of the colour.
-     */
-    this.surface.canvas.width = Math.max(1, Math.ceil(width * MASK_SCALE) + 2);
-    this.surface.canvas.height = Math.max(1, Math.ceil(height * MASK_SCALE) + 2);
   }
 
   /** The rectangle the last frame composited through. Read-only, for debugging. */
@@ -210,22 +167,36 @@ export class ColorField {
     return this.dirty;
   }
 
-  /** Paint the mask for this frame, inside the dirty rectangle. */
-  build(
+  /**
+   * Cut the colour back to the shape of the haze, in place.
+   *
+   * `destination-in` against the baked sprite, straight onto the layer the
+   * colour was drawn into. There used to be a mask surface in between: the
+   * haze was painted into it every frame and then read back as the source of
+   * this same operation.
+   *
+   * That surface was one of the two things this renderer did that could not
+   * possibly be cached. Firefox keeps its accelerated canvas only while the
+   * textures it draws from keep hitting a cache (`profile-cache-miss-ratio`),
+   * and a surface rewritten every frame is a guaranteed miss every frame — so
+   * a mask and a scratch, both full of fresh pixels, were enough to lose the
+   * whole session to the software rasteriser. The sprite is baked once and
+   * never touched again, so this hits for ever.
+   *
+   * The caller owns the clip: outside it `destination-in` would clear the
+   * entire layer, which is the full-screen work being avoided.
+   */
+  punch(
+    ctx: CanvasRenderingContext2D,
     t: number,
     centreX: number,
     centreY: number,
     radius: number,
     scale: number,
   ): void {
-    const { ctx } = this.surface;
-    const d = this.dirty;
-    const s = scale * MASK_SCALE;
+    const s = scale;
     const sprite = haze();
-
-    // Painted at a local origin: the surface holds only the dirty rectangle.
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, d.width * s + 2, d.height * s + 2);
+    ctx.globalCompositeOperation = 'destination-in';
 
     /*
      * The breathing, which used to be in the shape itself.
@@ -240,19 +211,17 @@ export class ColorField {
     const breath = 1 + Math.sin(t * 0.33) * 0.014;
     const k = ((radius * breath) / HAZE_RADIUS) * s;
 
-    /*
-     * No clip. The surface is allocated to the dirty rectangle, so its own edges
-     * already are the clip — and a `rect` and `clip` per frame is another path
-     * per frame, which is the thing this file exists to stop doing.
-     */
+    // Screen space: the colour layer is the size of the window, so the centre
+    // of the haze is simply where the walker is on screen.
     ctx.setTransform(
       k * Math.cos(spin),
       k * Math.sin(spin),
       -k * Math.sin(spin),
       k * Math.cos(spin),
-      (centreX - d.x) * s,
-      (centreY - d.y) * s,
+      centreX * s,
+      centreY * s,
     );
     ctx.drawImage(sprite, -SPRITE_RADIUS, -SPRITE_RADIUS);
+    ctx.globalCompositeOperation = 'source-over';
   }
 }

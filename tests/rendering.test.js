@@ -135,7 +135,9 @@ export async function run(url) {
         renderer.render(game.scene);
         const cx = Math.round(game.camera.toScreenX(game.walker.x) * renderer.scale);
         const cy = Math.round(game.camera.toScreenY(game.walker.y) * renderer.scale);
-        const ctx = document.querySelector('#game').getContext('2d');
+        // Both layers stacked: the frame is two canvas elements now and neither
+        // of them holds the whole picture on its own.
+        const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
         const R = 60;
         const img = ctx.getImageData(cx - R, cy - R * 1.4, R * 2, R * 1.6);
         // Head band only, so the brush hand does not count as a face.
@@ -201,7 +203,9 @@ export async function run(url) {
 
         const cx = Math.round(game.camera.toScreenX(game.walker.x) * renderer.scale);
         const cy = Math.round(game.camera.toScreenY(game.walker.y) * renderer.scale);
-        const ctx = document.querySelector('#game').getContext('2d');
+        // Both layers stacked: the frame is two canvas elements now and neither
+        // of them holds the whole picture on its own.
+        const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
         const R = 45;
         const img = ctx.getImageData(cx - R, cy - R * 1.5, R * 2, R * 1.7);
         let shirtMin = Infinity;
@@ -258,7 +262,9 @@ export async function run(url) {
 
         const cx = Math.round(game.camera.toScreenX(game.walker.x) * renderer.scale);
         const cy = Math.round(game.camera.toScreenY(game.walker.y) * renderer.scale);
-        const ctx = document.querySelector('#game').getContext('2d');
+        // Both layers stacked: the frame is two canvas elements now and neither
+        // of them holds the whole picture on its own.
+        const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
         const R = 60;
         const img = ctx.getImageData(cx - R, cy - R * 1.4, R * 2, R * 1.6);
 
@@ -362,18 +368,20 @@ export async function run(url) {
     const snapshot = await game.evaluate((p) => p.perf.snapshot());
     suite.equal(snapshot.scale, 1, 'the render scale is one to one');
 
-    // The ending grows the colour past anything ordinary play needs. The
-    // scratch surfaces are sized for ordinary play, so they have to grow with
-    // it — when they did not, the composite was silently clipped to whatever
-    // they could hold and a wide stripe of the screen never got its colour.
+    // The ending grows the colour past anything ordinary play needs, and it
+    // has to reach the edges of the window when it does. There used to be a
+    // scratch surface sized for ordinary play in the way: until it was grown
+    // with the blob the composite was silently clipped to whatever it could
+    // hold, and a wide stripe of the screen never got its colour. The scratch
+    // is gone now — the colour is drawn straight onto its own layer, which is
+    // the size of the window — but the thing it broke is still worth pinning.
     const flood = await game.evaluate((pencil) => {
       const { game, renderer } = pencil;
       game.teleport(1300, 1330);
 
       const reach = () => {
         const canvas = document.querySelector('#game');
-        const ctx = canvas.getContext('2d');
-        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const img = pencil.composited(0, 0, canvas.width, canvas.height);
         const mid = Math.floor(img.height / 2);
         let left = -1;
         let right = -1;

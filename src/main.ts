@@ -1,5 +1,5 @@
 import { BUILD_ID } from './buildInfo';
-import { context2d } from './core/canvas';
+import { context2d, createSurface } from './core/canvas';
 import { rng } from './core/rng';
 import { exposeForTests } from './debug';
 import {
@@ -31,7 +31,6 @@ import { Sample } from './systems/sample';
 import { CuckooAmbience } from './systems/cuckoo';
 import { Input } from './systems/input';
 import { drawPerfOverlay, Performance } from './systems/perf';
-import { Rescue } from './systems/rescue';
 import { PAINTINGS } from './assets/paintings/index';
 import { Closer } from './closer';
 import { latestDrawing, Studio } from './studio';
@@ -147,12 +146,14 @@ async function boot(): Promise<void> {
   let loadReport: string[] = [];
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
   if (!canvas) throw new Error('missing #game canvas');
+  const colourCanvas = document.querySelector<HTMLCanvasElement>('#colour');
+  if (!colourCanvas) throw new Error('missing #colour canvas');
   /*
-   * The canvas being drawn on *now*. Not the same object for the whole session:
-   * `rebuildCanvas` swaps in a fresh element when the browser stops
-   * accelerating this one.
+   * The two layers being drawn on *now*. Not the same objects for the whole
+   * session: `pencil.rescue()` swaps in fresh elements by hand.
    */
   let canvasElement: HTMLCanvasElement = canvas;
+  let colourElement: HTMLCanvasElement = colourCanvas;
 
   /*
    * Language first, before anything is shown.
@@ -263,9 +264,8 @@ async function boot(): Promise<void> {
      */
     loadReport = ['', ...report.split('\n')];
   }
-  const renderer = new Renderer(canvas);
+  const renderer = new Renderer(canvas, colourCanvas);
   const perf = new Performance();
-  const rescue = new Rescue(() => rebuildCanvas());
   let showPerf = false;
   const statsButton = document.querySelector<HTMLButtonElement>('#stats');
   const hintPanel = document.querySelector<HTMLElement>('#hint');
@@ -428,10 +428,9 @@ async function boot(): Promise<void> {
   /**
    * Everything bound to the canvas element itself, in one place.
    *
-   * Called again with a fresh element whenever the rescue rebuilds the canvas
-   * — see `systems/rescue.ts`. The old element is dropped from the document at
-   * the same moment, which takes its listeners with it, so nothing is removed
-   * here.
+   * Called again with fresh elements whenever `pencil.rescue()` rebuilds the
+   * layers. The old element is dropped from the document at the same moment,
+   * which takes its listeners with it, so nothing is removed here.
    */
   function bindCanvas(surface: HTMLCanvasElement): void {
     input.retarget(surface);
@@ -490,25 +489,28 @@ async function boot(): Promise<void> {
   bindCanvas(canvas);
 
   /**
-   * Hand the game a brand-new canvas.
+   * Hand the game brand-new layers.
    *
-   * The whole point is the element, not what is drawn on it: Firefox's decision
-   * to stop accelerating a canvas lives with that canvas and dies with it, so a
-   * fresh one is drawn on the GPU again. Everything downstream of the element —
-   * the renderer's surfaces, the mask, the pointer listeners — follows it, and
-   * the frame after this one paints the same picture it would have painted
-   * anyway.
+   * The whole point is the elements, not what is drawn on them: Firefox's
+   * decision to stop accelerating a canvas lives with that canvas and dies with
+   * it, so fresh ones are drawn on the GPU again. Both go together — the
+   * decision is per canvas, and leaving one of a stacked pair behind leaves
+   * half the frame on the software path.
    */
   function rebuildCanvas(): void {
     if (!running) return;
-    const fresh = document.createElement('canvas');
-    fresh.id = canvasElement.id;
-    fresh.className = canvasElement.className;
-    canvasElement.replaceWith(fresh);
-    canvasElement = fresh;
-    renderer.attach(fresh);
+    const replace = (old: HTMLCanvasElement): HTMLCanvasElement => {
+      const fresh = document.createElement('canvas');
+      fresh.id = old.id;
+      fresh.className = old.className;
+      old.replaceWith(fresh);
+      return fresh;
+    };
+    canvasElement = replace(canvasElement);
+    colourElement = replace(colourElement);
+    renderer.attach(canvasElement, colourElement);
     game.field.renew();
-    bindCanvas(fresh);
+    bindCanvas(canvasElement);
     resize();
     renderer.render(game.scene);
   }
@@ -519,7 +521,6 @@ async function boot(): Promise<void> {
     // Building the world and baking the first sprites is a one-off cost and
     // must not be mistaken for a slow machine.
     perf.pardonWarmUp();
-    rescue.pardonWarmUp();
     void fetchSounds();
   }
 
@@ -548,7 +549,7 @@ async function boot(): Promise<void> {
   let running = true;
 
   function resize(): void {
-    renderer.resize(innerWidth, innerHeight, perf.scale, game.field);
+    renderer.resize(innerWidth, innerHeight, perf.scale);
   }
 
   addEventListener('resize', () => {
@@ -581,15 +582,22 @@ async function boot(): Promise<void> {
     renderOnce: () => renderer.render(game.scene),
     build: BUILD_ID,
     /*
-     * Rebuild the canvas by hand, and say what the rescue thinks of the frames.
+     * Throw both layers away and draw on fresh ones.
      *
-     * `pencil.rescue()` is the only way to try this deliberately: the automatic
-     * one waits for a second and a half of slow frames, and asking somebody to
-     * reproduce a browser's private decision on demand has never once worked.
+     * There used to be a `Rescue` that did this on its own whenever the frames
+     * went soft. It has been taken out: measured on the machine that has the
+     * fault, it bought ten to fifteen seconds the first time and about one
+     * second every time after, so all it did was drop a frame to rebuild and
+     * arrive back where it started. That is a result, not a failure — a fresh
+     * element escapes a per-canvas decision completely, so the diminishing
+     * return says the cost is not in the element we threw away.
+     *
+     * Kept by hand, because it is still the cheapest A/B there is: if a
+     * rebuild helps at all, the session was on the software path.
      */
     rescue: () => {
-      rescue.force();
-      return rescue.status();
+      rebuildCanvas();
+      return 'rebuilt both layers';
     },
     snapshot: () => {
       const p = perf.snapshot();
@@ -762,6 +770,16 @@ async function boot(): Promise<void> {
       return renderer.settleStages;
     },
     /*
+     * Both layers, stacked. Allocates a surface per call and is only ever
+     * reached from a test, so it is off every path that matters.
+     */
+    composited: (x: number, y: number, width: number, height: number) => {
+      const shot = createSurface(width, height);
+      shot.ctx.drawImage(canvasElement, -x, -y);
+      shot.ctx.drawImage(colourElement, -x, -y);
+      return shot.ctx.getImageData(0, 0, width, height);
+    },
+    /*
      * The one-paste A/B for bug7's slow state: the same blit, once into a
      * brand-new offscreen canvas and once into the displayed one, each with the
      * queue forced to completion so the timer measures work rather than
@@ -850,7 +868,7 @@ async function boot(): Promise<void> {
    */
   addEventListener('pagehide', () => {
     running = false;
-    renderer.dispose(game.field);
+    renderer.dispose();
     game.herd.dispose();
     world.dispose();
   });
@@ -893,10 +911,10 @@ async function boot(): Promise<void> {
       const ms = (v: number) => v.toFixed(1).padStart(4);
       drawPerfOverlay(renderer.context, perf.snapshot(), renderer.width, renderer.height, [
         `awake ${awake}/${game.herd.animals.length}   zoom ${game.camera.zoom.toFixed(2)}`,
-        `world ${ms(s.worldBlit)}  live ${ms(s.live)}  mask ${ms(s.mask)}`,
+        `world ${ms(s.worldBlit)}  live ${ms(s.live)}`,
         `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
+        `tiles ${ms(s.colourTiles)}  clive ${ms(s.colourLive)}  punch ${ms(s.maskPunch)}`,
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
-        rescue.status(),
         hapticStatus(),
         `purr ${purr ? (purr.paused ? 'idle' : `playing ${purr.volume.toFixed(2)}`) : 'unloaded'} · birds ${birdsong.status()} · pond ${pond.status()}`,
         `cuckoo ${cuckoo.status()}`,
@@ -906,11 +924,6 @@ async function boot(): Promise<void> {
     const drawMs = performance.now() - drawStart;
     perf.recordDraw(drawMs);
     perf.recordFrame(elapsedMs);
-    /*
-     * Last, and after the overlay: if the frames have gone soft this asks for a
-     * new canvas, and everything above holds a reference to the old one.
-     */
-    if (game.running) rescue.frame(elapsedMs);
     /*
      * Keep the bad ones whole. `recordFrame` folds this into an average, which
      * is what every previous investigation had to work from and why none of
@@ -955,7 +968,21 @@ async function boot(): Promise<void> {
  * that does not fall when you drop the resolution.
  */
 function countCanvases(game: Game): number {
-  let n = 4; // the two world layers, the scratch canvas and the paper overlay
+  /*
+   * Counted, not guessed. This used to say `let n = 4 // the two world layers,
+   * the scratch and the paper`, which was wrong twice over: the world is
+   * twelve tiles rather than two surfaces, and the lazily baked occluder
+   * sprites — the one thing here that actually grows while you play — were not
+   * counted at all. So the readout behind F and `pencil.snapshot()` reported
+   * different numbers for the same moment, and a session's "canvases 28 -> 54"
+   * went into bugs/bug7.txt as unexplained accumulation when it was the sprite
+   * cache filling towards its own cap.
+   */
+  const world = game.world.canvasStats();
+  let n = world.tiles + world.sprites;
+  n += 2; // the two displayed layers, pencil and colour
+  n += 1; // the paper
+  n += 1; // the baked haze
   n += 1; // the herd's sprite atlas
   n += game.pots.filter((p) => p.frozenSprite).length;
   return n;

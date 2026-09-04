@@ -19,17 +19,7 @@ import type { Medium } from '../media/medium';
 import type { World } from '../world/world';
 import type { Camera } from './camera';
 import { GRAIN } from '../media/sprites';
-import { MASK_SCALE } from './colorField';
-import type { ColorField, DirtyRect } from './colorField';
-
-/**
- * How big the scratch surfaces start, in CSS pixels.
- *
- * Enough for the haze during ordinary play. It is a starting point, not a
- * limit — `ensureScratch` grows them if the colour ever needs more, which it
- * does while the ending floods outwards.
- */
-const INITIAL_SCRATCH_SPAN = 1100;
+import type { ColorField } from './colorField';
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -91,7 +81,6 @@ export interface Scene {
 export interface StageTimings {
   worldBlit: number;
   live: number;
-  mask: number;
   composite: number;
   occluders: number;
   /** The one blit of grain and vignette over the finished frame. */
@@ -105,19 +94,44 @@ export interface StageTimings {
    * machines — so the only useful version of this question is the one asked on
    * the machine that is actually slow.
    */
-  /** Coloured world tiles blitted into the scratch. */
+  /** Coloured world tiles blitted onto the colour layer. */
   colourTiles: number;
-  /** Live entities drawn into the scratch, in colour. */
+  /** Live entities drawn onto the colour layer, in colour. */
   colourLive: number;
-  /** `destination-in` punching the mask through the scratch. */
+  /** `destination-in` cutting the colour back to the haze, in place. */
   maskPunch: number;
-  /** The finished scratch laid over the pencil. */
-  blitOut: number;
 }
 
+/**
+ * The frame is two stacked canvas elements, not one.
+ *
+ * Below: the pencil drawing of the valley, opaque. Above: the colour, cut to
+ * the shape of the haze, with everything that stands over the colour — the
+ * walker, the particles, the tall scenery laid back over them — and the paper
+ * over the lot. The compositor stacks them, which is the one thing it is good
+ * at.
+ *
+ * This replaced a scratch canvas. The colour used to be drawn into an
+ * offscreen surface, punched through a mask surface, and copied back onto the
+ * one displayed canvas — three operations, two of them on surfaces whose every
+ * pixel was rewritten each frame and then read straight back as a source.
+ *
+ * That was the fault. Firefox keeps a canvas on the GPU only while the
+ * textures it draws from go on hitting a cache; it profiles the ratio over ten
+ * frames and, when misses dominate, drops the canvas to the software
+ * rasteriser permanently — which is the 30ms frame people reported arriving in
+ * the middle of a session and never leaving. A surface rewritten every frame
+ * cannot be a hit. There were two of them.
+ *
+ * Now there are none: everything the frame draws *from* is baked once — world
+ * tiles, occluder sprites, the haze, the paper — and everything it draws *to*
+ * is a displayed layer that is never read back.
+ */
 export class Renderer {
+  /** The pencil layer, below. Opaque: the world blit covers every pixel. */
   private ctx: CanvasRenderingContext2D;
-  private temp: Surface;
+  /** The colour layer, above. Transparent, and cleared every frame. */
+  private colour: CanvasRenderingContext2D;
 
   /** Viewport in CSS pixels. */
   width = 0;
@@ -139,7 +153,6 @@ export class Renderer {
   readonly stages: StageTimings = {
     worldBlit: 0,
     live: 0,
-    mask: 0,
     composite: 0,
     occluders: 0,
     paper: 0,
@@ -147,7 +160,6 @@ export class Renderer {
     colourTiles: 0,
     colourLive: 0,
     maskPunch: 0,
-    blitOut: 0,
   };
 
   /**
@@ -176,7 +188,6 @@ export class Renderer {
   readonly frameStages: StageTimings = {
     worldBlit: 0,
     live: 0,
-    mask: 0,
     composite: 0,
     occluders: 0,
     paper: 0,
@@ -184,7 +195,6 @@ export class Renderer {
     colourTiles: 0,
     colourLive: 0,
     maskPunch: 0,
-    blitOut: 0,
   };
 
   /**
@@ -267,33 +277,32 @@ export class Renderer {
    */
   private paper: Surface;
 
-  constructor(private canvas: HTMLCanvasElement) {
+  constructor(
+    private canvas: HTMLCanvasElement,
+    private colourCanvas: HTMLCanvasElement,
+  ) {
     // Opaque. The compositor can then copy rather than blend a full-screen
     // layer every frame. This was transparent for a while because a resize
     // clears the canvas and an opaque one clears to black, which flashed — but
     // the render scale is fixed now, so resizes only happen when the window
     // does, and those redraw immediately.
     this.ctx = context2d(canvas, { alpha: false });
-    this.temp = createSurface(1, 1);
+    // The layer above has to be transparent — the pencil showing through
+    // outside the haze is the entire point of the game.
+    this.colour = context2d(colourCanvas, { alpha: true });
     this.paper = createSurface(1, 1);
   }
 
-  resize(width: number, height: number, scale: number, field: ColorField): void {
+  resize(width: number, height: number, scale: number): void {
     this.width = width;
     this.height = height;
     this.scale = scale;
-    this.canvas.width = Math.max(1, Math.round(width * scale));
-    this.canvas.height = Math.max(1, Math.round(height * scale));
-
-    // The scratch surfaces only ever hold the dirty rectangle, so they are
-    // allocated to that rather than to the window.
-    const scratchW = Math.min(width, INITIAL_SCRATCH_SPAN) * scale;
-    const scratchH = Math.min(height, INITIAL_SCRATCH_SPAN) * scale;
-    this.temp.canvas.width = Math.max(1, Math.round(scratchW));
-    this.temp.canvas.height = Math.max(1, Math.round(scratchH));
-    field.resize(scratchW, scratchH);
-    this.canvas.style.width = `${width}px`;
-    this.canvas.style.height = `${height}px`;
+    for (const surface of [this.canvas, this.colourCanvas]) {
+      surface.width = Math.max(1, Math.round(width * scale));
+      surface.height = Math.max(1, Math.round(height * scale));
+      surface.style.width = `${width}px`;
+      surface.style.height = `${height}px`;
+    }
     this.buildPaper();
   }
 
@@ -335,7 +344,7 @@ export class Renderer {
 
   render(scene: Scene): void {
     const { camera, world, walker } = scene;
-    const { ctx, scale } = this;
+    const { ctx, colour, scale } = this;
 
     camera.frame(this.width, this.height, scale);
     this.scrollSubPixel(camera);
@@ -352,19 +361,40 @@ export class Renderer {
       this.frameStages[key] = 0;
     }
 
-    // No clear: the world blit below covers every pixel of the viewport, and on
-    // an opaque canvas a full-screen clear is a full-screen write for nothing.
+    // No clear on the pencil layer: the world blit below covers every pixel of
+    // the viewport, and on an opaque canvas a full-screen clear is a
+    // full-screen write for nothing.
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+    /*
+     * The colour layer does need one, and cannot get away with clearing only
+     * the dirty rectangle. Everything above the colour is drawn up here too,
+     * and the owl in its tree or the bird over the hammock can be anywhere on
+     * screen — a rectangle around the walker would leave last frame's copy of
+     * them behind.
+     */
+    colour.setTransform(1, 0, 0, 1, 0, 0);
+    colour.clearRect(0, 0, this.colourCanvas.width, this.colourCanvas.height);
+    colour.setTransform(scale, 0, 0, scale, 0, 0);
 
     world.bakeCount = 0;
 
     if (flooded) {
-      this.time('worldBlit', () => this.blitWorld(ctx, world, 'color', camera));
-      this.time('live', () =>
-        isolate(ctx, () => {
-          camera.applyTransform(ctx);
-          this.drawLive(ctx, scene, 'color');
-        }),
+      /*
+       * The pencil layer is not drawn at all: the colour covers the window and
+       * is opaque, tiles under every pixel inside the map and the sky's own
+       * gradient above it, so whatever the layer below still holds is not
+       * visible. That is the saving the flooded path always had, kept.
+       */
+      this.time('worldBlit', () => this.blitWorld(colour, world, 'color', camera), colour);
+      this.time(
+        'live',
+        () =>
+          isolate(colour, () => {
+            camera.applyTransform(colour);
+            this.drawLive(colour, scene, 'color');
+          }),
+        colour,
       );
     } else {
       this.time('worldBlit', () => this.blitWorld(ctx, world, 'sketch', camera));
@@ -377,14 +407,19 @@ export class Renderer {
       this.compositeColor(scene, centreX, centreY, radius);
     }
 
-    isolate(ctx, () => {
-      camera.applyTransform(ctx);
+    /*
+     * Everything from here up stands over the colour, so it belongs on the
+     * upper layer — and it is drawn after the punch, which would otherwise cut
+     * the walker back to the shape of the haze along with the world.
+     */
+    isolate(colour, () => {
+      camera.applyTransform(colour);
       /*
        * The camp belongs to the walker rather than to the world: it is pitched
        * where they stand and packs up when they leave, so it is drawn here with
        * them, in colour only, and never baked into a layer.
        */
-      drawCamp(ctx, scene.fishing, walker.x, walker.y, walker.face);
+      drawCamp(colour, scene.fishing, walker.x, walker.y, walker.face);
       /*
        * In the hammock, the walker *is* the drawing in the hammock — the
        * standing figure would otherwise be planted beside it looking on. Keyed
@@ -397,17 +432,17 @@ export class Renderer {
         !scene.vigil.sitting &&
         !scene.perches.some((p) => p.resting)
       ) {
-        drawWalker(ctx, walker, scene.elapsed);
+        drawWalker(colour, walker, scene.elapsed);
       }
-      scene.particles.draw(ctx, walker.x, walker.y, scene.litRadius, flooded);
-      this.time('occluders', () => this.drawOccluders(ctx, scene));
+      scene.particles.draw(colour, walker.x, walker.y, scene.litRadius, flooded);
+      this.time('occluders', () => this.drawOccluders(colour, scene), colour);
       /*
        * After the occluders, both of them. The bird sits on top of a tree and
        * whoever is in the treehouse is inside one, and the trees are occluders
        * — drawn any earlier, both would be painted over by the thing they are
        * supposed to be in.
        */
-      drawBirds(ctx, scene.rest);
+      drawBirds(colour, scene.rest);
       /*
        * And the owl, for the same reason: it is up a tree, and the trees are
        * occluders. Its medium is its own — this is past the colour mask, so
@@ -420,7 +455,7 @@ export class Renderer {
        * Asleep is asleep — pencil on paper, and paper does not move.
        */
       withBoil(scene.owl.awake, () =>
-        drawOwl(ctx, scene.owl, scene.owl.awake ? 'color' : 'sketch'),
+        drawOwl(colour, scene.owl, scene.owl.awake ? 'color' : 'sketch'),
       );
       /*
        * And whoever is sitting on the bench or lying in the hay, for a third
@@ -434,11 +469,11 @@ export class Renderer {
        * while they are down — and the walker is never in graphite.
        */
       for (const perch of scene.perches) {
-        if (perch.resting) drawPerch(ctx, perch, 'color');
+        if (perch.resting) drawPerch(colour, perch, 'color');
       }
       const house = scene.treehouse;
       if (house.inside) {
-        drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving);
+        drawThroughWindow(colour, house.x, house.y, house.offset, house.facing, house.walk, house.moving);
       }
     });
 
@@ -446,11 +481,20 @@ export class Renderer {
      * The paper over everything, so the whole frame reads as one drawing rather
      * than as things arranged on a background. One blit, one to one.
      */
-    this.time('paper', () => {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(this.paper.canvas, 0, 0);
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    });
+    /*
+     * On the upper layer, so it covers the colour as well as the pencil. It is
+     * the last thing drawn on the last layer, which is what "over everything"
+     * has to mean once there are two of them.
+     */
+    this.time(
+      'paper',
+      () => {
+        colour.setTransform(1, 0, 0, 1, 0, 0);
+        colour.drawImage(this.paper.canvas, 0, 0);
+        colour.setTransform(scale, 0, 0, scale, 0, 0);
+      },
+      colour,
+    );
 
     this.stages.bakes = world.bakeCount;
     this.frameStages.bakes = world.bakeCount;
@@ -480,7 +524,11 @@ export class Renderer {
     const next = x || y ? `translate3d(${x.toFixed(3)}px, ${y.toFixed(3)}px, 0)` : '';
     if (next === this.scrolledBy) return;
     this.scrolledBy = next;
+    // Both layers, by the same fraction. They are drawn from one camera and
+    // have to move as one thing — a pencil layer half a pixel from its colour
+    // is worse than either of them being half a pixel out.
     this.canvas.style.transform = next;
+    this.colourCanvas.style.transform = next;
   }
 
   private blitWorld(
@@ -626,135 +674,70 @@ export class Renderer {
   }
 
   /**
-   * Draw the coloured world into a scratch canvas, punch it through the mask,
-   * and lay it over the pencil — all inside the dirty rectangle.
+   * Draw the coloured world onto the upper layer and cut it to the haze.
+   *
+   * All of it inside the dirty rectangle, and all of it on the layer that is
+   * shown. There is no scratch surface any more and no mask surface either:
+   * the colour is drawn straight where it belongs, and `destination-in`
+   * against the baked haze sprite cuts it back in place.
+   *
+   * What that removed, per frame: a full write of the dirty rectangle into an
+   * offscreen canvas, a full write of the mask into another, and the copy back
+   * over the top. Two of those three surfaces were rewritten every frame and
+   * then read as a texture in the same frame, which is the one thing an
+   * accelerated canvas cannot cache — see the note on the class.
    */
   private compositeColor(scene: Scene, centreX: number, centreY: number, radius: number): void {
     const { camera, field, world } = scene;
-    const { ctx, scale, temp } = this;
+    const { colour, scale } = this;
 
     const dirty = field.computeDirty(centreX, centreY, radius, this.width, this.height);
     if (dirty.empty) return;
 
-    // The blob outgrows the scratch while the ending floods outwards. Without
-    // this the composite is silently clipped to whatever the surfaces can hold,
-    // and a wide stripe of the screen simply never gets its colour.
-    this.ensureScratch(dirty, field);
-
-    this.time(
-      'mask',
-      () => field.build(scene.elapsed, centreX, centreY, radius, scale),
-      field.surface.ctx,
-    );
     const compositeStarted = performance.now();
-
-    const sourceX = camera.viewX + dirty.x / camera.zoom;
-    const sourceY = camera.viewY + dirty.y / camera.zoom;
-    const sourceW = dirty.width / camera.zoom;
-    const sourceH = dirty.height / camera.zoom;
-
     let part = performance.now();
-    const t = temp.ctx;
-    t.setTransform(1, 0, 0, 1, 0, 0);
-    // No clear. The colour blit below paints the whole dirty rectangle opaquely
-    // — the camera is clamped inside the world, so the region always has tiles
-    // under it — and nothing outside the rectangle is ever read back. Clearing
-    // first was a fourth full pass over the busiest area of the frame.
-    // Local origin: the scratch surface holds only the dirty rectangle.
-    t.setTransform(scale, 0, 0, scale, -dirty.x * scale, -dirty.y * scale);
-    t.save();
-    t.beginPath();
-    t.rect(dirty.x, dirty.y, dirty.width, dirty.height);
-    t.clip();
+
+    /*
+     * The clip, in device pixels, set once and left in place for the whole
+     * composite. It bounds the colour blit, and it bounds the punch — without
+     * it `destination-in` would clear the entire layer, walker and all.
+     */
+    colour.save();
+    colour.setTransform(1, 0, 0, 1, 0, 0);
+    colour.beginPath();
+    colour.rect(dirty.x * scale, dirty.y * scale, dirty.width * scale, dirty.height * scale);
+    colour.clip();
+
+    colour.setTransform(scale, 0, 0, scale, 0, 0);
     world.drawRegion(
-      t,
+      colour,
       'color',
-      sourceX,
-      sourceY,
-      sourceW,
-      sourceH,
+      camera.viewX + dirty.x / camera.zoom,
+      camera.viewY + dirty.y / camera.zoom,
+      dirty.width / camera.zoom,
+      dirty.height / camera.zoom,
       dirty.x,
       dirty.y,
       dirty.width,
       dirty.height,
     );
-    this.settle(t);
+    this.settle(colour);
     this.blend('colourTiles', performance.now() - part);
     part = performance.now();
-    camera.applyTransform(t);
-    this.drawLive(t, scene, 'color');
-    t.restore();
-    this.settle(t);
+
+    camera.applyTransform(colour);
+    this.drawLive(colour, scene, 'color');
+    this.settle(colour);
     this.blend('colourLive', performance.now() - part);
     part = performance.now();
 
-    // The clip matters: `destination-in` would otherwise clear the entire
-    // scratch canvas, which is exactly the full-screen work being avoided.
-    t.setTransform(1, 0, 0, 1, 0, 0);
-    t.save();
-    t.beginPath();
-    t.rect(0, 0, dirty.width * scale, dirty.height * scale);
-    t.clip();
-    t.globalCompositeOperation = 'destination-in';
-    /*
-     * Nearest-neighbour on the way up. The mask is a smooth alpha ramp with no
-     * edge in it, so interpolating the upscale buys nothing visible and costs
-     * more than the half-resolution build saves — in software rasterisation a
-     * filtered 2x upscale of a full-screen region is its own full pass.
-     */
-    t.imageSmoothingEnabled = false;
-    t.drawImage(
-      field.surface.canvas,
-      0,
-      0,
-      Math.ceil(dirty.width * scale * MASK_SCALE),
-      Math.ceil(dirty.height * scale * MASK_SCALE),
-      0,
-      0,
-      Math.ceil(dirty.width * scale),
-      Math.ceil(dirty.height * scale),
-    );
-    t.restore();
-    t.globalCompositeOperation = 'source-over';
-    this.settle(t);
+    field.punch(colour, scene.elapsed, centreX, centreY, radius, scale);
+    colour.restore();
+    this.settle(colour);
     this.blend('maskPunch', performance.now() - part);
-    part = performance.now();
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(
-      temp.canvas,
-      0,
-      0,
-      dirty.width * scale,
-      dirty.height * scale,
-      dirty.x * scale,
-      dirty.y * scale,
-      dirty.width * scale,
-      dirty.height * scale,
-    );
-    this.settle(ctx);
-    this.blend('blitOut', performance.now() - part);
-    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    colour.setTransform(scale, 0, 0, scale, 0, 0);
     this.blend('composite', performance.now() - compositeStarted);
-  }
-
-  /**
-   * Make sure the scratch surfaces can hold the dirty rectangle.
-   *
-   * Grows straight to the full viewport rather than creeping up frame by frame:
-   * the only thing that needs more than the initial span is the ending, and it
-   * is heading for the whole screen anyway.
-   */
-  private ensureScratch(dirty: DirtyRect, field: ColorField): void {
-    const needW = Math.ceil(dirty.width * this.scale) + 2;
-    const needH = Math.ceil(dirty.height * this.scale) + 2;
-    if (this.temp.canvas.width >= needW && this.temp.canvas.height >= needH) return;
-
-    const fullW = Math.max(needW, Math.round(this.width * this.scale));
-    const fullH = Math.max(needH, Math.round(this.height * this.scale));
-    this.temp.canvas.width = fullW;
-    this.temp.canvas.height = fullH;
-    field.resize(fullW, fullH);
   }
 
   /**
@@ -792,27 +775,38 @@ export class Renderer {
    *
    * The caller must `resize` afterwards — nothing here knows the viewport.
    */
-  attach(canvas: HTMLCanvasElement): void {
-    for (const old of [this.canvas, this.temp.canvas, this.paper.canvas]) {
+  attach(canvas: HTMLCanvasElement, colourCanvas: HTMLCanvasElement): void {
+    for (const old of [this.canvas, this.colourCanvas, this.paper.canvas]) {
       old.width = 1;
       old.height = 1;
     }
     this.canvas = canvas;
+    this.colourCanvas = colourCanvas;
     this.ctx = context2d(canvas, { alpha: false });
-    this.temp = createSurface(1, 1);
+    this.colour = context2d(colourCanvas, { alpha: true });
     this.paper = createSurface(1, 1);
   }
 
-  /** Release the scratch surfaces. See `World.dispose`. */
-  dispose(field: ColorField): void {
-    for (const canvas of [this.canvas, this.temp.canvas, field.surface.canvas]) {
+  /** Release both layers and the paper. See `World.dispose`. */
+  dispose(): void {
+    for (const canvas of [this.canvas, this.colourCanvas, this.paper.canvas]) {
       canvas.width = 1;
       canvas.height = 1;
     }
   }
 
-  /** Direct access for the diagnostics overlay, which draws last. */
+  /**
+   * Direct access for the diagnostics overlay, which draws last.
+   *
+   * The upper layer, because "last" now means the topmost of two — a readout
+   * drawn on the pencil would sit underneath the colour and the paper.
+   */
   get context(): CanvasRenderingContext2D {
+    return this.colour;
+  }
+
+  /** The layer below, for anything that wants the pencil drawing itself. */
+  get pencilContext(): CanvasRenderingContext2D {
     return this.ctx;
   }
 }

@@ -114,7 +114,9 @@ export async function run(url) {
         const sat = game.interact();
         for (let i = 0; i < 60; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         pencil.renderOnce();
-        const ctx = document.querySelector('#game').getContext('2d');
+        // Both layers stacked: the frame is two canvas elements now and neither
+        // of them holds the whole picture on its own.
+        const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
         const k = pencil.renderer.scale;
         const sx = Math.round(game.camera.toScreenX(hay.x) * k);
         const sy = Math.round(game.camera.toScreenY(hay.y) * k);

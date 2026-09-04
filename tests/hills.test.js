@@ -113,7 +113,9 @@ export async function run(url) {
     const sample = (pencil) => {
       const { game } = pencil;
       const wall = game.world.colliders.find((c) => c.kind === 'rect' && c.y < 0);
-      const ctx = document.querySelector('#game').getContext('2d');
+      // Both layers stacked: the frame is two canvas elements now and neither
+      // of them holds the whole picture on its own.
+      const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
       const k = pencil.renderer.scale;
       // Wall and roof only, inside the silhouette on all four sides: the ruled
       // strokes of the sky behind it do boil, and are not what is being asked.

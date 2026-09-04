@@ -204,7 +204,9 @@ export async function run(url) {
      */
     const sample = (pencil) => {
       const { game } = pencil;
-      const ctx = document.querySelector('#game').getContext('2d');
+      // Both layers stacked: the frame is two canvas elements now and neither
+      // of them holds the whole picture on its own.
+      const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
       const sx = Math.round(game.camera.toScreenX(game.vigil.x) * pencil.renderer.scale);
       const sy = Math.round(game.camera.toScreenY(game.vigil.y) * pencil.renderer.scale);
       const R = 70;
@@ -266,7 +268,9 @@ export async function run(url) {
 
     const patches = (pencil) => {
       const { game } = pencil;
-      const ctx = document.querySelector('#game').getContext('2d');
+      // Both layers stacked: the frame is two canvas elements now and neither
+      // of them holds the whole picture on its own.
+      const ctx = { getImageData: (x, y, w, h) => pencil.composited(x, y, w, h) };
       const k = pencil.renderer.scale;
       const out = {};
       for (let wy = -320; wy <= -60; wy += 40) {

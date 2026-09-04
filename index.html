@@ -16,6 +16,18 @@
   }
   #game { display:block; position:fixed; inset:0; }
 
+  /* The frame is two layers: the pencil drawing below, the colour above it.
+     They are stacked by the compositor rather than composited by us, which is
+     what let the scratch canvas and the mask canvas go — both were rewritten
+     every frame and read back as textures in the same frame, and an
+     accelerated canvas that keeps missing its texture cache is dropped to the
+     software rasteriser for good. See the note on `Renderer`.
+
+     Pointer events stay with #game: the clicks that pet the cat and touch the
+     owl are bound to that element, and the layer over it must not swallow
+     them. */
+  #colour { display:block; position:fixed; inset:0; pointer-events:none; }
+
   /* The paper grain and the vignette are drawn into the canvas now, at the end
      of the frame. As `position:fixed` layers they were re-blended over every
      new frame at the device pixel ratio, while the canvas draws at CSS
@@ -303,6 +315,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<canvas id="colour"></canvas>
 
 <div id="hud" class="panel">
   <div><b><span id="found">0</span> / <span id="total">0</span></b> <span data-i18n="hud.pots">paint pots</span></div>
