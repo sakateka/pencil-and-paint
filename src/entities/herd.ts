@@ -325,27 +325,39 @@ export class Herd {
   ): void {
     for (const a of this.animals) {
       if (!isVisible(a.x, a.y)) continue;
-      if (a.awake) {
-        withBoil(true, () => drawAnimalLive(ctx, a, medium));
-        continue;
-      }
-      // Asleep: invisible in the colour pass, a cached still in the pencil one.
-      if (medium === 'color') continue;
-      if (!a.frozen) this.freeze(a);
-      const col = a.slot % ATLAS_COLUMNS;
-      const row = Math.floor(a.slot / ATLAS_COLUMNS);
-      ctx.drawImage(
-        this.atlas.canvas,
-        col * SPRITE_WIDTH,
-        row * SPRITE_HEIGHT,
-        SPRITE_WIDTH,
-        SPRITE_HEIGHT,
-        a.x - SPRITE_ORIGIN_X,
-        a.y - SPRITE_ORIGIN_Y,
-        SPRITE_WIDTH,
-        SPRITE_HEIGHT,
-      );
+      this.drawOne(ctx, a, medium);
     }
+  }
+
+  /**
+   * One animal, wherever it is asked to be drawn.
+   *
+   * Split out of `draw` for the Phaser stage, which gives every animal its own
+   * small canvas rather than drawing the whole herd into the window — the herd
+   * is then a dozen sprites the GPU already holds, and only the ones whose pose
+   * actually changed are re-uploaded.
+   */
+  drawOne(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium): void {
+    if (a.awake) {
+      withBoil(true, () => drawAnimalLive(ctx, a, medium));
+      return;
+    }
+    // Asleep: invisible in the colour pass, a cached still in the pencil one.
+    if (medium === 'color') return;
+    if (!a.frozen) this.freeze(a);
+    const col = a.slot % ATLAS_COLUMNS;
+    const row = Math.floor(a.slot / ATLAS_COLUMNS);
+    ctx.drawImage(
+      this.atlas.canvas,
+      col * SPRITE_WIDTH,
+      row * SPRITE_HEIGHT,
+      SPRITE_WIDTH,
+      SPRITE_HEIGHT,
+      a.x - SPRITE_ORIGIN_X,
+      a.y - SPRITE_ORIGIN_Y,
+      SPRITE_WIDTH,
+      SPRITE_HEIGHT,
+    );
   }
 
   /**

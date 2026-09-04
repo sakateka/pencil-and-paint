@@ -42,7 +42,7 @@ const discCache = new Map<string, HTMLCanvasElement>();
  * A disc scaled out of a sprite is a texture blit and caches nothing. Baked
  * large so that shrinking it to a two-pixel mote stays round.
  */
-function disc(colour: string): HTMLCanvasElement {
+export function disc(colour: string): HTMLCanvasElement {
   let sprite = discCache.get(colour);
   if (!sprite) {
     const radius = 32;

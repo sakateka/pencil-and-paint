@@ -4,9 +4,11 @@ import { TAU } from '../core/math';
 /**
  * The shape of the colour: a soft, breathing haze around the walker.
  *
- * This is rendered into its own canvas and then used as an alpha mask — the
- * coloured world is drawn, `destination-in` punches it through this, and what
- * survives is laid over the pencil drawing.
+ * Baked once into a canvas and handed to the stage, where it is the texture a
+ * fragment shader multiplies the coloured valley by. It has been three things:
+ * a `destination-in` punch on the canvas, which dropped the layer onto
+ * Firefox's software rasteriser for good; a CSS mask, which moved the same
+ * work into the compositor; and now a sprite, which is where it belongs.
  *
  * It used to drag a tail of blobs behind the walker, marking where they had
  * just been. That made the colour behave like a liquid being sloshed about,
@@ -46,7 +48,7 @@ function rimScale(angle: number): number {
  * `computeDirty` is the same margin, which is why the two numbers must move
  * together.
  */
-const HAZE_RADIUS = 256;
+export const HAZE_RADIUS = 256;
 const SPRITE_RADIUS = 292;
 
 let hazeSprite: HTMLCanvasElement | undefined;
@@ -54,22 +56,17 @@ let hazeSprite: HTMLCanvasElement | undefined;
 /**
  * The haze, baked once.
  *
- * This used to be built afresh every frame — a `createRadialGradient` and a
- * fifty-four point polygon whose every vertex moved with the breathing — and
- * that turns out to be the most expensive habit in the whole renderer, for a
- * reason that has nothing to do with how long the fill takes.
+ * Once, not per frame, and the reason is worth keeping even though the fault it
+ * avoids is behind us. This used to be rebuilt every frame — a radial gradient
+ * and a fifty-four point polygon whose every vertex moved with the breathing —
+ * and an accelerated Canvas2D caches the paths it has turned into GPU geometry
+ * and watches how often that cache misses. Fifty-four new coordinates is a
+ * miss, every frame, for ever, and enough misses make Firefox give up on the
+ * canvas and drop it onto the software rasteriser for the rest of the session.
+ * That was the stutter that arrived while standing still.
  *
- * An accelerated canvas caches the paths it has turned into GPU geometry, and
- * Firefox watches how often that cache misses. A path with fifty-four new
- * coordinates is a miss, every frame, for ever — and when misses dominate for
- * long enough the browser gives up on the canvas and drops it onto the software
- * rasteriser, permanently, for the rest of the session. That is the stutter
- * people have been reporting, and it explains the part that never made sense:
- * it arrives while *standing still*, because standing still does not stop the
- * mask being redrawn from scratch sixty times a second.
- *
- * Baked, the mask is one texture. The frame blits it, and blitting caches
- * nothing.
+ * The breathing and the turn are back, and they are free, because they are the
+ * sprite's transform rather than its shape. See `hazeAt`.
  */
 function haze(): HTMLCanvasElement {
   if (hazeSprite) return hazeSprite;
@@ -110,44 +107,13 @@ function haze(): HTMLCanvasElement {
   return hazeSprite;
 }
 
-/**
- * The same haze, as something CSS can use as a mask.
- *
- * Encoded once. It is a readback and a PNG encode of a 584px square, which is
- * a few milliseconds at startup and nothing ever again — against
- * `destination-in` on the displayed canvas, which was measured at fourteen
- * milliseconds a frame for ever.
- */
-let hazeUrl: string | undefined;
-
 /** The baked haze itself, for anything that must apply the mask by hand. */
 export function hazeMask(): HTMLCanvasElement {
   return haze();
 }
 
-export function hazeMaskUrl(): string {
-  hazeUrl ??= haze().toDataURL('image/png');
-  return hazeUrl;
-}
-
-/** Throw the baked haze away, so the next frame bakes it again. */
-export function forgetHaze(): void {
-  hazeSprite = undefined;
-  hazeUrl = undefined;
-}
-
 export class ColorField {
   private readonly dirty: DirtyRect = { x: 0, y: 0, width: 0, height: 0, empty: true };
-
-  /**
-   * Throw the baked haze away, so the next frame bakes it again.
-   *
-   * For `pencil.rescue()`, which hands the game a brand-new set of canvases:
-   * the sprite is a canvas of its own and may as well come from the new set.
-   */
-  renew(): void {
-    forgetHaze();
-  }
 
   /** The rectangle the last frame composited through. Read-only, for debugging. */
   get lastDirty(): Readonly<DirtyRect> {
@@ -157,11 +123,9 @@ export class ColorField {
   /**
    * The screen rectangle the colour occupies this frame.
    *
-   * This is the single most important optimisation in the renderer. The colour
-   * only ever covers a blob around the walker, so compositing the whole screen
-   * is mostly wasted work; restricted to this box, the cost scales with the
-   * colour radius instead of the size of the window. On a large display that is
-   * the difference between compositing 100% of the pixels and about 10%.
+   * Nothing draws to it any more — the shader cuts the whole layer and does not
+   * care where the blob is — but the readout and several tests ask how much of
+   * the screen the colour covers, and this is the only thing that knows.
    */
   computeDirty(
     centreX: number,
@@ -189,47 +153,33 @@ export class ColorField {
   }
 
   /**
-   * Where the haze sits on screen this frame, in CSS pixels.
+   * Where the haze sits, how wide it is, and how far round it has turned.
    *
-   * The colour is not cut by the canvas any more. It used to be
-   * `destination-in` against the baked sprite, drawn straight onto the layer —
-   * which reads well and was measured, on the machine that has the fault, at
-   * fourteen milliseconds a frame against half a millisecond without it. An
-   * accelerated canvas in Firefox does not do that operation on the GPU, and
-   * asking for it drops the whole layer to the software rasteriser
-   * permanently. Every other thing the layer did was innocent: with the punch
-   * gone and the clear and the paper left in, the frame was 0.5ms.
+   * All three go to a sprite the mask shader reads, and all three are therefore
+   * transforms — which is the whole difference from what this replaced. As a
+   * CSS mask the size could not change without the browser rasterising the
+   * mask again at screen resolution, which on the machine with the fault cost
+   * half a core at the first paint pot and approached a whole one by the
+   * thirteenth; and it could not turn at all, because a CSS mask cannot be
+   * rotated. So the breathing was taken out and the turn was given up, and the
+   * blob sat there perfectly still for a year.
    *
-   * So the cut is the compositor's job now: the same sprite, as a CSS mask on
-   * the element. The canvas is left doing nothing but source-over blits, which
-   * is the one path that is reliably accelerated.
-   *
-   * What was lost with it is the slow spin — a CSS mask cannot be rotated. The
-   * rim's wobble is baked into the sprite and survives, and the breathing is
-   * the mask's size, so what went is one turn every two minutes.
+   * Both can come back now, and the next commit brings them; this one only
+   * moves the frame, and a change of engine and a change of how the game looks
+   * are two things to be able to judge separately.
    */
-  maskAt(centreX: number, centreY: number, radius: number): {
-    size: number;
-    left: number;
-    top: number;
-  } {
-    /*
-     * No breathing, and this is load-bearing rather than a simplification.
-     *
-     * Resizing a CSS mask makes the browser rasterise it again at device
-     * resolution; moving one does not. While the radius drifted every frame
-     * that cost half a core in the compositor and approached a whole one as
-     * the blob grew. Rounding the size to steps bought it back and paid in a
-     * visible judder, which the user rejected outright — "let it be static".
-     *
-     * So the size is a function of how much paint has been found and nothing
-     * else. It changes fourteen times in a session and holds still in between.
-     */
-    const size = (radius / HAZE_RADIUS) * SPRITE_RADIUS * 2;
+  hazeAt(
+    centreX: number,
+    centreY: number,
+    radius: number,
+    // Read from the next commit, which is what puts the movement back.
+    _elapsed: number,
+  ): { x: number; y: number; radius: number; angle: number } {
     return {
-      size,
-      left: Math.round(centreX - size / 2),
-      top: Math.round(centreY - size / 2),
+      x: centreX,
+      y: centreY,
+      radius,
+      angle: 0,
     };
   }
 }

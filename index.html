@@ -14,26 +14,32 @@
     -webkit-user-select:none; user-select:none;
     touch-action:none;
   }
-  #game { display:block; position:fixed; inset:0; }
+  /* The valley itself: one WebGL canvas, which Phaser puts inside this box.
 
-  /* The frame is three layers: the pencil drawing, the colour over it, and
-     everything that stands over the colour — the walker, the particles, the
-     tall scenery laid back over them — with the paper on top of the lot. The
-     compositor stacks them, which is the one thing it is reliably good at.
+     The three layers of the frame — the pencil drawing, the coloured drawing
+     cut to the haze, and everything that stands over the colour — are three
+     cameras inside that one canvas, not three elements. They used to be three
+     stacked canvases, because the cut had to be a CSS mask: `destination-in`
+     on a canvas drops it onto Firefox's software rasteriser permanently, at
+     fourteen milliseconds a frame against half a millisecond without, and a
+     CSS mask applies to a whole element so anything that must NOT be cut had
+     to live somewhere else. On the GPU the cut is one multiply in a fragment
+     shader and none of that applies. */
+  #stage { position:fixed; inset:0; }
+  #stage canvas { display:block; position:fixed; inset:0; }
 
-     Why three and not one. The colour is cut to the shape of the haze, and
-     that cut used to be `destination-in` on the canvas. Measured on the
-     machine that has the fault: fourteen milliseconds a frame with it, half a
-     millisecond without. Firefox's accelerated canvas does not do that
-     operation on the GPU and drops the whole layer to software for good when
-     asked. So the cut is a CSS mask on #colour now — and a CSS mask applies to
-     the whole element, so anything that must NOT be cut to the haze has to
-     live on a layer of its own. That is #over.
+  /* The grain and the vignette, and the diagnostics over them. Both are their
+     own element again. They were folded into the frame when the frame was a
+     canvas we blitted every time, because a static overlay was re-blended at
+     the device pixel ratio over a canvas that changed anyway — so we were
+     paying for it twice. Nothing here changes between resizes now, so the
+     compositor holds one texture and blends it on the GPU, which is what it
+     was going to do regardless.
 
-     Pointer events stay with #game: the clicks that pet the cat and touch the
-     owl are bound to that element, and the layers over it must not swallow
-     them. */
-  #colour, #over { display:block; position:fixed; inset:0; pointer-events:none; }
+     Pointer events belong to #overlay, the topmost of them: the clicks that
+     pet the cat and touch the owl are bound to whatever is on top. */
+  #grain { display:block; position:fixed; inset:0; pointer-events:none; }
+  #overlay { display:block; position:fixed; inset:0; }
 
   /* The paper grain and the vignette are drawn into the canvas now, at the end
      of the frame. As `position:fixed` layers they were re-blended over every
@@ -321,9 +327,9 @@
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
-<canvas id="colour"></canvas>
-<canvas id="over"></canvas>
+<div id="stage"></div>
+<canvas id="grain"></canvas>
+<canvas id="overlay"></canvas>
 
 <div id="hud" class="panel">
   <div><b><span id="found">0</span> / <span id="total">0</span></b> <span data-i18n="hud.pots">paint pots</span></div>

@@ -1,5 +1,5 @@
 import { BUILD_ID } from './buildInfo';
-import { context2d, createSurface } from './core/canvas';
+import { createSurface } from './core/canvas';
 import { rng } from './core/rng';
 import { exposeForTests } from './debug';
 import {
@@ -144,19 +144,19 @@ document.addEventListener('visibilitychange', () => {
 async function boot(): Promise<void> {
   /** The load timings, shown in the readout once the title card is gone. */
   let loadReport: string[] = [];
-  const canvas = document.querySelector<HTMLCanvasElement>('#game');
-  if (!canvas) throw new Error('missing #game canvas');
-  const colourCanvas = document.querySelector<HTMLCanvasElement>('#colour');
-  if (!colourCanvas) throw new Error('missing #colour canvas');
-  const overCanvas = document.querySelector<HTMLCanvasElement>('#over');
-  if (!overCanvas) throw new Error('missing #over canvas');
   /*
-   * The two layers being drawn on *now*. Not the same objects for the whole
-   * session: `pencil.rescue()` swaps in fresh elements by hand.
+   * Three elements, and only one of them is the picture.
+   *
+   *   #stage    the box Phaser puts its WebGL canvas in
+   *   #grain    the paper, drawn once per resize
+   *   #overlay  the diagnostics, and where pointer events land
    */
-  let canvasElement: HTMLCanvasElement = canvas;
-  let colourElement: HTMLCanvasElement = colourCanvas;
-  let overElement: HTMLCanvasElement = overCanvas;
+  const stageHost = document.querySelector<HTMLElement>('#stage');
+  if (!stageHost) throw new Error('missing #stage');
+  const grainCanvas = document.querySelector<HTMLCanvasElement>('#grain');
+  if (!grainCanvas) throw new Error('missing #grain canvas');
+  const overlayCanvas = document.querySelector<HTMLCanvasElement>('#overlay');
+  if (!overlayCanvas) throw new Error('missing #overlay canvas');
 
   /*
    * Language first, before anything is shown.
@@ -267,7 +267,7 @@ async function boot(): Promise<void> {
      */
     loadReport = ['', ...report.split('\n')];
   }
-  const renderer = new Renderer(canvas, colourCanvas, overCanvas);
+  const renderer = new Renderer(stageHost, grainCanvas, overlayCanvas);
   const perf = new Performance();
   let showPerf = false;
   const statsButton = document.querySelector<HTMLButtonElement>('#stats');
@@ -413,7 +413,7 @@ async function boot(): Promise<void> {
   // easel showing the drawing somebody else abandoned.
   refreshEasel();
 
-  const input = new Input(canvas, {
+  const input = new Input(overlayCanvas, {
     onEngage: () => start(),
     onRestart: () => {
       cuckoo.stop();
@@ -429,11 +429,12 @@ async function boot(): Promise<void> {
   let owlHoot: HTMLAudioElement | undefined;
 
   /**
-   * Everything bound to the canvas element itself, in one place.
+   * Everything bound to the topmost element, in one place.
    *
-   * Called again with fresh elements whenever `pencil.rescue()` rebuilds the
-   * layers. The old element is dropped from the document at the same moment,
-   * which takes its listeners with it, so nothing is removed here.
+   * The topmost one, not the picture: the WebGL canvas has two elements over
+   * it and whichever is on top is what a click reaches. `#overlay` is that
+   * element, and it is the size of the window, so a click on it is a click on
+   * the frame.
    */
   function bindCanvas(surface: HTMLCanvasElement): void {
     input.retarget(surface);
@@ -489,35 +490,7 @@ async function boot(): Promise<void> {
       game.pet();
     });
   }
-  bindCanvas(canvas);
-
-  /**
-   * Hand the game brand-new layers.
-   *
-   * The whole point is the elements, not what is drawn on them: Firefox's
-   * decision to stop accelerating a canvas lives with that canvas and dies with
-   * it, so fresh ones are drawn on the GPU again. Both go together — the
-   * decision is per canvas, and leaving one of a stacked pair behind leaves
-   * half the frame on the software path.
-   */
-  function rebuildCanvas(): void {
-    if (!running) return;
-    const replace = (old: HTMLCanvasElement): HTMLCanvasElement => {
-      const fresh = document.createElement('canvas');
-      fresh.id = old.id;
-      fresh.className = old.className;
-      old.replaceWith(fresh);
-      return fresh;
-    };
-    canvasElement = replace(canvasElement);
-    colourElement = replace(colourElement);
-    overElement = replace(overElement);
-    renderer.attach(canvasElement, colourElement, overElement);
-    game.field.renew();
-    bindCanvas(canvasElement);
-    resize();
-    renderer.render(game.scene);
-  }
+  bindCanvas(overlayCanvas);
 
   function start(): void {
     if (!ui.dismissIntro()) return;
@@ -585,24 +558,6 @@ async function boot(): Promise<void> {
     input,
     renderOnce: () => renderer.render(game.scene),
     build: BUILD_ID,
-    /*
-     * Throw both layers away and draw on fresh ones.
-     *
-     * There used to be a `Rescue` that did this on its own whenever the frames
-     * went soft. It has been taken out: measured on the machine that has the
-     * fault, it bought ten to fifteen seconds the first time and about one
-     * second every time after, so all it did was drop a frame to rebuild and
-     * arrive back where it started. That is a result, not a failure — a fresh
-     * element escapes a per-canvas decision completely, so the diminishing
-     * return says the cost is not in the element we threw away.
-     *
-     * Kept by hand, because it is still the cheapest A/B there is: if a
-     * rebuild helps at all, the session was on the software path.
-     */
-    rescue: () => {
-      rebuildCanvas();
-      return 'rebuilt both layers';
-    },
     snapshot: () => {
       const p = perf.snapshot();
       const d = game.field.lastDirty;
@@ -643,10 +598,6 @@ async function boot(): Promise<void> {
         awake: game.herd.animals.reduce((n, a) => n + (a.awake ? 1 : 0), 0),
         canvases: c.tiles + c.sprites,
         canvasMb: c.mb,
-        // Whether this capture's stage numbers are honest (see settleStages).
-        // A capture taken with it on costs a readback per stage and its
-        // proportions mean something different from an ordinary one's.
-        settleStages: renderer.settleStages,
         ...Object.fromEntries(Object.entries(renderer.stages).map(([k, v]) => [k, round(v)])),
       };
     },
@@ -770,201 +721,48 @@ async function boot(): Promise<void> {
      * capture, not a setting to leave on.
      */
     /*
-     * Which part of the colour layer is the expensive one.
+     * Turn parts of the frame off by hand, and say what is on.
      *
-     * The layer costs many times what the pencil layer below it does for a
-     * fraction of the pixels. Three things it does are candidates: a
-     * full-screen clear of a transparent canvas every frame, a full-screen
-     * blend of the paper over it, and `destination-in` — which an accelerated
-     * canvas may not support at all.
+     * Three cameras over one canvas now, so this is layer visibility and
+     * nothing else. What used to be here — `no clear`, `no punch`, `no paper`,
+     * a fresh canvas per case — was scaffolding for a fault that no longer
+     * exists: Firefox dropping an accelerated canvas to software for ever the
+     * first time it was asked for `destination-in`. Nothing in this frame asks
+     * for it, or for anything else off the accelerated path.
      *
-     * EACH CASE STARTS ON A BRAND-NEW ELEMENT, and that is the whole design.
-     * The browser's decision to stop accelerating a canvas is permanent for
-     * the life of that canvas, so switching an operation off part way through
-     * a session measures the cost of doing it on a canvas already lost to
-     * software — which is not the question. The question is whether doing it
-     * at all is what loses the canvas, and only a fresh one can answer that.
-     * The first version of this measured the wrong thing and said the punch
-     * was worth three milliseconds when the layer was already twenty.
+     * The picture is wrong with any layer off. That is the point.
      *
-     * Warm-up matters for the same reason: the fallback is decided over ten
-     * frames, so each case runs long enough to be judged and then measured.
-     * The picture is wrong while it runs — smeared, or hard-edged, or without
-     * its grain — and right again at the end.
-     */
-    layerCost: async (frames = 90) => {
-      const probe = globalThis.pencil?.probe;
-      if (!probe) return {};
-      const runs: Record<string, number> = {};
-      const cases: [string, () => void][] = [
-        ['all on', () => {}],
-        ['no clear', () => (renderer.skipClear = true)],
-        ['no punch', () => (renderer.skipPunch = true)],
-        ['no paper', () => (renderer.skipPaper = true)],
-        ['none of the three', () => {
-          renderer.skipClear = true;
-          renderer.skipPunch = true;
-          renderer.skipPaper = true;
-        }],
-      ];
-      for (const [label, set] of cases) {
-        renderer.skipClear = false;
-        renderer.skipPunch = false;
-        renderer.skipPaper = false;
-        set();
-        // A fresh pair of layers, then long enough for the browser to make up
-        // its mind about them before anything is recorded.
-        rebuildCanvas();
-        await probe(frames);
-        const watched = await probe(frames);
-        runs[label] = Math.round((watched.drawMs ?? 0) * 100) / 100;
-      }
-      renderer.skipClear = false;
-      renderer.skipPunch = false;
-      renderer.skipPaper = false;
-      rebuildCanvas();
-      return {
-        drawMs: runs,
-        note: 'each case on a brand-new canvas, warmed up before measuring',
-        dirty: `${game.field.lastDirty.width}x${game.field.lastDirty.height}`,
-        view: `${renderer.width}x${renderer.height}`,
-      };
-    },
-    /*
-     * Turn the parts of the frame on and off by hand, and say what is on.
-     *
-     * For the one cost nothing in this codebase can measure: the work the
-     * browser does on our behalf after we have finished drawing. `drawMs` went
-     * from 25ms to 1.16ms and a thread in another process is still at half a
-     * core, so the remaining cost is compositing, or rasterising the mask, or
-     * both — and the instrument for it is `top` in the next window.
-     *
-     * One at a time, ten seconds each, watch the CPU:
-     *
-     *   pencil.layers({ over: false })    is a third layer what costs?
-     *   pencil.layers({ colour: false })
-     *   pencil.layers({ mask: false })    is wearing a CSS mask what costs?
-     *   pencil.layers({ paper: false })   is the full-screen grain blend?
-     *   pencil.layers({ clear: false })
-     *   pencil.layers({})                 put everything back
-     *
-     * The picture is wrong with any of them off. That is expected.
+     *   pencil.layers({ sketch: false })   the pencil valley
+     *   pencil.layers({ colour: false })   the coloured valley and its haze
+     *   pencil.layers({ over: false })     the walker and everything above
+     *   pencil.layers({})                  put it all back
      */
     layers: (patch?: Record<string, boolean>) => {
       const p = patch ?? {};
-      if (p.mask === undefined) renderer.noMask = false;
-      else renderer.noMask = !p.mask;
-      if (p.paper === undefined) renderer.skipPaper = false;
-      else renderer.skipPaper = !p.paper;
-      if (p.clear === undefined) renderer.skipClear = false;
-      else renderer.skipClear = !p.clear;
-      renderer.showLayer('colour', p.colour !== false);
-      renderer.showLayer('over', p.over !== false);
-      return {
-        mask: !renderer.noMask,
-        paper: !renderer.skipPaper,
-        clear: !renderer.skipClear,
+      const on = {
+        sketch: p.sketch !== false,
         colour: p.colour !== false,
         over: p.over !== false,
       };
-    },
-    settleStages: (on: boolean) => {
-      renderer.settleStages = on;
-      return renderer.settleStages;
+      for (const [layer, visible] of Object.entries(on)) {
+        renderer.showLayer(layer as 'sketch' | 'colour' | 'over', visible);
+      }
+      return on;
     },
     /*
-     * Both layers, stacked. Allocates a surface per call and is only ever
-     * reached from a test, so it is off every path that matters.
+     * The finished frame, read back.
+     *
+     * Every test that asks what colour a pixel is comes through here. The frame
+     * is a WebGL canvas with the paper over it, so both are stacked into a
+     * scratch surface and read from that. Allocates per call and is only ever
+     * reached from a test.
      */
     composited: (x: number, y: number, width: number, height: number) => {
       const shot = createSurface(width, height);
-      shot.ctx.drawImage(canvasElement, -x, -y);
-      /*
-       * The colour layer through its own mask. The compositor applies it to
-       * the element, so reading the canvas back gives the whole painted
-       * rectangle — including the corners the player never sees.
-       */
-      const cut = createSurface(colourElement.width, colourElement.height);
-      cut.ctx.drawImage(colourElement, 0, 0);
-      cut.ctx.globalCompositeOperation = 'destination-in';
-      renderer.drawMaskInto(cut.ctx);
-      cut.ctx.globalCompositeOperation = 'source-over';
-      // The colour layer is the size of the blob and sits where the blob is,
-      // so it has to be put back at that offset rather than at the origin.
-      const origin = renderer.colourOrigin;
-      shot.ctx.drawImage(
-        cut.canvas,
-        Math.round(origin.left * renderer.scale) - x,
-        Math.round(origin.top * renderer.scale) - y,
-      );
-      cut.canvas.width = 1;
-      cut.canvas.height = 1;
-      shot.ctx.drawImage(overElement, -x, -y);
+      const frame = renderer.frameCanvas;
+      if (frame) shot.ctx.drawImage(frame, -x, -y);
+      shot.ctx.drawImage(grainCanvas, -x, -y);
       return shot.ctx.getImageData(0, 0, width, height);
-    },
-    /*
-     * The one-paste A/B for bug7's slow state: the same blit, once into a
-     * brand-new offscreen canvas and once into the displayed one, each with the
-     * queue forced to completion so the timer measures work rather than
-     * queueing. If the displayed canvas alone is slow, the cost is the
-     * browser's cross-process canvas pipeline, not the amount of things drawn.
-     *
-     * Sized off the last dirty rectangle so it measures the region the
-     * composite actually works over, falling back to most of the viewport when
-     * there is none. The blits into the displayed canvas scribble over one
-     * frame; the render at the end paints it back.
-     */
-    roundtrip: (full = false) => {
-      const { world, camera, field } = game;
-      const d = field.lastDirty;
-      const W = Math.max(64, Math.round(Math.min(full ? renderer.width : d.empty ? 850 : d.width, renderer.width)));
-      const H = Math.max(64, Math.round(Math.min(full ? renderer.height : d.empty ? 778 : d.height, renderer.height)));
-      const scratch = document.createElement('canvas');
-      scratch.width = W;
-      scratch.height = H;
-      const sc = context2d(scratch);
-      const main = renderer.context;
-      const flush = (c: CanvasRenderingContext2D) => void c.getImageData(0, 0, 1, 1);
-      const blit = (c: CanvasRenderingContext2D) => {
-        c.setTransform(1, 0, 0, 1, 0, 0);
-        world.drawRegion(c, 'color', camera.viewX, camera.viewY, W / camera.zoom, H / camera.zoom, 0, 0, W, H);
-      };
-      const batched = (c: CanvasRenderingContext2D) => {
-        for (let i = 0; i < 10; i++) blit(c);
-        flush(c);
-        const started = performance.now();
-        for (let i = 0; i < 60; i++) blit(c);
-        flush(c);
-        return Math.round(((performance.now() - started) / 60) * 1000) / 1000;
-      };
-      /*
-       * Ten blits, each followed by its own forced flush. If the displayed
-       * canvas's slowness is one checkpoint wait landing on the flush, each of
-       * these pays it in full and the number explodes; if it is per-blit work,
-       * this stays near the batched figure. Ten, because a wait of ten
-       * milliseconds each is already a hundred milliseconds of frozen page.
-       */
-      const flushEach = () => {
-        for (let i = 0; i < 3; i++) {
-          blit(main);
-          flush(main);
-        }
-        const started = performance.now();
-        for (let i = 0; i < 10; i++) {
-          blit(main);
-          flush(main);
-        }
-        return Math.round(((performance.now() - started) / 10) * 1000) / 1000;
-      };
-      const out = {
-        region: `${W}x${H}`,
-        drawMs: Math.round(perf.snapshot().drawMs * 100) / 100,
-        intoScratch: batched(sc),
-        intoDisplayed: batched(main),
-        displayedFlushEach: flushEach(),
-      };
-      renderer.render(game.scene);
-      return out;
     },
     purrStrength,
     purrsPlayed: () => purrsPlayed,
@@ -1027,16 +825,19 @@ async function boot(): Promise<void> {
     perf.recordSim(performance.now() - simStart);
 
     const drawStart = performance.now();
-    renderer.render(game.scene);
+    renderer.render(game.scene, now, elapsedMs);
+    /*
+     * The overlay is its own element now, so it does not get wiped by the
+     * frame being redrawn — it has to be cleared by whoever drew on it.
+     */
+    renderer.clearOverlay();
     if (showPerf) {
       const awake = game.herd.animals.reduce((n, a) => n + (a.awake ? 1 : 0), 0);
       const s = renderer.stages;
       const ms = (v: number) => v.toFixed(1).padStart(4);
       drawPerfOverlay(renderer.context, perf.snapshot(), renderer.width, renderer.height, [
         `awake ${awake}/${game.herd.animals.length}   zoom ${game.camera.zoom.toFixed(2)}`,
-        `world ${ms(s.worldBlit)}  live ${ms(s.live)}`,
-        `comp  ${ms(s.composite)}  occl ${ms(s.occluders)}`,
-        `tiles ${ms(s.colourTiles)}  clive ${ms(s.colourLive)}  punch ${ms(s.maskPunch)}`,
+        `live ${ms(s.live)}  scenery ${ms(s.scenery)}  submit ${ms(s.submit)}`,
         `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
         hapticStatus(),
         `purr ${purr ? (purr.paused ? 'idle' : `playing ${purr.volume.toFixed(2)}`) : 'unloaded'} · birds ${birdsong.status()} · pond ${pond.status()}`,

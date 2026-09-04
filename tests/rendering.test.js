@@ -380,8 +380,12 @@ export async function run(url) {
       game.teleport(1300, 1330);
 
       const reach = () => {
-        const canvas = document.querySelector('#game');
-        const img = pencil.composited(0, 0, canvas.width, canvas.height);
+        // The frame's own size in device pixels. It used to be read off the
+        // #game canvas; the frame is one WebGL canvas Phaser owns now, and the
+        // renderer is the thing that knows how big it is.
+        const width = Math.round(renderer.width * renderer.scale);
+        const height = Math.round(renderer.height * renderer.scale);
+        const img = pencil.composited(0, 0, width, height);
         const mid = Math.floor(img.height / 2);
         let left = -1;
         let right = -1;

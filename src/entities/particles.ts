@@ -141,6 +141,64 @@ export class Particles {
     sweep(this.hearts, (h) => h.life > 0);
   }
 
+  /**
+   * Every round particle to be shown, with the alpha it is to be shown at.
+   *
+   * Yielded rather than drawn, because a mote is a disc of one colour at a
+   * position and a size — which is a sprite, and putting fifty sprites on the
+   * GPU costs nothing at all. Drawn into a canvas instead, they were the single
+   * most expensive thing in the frame: the motes drift out to the edge of the
+   * light, so the canvas holding them had to be as wide as the colour is, and
+   * it was re-uploaded twelve times a second. Measured at 66MB a second, which
+   * was more than everything else in the frame put together.
+   *
+   * `draw` below still exists and still draws the same picture; it is what the
+   * hearts use, and what anything wanting the whole lot in one context uses.
+   */
+  *discs(
+    walkerX: number,
+    walkerY: number,
+    litRadius: number,
+    flooded: boolean,
+  ): Generator<{ x: number; y: number; radius: number; colour: string; alpha: number }> {
+    for (const m of this.motes) {
+      const fade = clamp(m.life / m.maxLife, 0, 1) * 0.9;
+      const nearness = flooded
+        ? 1
+        : clamp(1 - Math.hypot(m.x - walkerX, m.y - walkerY) / (litRadius * 0.95), 0, 1);
+      yield { x: m.x, y: m.y, radius: m.radius, colour: m.colour, alpha: fade * nearness };
+    }
+    for (const p of this.splashes) {
+      yield {
+        x: p.x,
+        y: p.y,
+        radius: p.radius,
+        colour: p.colour,
+        alpha: clamp(p.life / p.maxLife, 0, 1),
+      };
+    }
+  }
+
+  /** Is there a heart in the air? They are drawn by hand and are usually not. */
+  get hasHearts(): boolean {
+    return this.hearts.length > 0;
+  }
+
+  /** The box the hearts occupy, in world units. Only valid if there are any. */
+  heartBounds(): { x: number; y: number; size: number } {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const h of this.hearts) {
+      x0 = Math.min(x0, h.x - h.radius * 2);
+      y0 = Math.min(y0, h.y - h.radius * 2);
+      x1 = Math.max(x1, h.x + h.radius * 2);
+      y1 = Math.max(y1, h.y + h.radius * 2);
+    }
+    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, size: Math.max(x1 - x0, y1 - y0) + 16 };
+  }
+
   /** Motes fade out towards the edge of the light; splashes do not. */
   draw(
     ctx: CanvasRenderingContext2D,
@@ -149,18 +207,23 @@ export class Particles {
     litRadius: number,
     flooded: boolean,
   ): void {
-    for (const m of this.motes) {
-      const fade = clamp(m.life / m.maxLife, 0, 1) * 0.9;
-      const nearness = flooded
-        ? 1
-        : clamp(1 - Math.hypot(m.x - walkerX, m.y - walkerY) / (litRadius * 0.95), 0, 1);
-      ctx.globalAlpha = fade * nearness;
-      drawDisc(ctx, m.colour, m.x, m.y, m.radius);
+    for (const d of this.discs(walkerX, walkerY, litRadius, flooded)) {
+      ctx.globalAlpha = d.alpha;
+      drawDisc(ctx, d.colour, d.x, d.y, d.radius);
     }
-    for (const p of this.splashes) {
-      ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
-      drawDisc(ctx, p.colour, p.x, p.y, p.radius);
-    }
+    this.drawHearts(ctx);
+    ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The hearts, which rise from the cat when she is stroked.
+   *
+   * Kept on a canvas rather than made into sprites like the discs: a heart is a
+   * pair of bezier curves whose shape changes as it swells, so it is a drawing
+   * rather than a stamp. There are three of them, they last a second, and they
+   * happen when somebody pets a cat — this is not a hot path.
+   */
+  drawHearts(ctx: CanvasRenderingContext2D): void {
     // Hearts swell as they appear and fade as they go, so the burst has a shape
     // rather than three dots switching on.
     for (const h of this.hearts) {

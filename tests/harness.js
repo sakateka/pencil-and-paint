@@ -75,7 +75,13 @@ export async function openGame(url, { viewport = { width: 1280, height: 800 }, s
     if (m.type() === 'error') errors.push(`console.error: ${m.text()}`);
   });
 
-  await page.goto(url);
+  /*
+   * `?readback` asks the renderer to keep the drawing buffer, without which
+   * nothing can read the finished frame back — the WebGL canvas is discarded
+   * as soon as it has been handed to the compositor. It is off in play because
+   * it costs the driver a full-screen copy every frame.
+   */
+  await page.goto(url + (url.includes('?') ? '&' : '?') + 'readback');
   // Nothing heavy runs until the page is touched — see `firstGesture` in
   // main.ts — so the click comes first and the game appears after it.
   await page.waitForSelector('#startBtn');

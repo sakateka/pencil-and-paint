@@ -1,5 +1,4 @@
 import { context2d, createSurface, isolate, type Surface } from '../core/canvas';
-import type { Bounds } from '../core/geom';
 import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
@@ -7,7 +6,7 @@ import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
 import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
 import { drawLion, type Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
-import { drawSky } from '../world/sky';
+import { drawSky, SKY_DEPTH } from '../world/sky';
 import { withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
@@ -15,12 +14,12 @@ import { drawWalker, type Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import type { Particles } from '../entities/particles';
 import { drawPot, type Pot } from '../entities/pots';
-import type { Medium } from '../media/medium';
 import type { World } from '../world/world';
 import type { Camera } from './camera';
-import { GRAIN } from '../media/sprites';
-import { hazeMask, hazeMaskUrl } from './colorField';
+import { disc, GRAIN } from '../media/sprites';
+import { HAZE_RADIUS, hazeMask } from './colorField';
 import type { ColorField } from './colorField';
+import { poseOf, Stage } from './stage';
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -56,307 +55,114 @@ export interface Scene {
 }
 
 /**
- * Composites one frame.
- *
- * The order is the whole idea, so it is worth stating plainly:
- *
- *   1. blit the pencil drawing of the world
- *   2. draw the live things (livestock, pots) in pencil on top of it
- *   3. build a mask of where the colour reaches
- *   4. blit the coloured world, draw the live things in colour, punch both
- *      through the mask, and lay the result over the pencil
- *   5. draw the walker, who is always in colour
- *   6. lay tall scenery back over the walker, so they pass behind it
- *   7. one sheet of paper grain over everything, so it reads as one drawing
- *
- * Once the colour covers the whole viewport, steps 1-4 collapse into a single
- * blit of the coloured world — there is no point masking what is entirely lit.
- */
-/**
  * Per-stage timings, in milliseconds, averaged over recent frames.
  *
- * Canvas work is queued and finishes on the GPU later, so these under-report
- * absolute cost — but they are measured the same way as each other, so the
- * *proportions* are what localise a slow frame.
+ * Much shorter than it was. Most of what the old readout measured no longer
+ * happens on this thread — the valley is not blitted, the colour is not
+ * composited, the mask is not punched — so the only numbers left are the ones
+ * that are still ours: repainting hand-drawn things, and handing the frame to
+ * the GPU.
  */
 export interface StageTimings {
-  worldBlit: number;
+  /** Repainting the cels of hand-drawn things whose pose changed. */
   live: number;
-  composite: number;
-  occluders: number;
-  /** The one blit of grain and vignette over the finished frame. */
-  paper: number;
+  /** Placing the world's tiles and occluder sprites. */
+  scenery: number;
+  /** Phaser's own frame: culling, batching, the draw calls. */
+  submit: number;
   /** Sprites baked this frame — should settle to zero once explored. */
   bakes: number;
-  /*
-   * The four passes inside `composite`, which is otherwise one number covering
-   * most of the frame. Worth having permanently: a night was spent guessing
-   * which of them was expensive, and the answer turned out to differ between
-   * machines — so the only useful version of this question is the one asked on
-   * the machine that is actually slow.
-   */
-  /** Coloured world tiles blitted onto the colour layer. */
-  colourTiles: number;
-  /** Live entities drawn onto the colour layer, in colour. */
-  colourLive: number;
-  /** `destination-in` cutting the colour back to the haze, in place. */
-  maskPunch: number;
 }
 
 /**
- * The frame is three stacked canvas elements, not one.
+ * How the frame is put together, and why it is put together that way.
  *
- *   #game    the pencil drawing of the valley, opaque
- *   #colour  the coloured valley, cut to the haze by a CSS mask
- *   #over    everything that stands over the colour, and the paper
+ * Three cameras over one WebGL canvas, plus two thin canvases of our own:
  *
- * The compositor stacks them. There is no compositing done here at all any
- * more, and that is the entire point.
+ *   sketch    the pencil drawing of the valley
+ *   colour    the coloured valley, cut to the haze by a fragment shader
+ *   over      everything that stands over the colour
+ *   #paper    grain and vignette, drawn once per resize and never again
+ *   #hud      the diagnostics overlay, drawn only when it is switched on
  *
- * What this replaced, and what each step of it cost. The colour used to be
- * drawn into an offscreen scratch, punched through a mask surface with
- * `destination-in`, and copied back onto one displayed canvas. Two of those
- * surfaces were rewritten every frame and read straight back as textures,
- * which an accelerated canvas can never cache; that went first. What was left
- * was the punch, still on the canvas, and it turned out to be the whole story:
- * measured on the machine with the fault, on a fresh canvas each time,
+ * What this replaced. The valley used to be blitted out of its baked tiles into
+ * the window every frame, twice, and the colour cut to the haze with either
+ * `destination-in` — which drops an accelerated canvas onto the software
+ * rasteriser permanently, and was measured at fourteen milliseconds a frame —
+ * or a CSS mask, which moved the same work into the compositor where no timer
+ * in this codebase could see it. Measured on real hardware, walking with
+ * thirteen paint pots found, that frame cost 40% of a core and climbed past
+ * 100% over a session. This one costs about 20% and does not climb.
  *
- *     everything on                 14.40 ms
- *     without the full-screen clear 13.74 ms
- *     without the paper             10.17 ms
- *     WITHOUT THE PUNCH              0.50 ms
- *     without all three              0.58 ms
+ * The saving is not Phaser being clever. It is that a tile handed to the GPU
+ * once is never touched again — the camera moves instead of the picture — and
+ * that multiplying a layer by a soft alpha is one line of a fragment shader.
  *
- * Firefox's accelerated Canvas2D does not do `destination-in` on the GPU. Ask
- * for it and the layer falls to the software rasteriser and stays there for
- * the life of the canvas — which is the stutter that arrives mid-session and
- * never leaves, and the reason rebuilding the canvas bought a few seconds and
- * then less each time.
- *
- * So the cut is a CSS mask on #colour, and a CSS mask applies to the whole
- * element — hence the third layer for the walker and everything else that must
- * not be cut to the shape of the light. Every canvas here now does nothing but
- * source-over blits from surfaces baked once, which is the one path that stays
- * accelerated.
+ * What is still drawn by hand is drawn by hand: every `draw*` function in
+ * `entities/` and `world/` takes a 2D context and is unchanged. They paint into
+ * small canvases now instead of into the window, and those canvases are only
+ * re-uploaded when the drawing on them actually changes. See `Stage.cel`.
  */
 export class Renderer {
-  /** The pencil layer, below. Opaque: the world blit covers every pixel. */
-  private ctx: CanvasRenderingContext2D;
-  /** The colour layer. Transparent, masked by the compositor, never cleared. */
-  private colour: CanvasRenderingContext2D;
-  /** The layer above the colour. Transparent, cleared every frame. */
-  private over: CanvasRenderingContext2D;
+  private readonly stage: Stage;
+
+  /** Grain and vignette, over the whole frame. Rebuilt only on resize. */
+  private paperCtx: CanvasRenderingContext2D;
+  private paper: Surface;
+
+  /** The diagnostics overlay, which must sit over everything. */
+  private hudCtx: CanvasRenderingContext2D;
 
   /** Viewport in CSS pixels. */
   width = 0;
   height = 0;
 
-  /** Device pixels per CSS pixel. Adapted at runtime by `systems/perf.ts`. */
+  /** Device pixels per CSS pixel. */
   scale = 1;
 
-  /**
-   * Which of the two paths the last frame took.
-   *
-   * Recorded rather than recomputed, because the whole point of asking is to
-   * find out what actually happened. Confusing the cheap flooded path for the
-   * expensive composite one — they differ by better than ten times — cost an
-   * evening once.
-   */
+  /** Whether the colour covered the window on the last frame. */
   lastFlooded = false;
 
-  readonly stages: StageTimings = {
-    worldBlit: 0,
-    live: 0,
-    composite: 0,
-    occluders: 0,
-    paper: 0,
-    bakes: 0,
-    colourTiles: 0,
-    colourLive: 0,
-    maskPunch: 0,
-  };
-
-  /**
-   * Which stages ran this frame, so the others can be decayed.
-   *
-   * Without this a stage that stops running keeps its last average for ever:
-   * win the game and the composite is skipped from then on, but the readout
-   * goes on reporting whatever it cost on the final frame before the flood.
-   * That is not a stale number, it is a wrong one, and it sent a real debugging
-   * session down the wrong path.
-   */
-  private readonly ran = new Set<keyof StageTimings>();
-
-
-  /**
-   * This frame's stage costs, unaveraged.
-   *
-   * `stages` is a running average, which is the right thing for reading a
-   * steady state and the wrong thing entirely for catching a spike: a single
-   * forty-millisecond frame folded in at one part in ten shows up as a four
-   * millisecond bump and is gone again in a dozen frames. Every diagnosis in
-   * bugs/ so far was made from the averages, and every one of them was made
-   * from a window that happened not to contain the problem. These are the
-   * numbers a slow frame is actually made of.
-   */
-  readonly frameStages: StageTimings = {
-    worldBlit: 0,
-    live: 0,
-    composite: 0,
-    occluders: 0,
-    paper: 0,
-    bakes: 0,
-    colourTiles: 0,
-    colourLive: 0,
-    maskPunch: 0,
-  };
-
-  /**
-   * Wait for each stage's canvas work before timing the next one.
-   *
-   * Off by default and costly when on, so it is a diagnostic rather than a
-   * setting: forcing a readback is exactly the stall being investigated.
-   *
-   * Canvas calls are queued and finish later, so a timer around them measures
-   * how long it took to *ask*. That is not a small error, it is a
-   * misattribution: nothing reads the main canvas back during a frame, so the
-   * world blit's real cost escapes its timer entirely and reads 0.11ms for a
-   * full screen, while the scratch is copied back within the same frame and
-   * every deferred operation on it lands on whichever stage happened to
-   * trigger the flush. Two reports from the same machine minutes apart split
-   * the identical work as colourTiles 4.59 / maskPunch 4.36 and then as
-   * colourTiles 7.5 / maskPunch 0.95. Only their sum ever meant anything.
-   *
-   * With this on, each stage's number is its own.
-   */
-  settleStages = false;
-
-  /*
-   * Three things the colour layer does that the pencil layer does not, each
-   * switchable so the machine with the fault can say which one costs.
-   *
-   * Not settings. The frame is wrong with any of them on — no clear leaves
-   * last frame's colour smeared behind this one, no punch shows the colour as
-   * a hard-edged rectangle, no paper drops the grain — and that is fine for
-   * the second or two `pencil.layerCost()` holds them.
-   *
-   * They exist because this layer is seventy times the cost of the one below
-   * it for a fifteenth of the pixels, and three plausible reasons is two too
-   * many to act on.
-   */
-  skipClear = false;
-  skipPunch = false;
-  skipPaper = false;
-
-  /**
-   * Take the mask off the colour layer entirely.
-   *
-   * The colour shows as a hard-edged square, which is obviously wrong and is
-   * the point: it asks whether wearing a CSS mask at all is what costs, as
-   * against everything else the layer does. Nothing in this codebase can time
-   * that — it happens in another process after we stop drawing — so the
-   * instrument is `top` and the method is subtraction.
-   *
-   * This used to freeze the mask instead of removing it, which answered a
-   * question that no longer exists: nothing about the mask is written per
-   * frame any more, so freezing it changes nothing at all.
-   */
-  noMask = false;
-
-  /** Force this context's queued work to finish, if stage timing is honest. */
-  private settle(ctx: CanvasRenderingContext2D): void {
-    if (!this.settleStages) return;
-    // One pixel is enough: a read of any kind waits for everything before it.
-    ctx.getImageData(0, 0, 1, 1);
-  }
-
-  /** Blend a sample into the running average for one stage. */
-  private time<T>(
-    stage: keyof StageTimings,
-    fn: () => T,
-    settleOn: CanvasRenderingContext2D = this.ctx,
-  ): T {
-    const started = performance.now();
-    const result = fn();
-    this.settle(settleOn);
-    this.blend(stage, performance.now() - started);
-    return result;
-  }
-
-  /** Fold one sample into a stage's running average, and mark it as having run. */
-  private blend(stage: keyof StageTimings, ms: number): void {
-    this.stages[stage] = this.stages[stage] * 0.9 + ms * 0.1;
-    this.frameStages[stage] = ms;
-    this.ran.add(stage);
-  }
-
-  /**
-   * Let anything that did not run this frame fall away.
-   *
-   * Towards zero at the same rate it would have risen, so a stage that stops
-   * reads as fading out rather than as switching off — which is the truth, and
-   * also tells you *when* it stopped if you are watching.
-   */
-  private decayIdle(): void {
-    for (const key of Object.keys(this.stages) as (keyof StageTimings)[]) {
-      if (key === 'bakes' || this.ran.has(key)) continue;
-      this.stages[key] *= 0.9;
-    }
-    this.ran.clear();
-  }
-
-  /**
-   * The paper: grain and vignette, in screen space, on one sheet.
-   *
-   * These used to be two `position:fixed` divs over the canvas, on the reasoning
-   * that a static layer is something the compositor can cache. It can — but
-   * caching saves *rasterising* them, not blending them, and the canvas beneath
-   * changes every frame, so both were re-blended over every frame anyway. At
-   * device resolution, while the canvas draws at CSS resolution: at a device
-   * pixel ratio of two the browser was blending four times as many pixels on
-   * our behalf as we drew ourselves, none of it visible to any timer here.
-   * Hiding them took a real session from 42fps to 52.
-   *
-   * Composed once per resize and laid down with a single one-to-one blit, which
-   * is the cheapest full-screen operation there is — a pattern fill and a
-   * gradient every frame would have given most of the saving back.
-   */
-  private paper: Surface;
+  readonly stages: StageTimings = { live: 0, scenery: 0, submit: 0, bakes: 0 };
+  readonly frameStages: StageTimings = { live: 0, scenery: 0, submit: 0, bakes: 0 };
 
   constructor(
-    private canvas: HTMLCanvasElement,
-    private colourCanvas: HTMLCanvasElement,
-    private overCanvas: HTMLCanvasElement,
+    host: HTMLElement,
+    private readonly paperCanvas: HTMLCanvasElement,
+    hudCanvas: HTMLCanvasElement,
   ) {
-    // Opaque. The compositor can then copy rather than blend a full-screen
-    // layer every frame. This was transparent for a while because a resize
-    // clears the canvas and an opaque one clears to black, which flashed — but
-    // the render scale is fixed now, so resizes only happen when the window
-    // does, and those redraw immediately.
-    this.ctx = context2d(canvas, { alpha: false });
-    // The layer above has to be transparent — the pencil showing through
-    // outside the haze is the entire point of the game.
-    this.colour = context2d(colourCanvas, { alpha: true });
-    this.over = context2d(overCanvas, { alpha: true });
+    this.paperCtx = context2d(paperCanvas, { alpha: true });
+    this.hudCtx = context2d(hudCanvas, { alpha: true });
     this.paper = createSurface(1, 1);
+    this.stage = new Stage(host, () => {
+      this.stage.setHaze(hazeMask(), HAZE_RADIUS);
+      this.stage.resize(this.width, this.height);
+    });
   }
 
   resize(width: number, height: number, scale: number): void {
     this.width = width;
     this.height = height;
     this.scale = scale;
-    for (const surface of [this.canvas, this.overCanvas]) {
-      surface.width = Math.max(1, Math.round(width * scale));
-      surface.height = Math.max(1, Math.round(height * scale));
-      surface.style.width = `${width}px`;
-      surface.style.height = `${height}px`;
+    for (const canvas of [this.paperCanvas, this.hudCtx.canvas]) {
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
     }
-    // The colour layer sizes itself to the blob, every frame it draws one.
-    this.colourSize = 0;
+    this.stage.resize(width, height);
     this.buildPaper();
   }
 
-  /** Draw the grain and the vignette onto their own sheet, at screen size. */
+  /**
+   * Draw the grain and the vignette, once, and lay them down.
+   *
+   * These used to be re-blitted over every frame because the canvas beneath
+   * them changed and a canvas cannot be partially transparent to what is under
+   * it. This layer is a separate element that never changes at all, so the
+   * compositor holds one texture for it and blends it on the GPU — which is
+   * what it was doing anyway, minus our full-screen blit.
+   */
   private buildPaper(): void {
     const w = Math.max(1, Math.round(this.width * this.scale));
     const h = Math.max(1, Math.round(this.height * this.scale));
@@ -390,611 +196,421 @@ export class Renderer {
       p.fillStyle = g;
       p.fillRect(-r, -r, r * 2, r * 2);
     });
+
+    this.paperCtx.setTransform(1, 0, 0, 1, 0, 0);
+    this.paperCtx.clearRect(0, 0, w, h);
+    this.paperCtx.drawImage(this.paper.canvas, 0, 0);
   }
 
-  render(scene: Scene): void {
+  /**
+   * Depths within a layer. The valley at the bottom, the sky just above it —
+   * it is drawn over the paper where the map runs out — then everything
+   * hand-drawn, in the order the old frame drew it.
+   */
+  private static readonly DEPTH = {
+    tiles: 0,
+    sky: 1,
+    pots: 10,
+    herd: 20,
+    hedgehog: 30,
+    hammock: 40,
+    stump: 50,
+    elephant: 60,
+    lion: 70,
+    easel: 80,
+    camp: 100,
+    walker: 110,
+    particles: 120,
+    occluders: 130,
+    birds: 140,
+    owl: 150,
+    perch: 160,
+    window: 170,
+  };
+
+  render(scene: Scene, now = performance.now(), delta = 16.6667): void {
     const { camera, world, walker } = scene;
-    const { ctx, colour, over, scale } = this;
 
-    camera.frame(this.width, this.height, scale);
-    this.scrollSubPixel(camera);
+    camera.frame(this.width, this.height, this.scale);
+    if (!this.stage.ready) return;
 
-    const centreX = camera.toScreenX(walker.x);
-    const centreY = camera.toScreenY(walker.y - 14);
-    const radius = scene.maskRadius * camera.zoom;
-    const flooded = radius > Math.hypot(this.width, this.height) * 0.85;
-    this.lastFlooded = flooded;
-
-    // A stage that does not run this frame must read zero, not last frame's
-    // cost — the same trap `decayIdle` exists to avoid for the averages.
     for (const key of Object.keys(this.frameStages) as (keyof StageTimings)[]) {
       this.frameStages[key] = 0;
     }
-
-    // No clear on the pencil layer: the world blit below covers every pixel of
-    // the viewport, and on an opaque canvas a full-screen clear is a
-    // full-screen write for nothing.
-    ctx.setTransform(scale, 0, 0, scale, 0, 0);
-
-    /*
-     * The colour layer is never cleared, and does not need to be.
-     *
-     * Only what the mask lets through is visible, the mask is the haze, and
-     * the haze is by construction inside the dirty rectangle — `SPRITE_RADIUS
-     * / HAZE_RADIUS` and the `1.14` in `computeDirty` are the same number, for
-     * exactly this reason. So every pixel that can be seen is repainted
-     * opaquely this frame, and last frame's colour survives only where nobody
-     * can see it.
-     */
-    colour.setTransform(scale, 0, 0, scale, 0, 0);
-
-    /*
-     * The layer above does need clearing, and cannot get away with clearing
-     * only around the walker: the owl in its tree and the bird over the
-     * hammock are drawn up here and can be anywhere on screen.
-     */
-    if (!this.skipClear) {
-      over.setTransform(1, 0, 0, 1, 0, 0);
-      over.clearRect(0, 0, this.overCanvas.width, this.overCanvas.height);
-    }
-    over.setTransform(scale, 0, 0, scale, 0, 0);
-
     world.bakeCount = 0;
 
-    if (flooded) {
-      /*
-       * The pencil layer is not drawn at all: the colour covers the window and
-       * is opaque, tiles under every pixel inside the map and the sky's own
-       * gradient above it, so whatever the layer below still holds is not
-       * visible. That is the saving the flooded path always had, kept.
-       */
-      // Nothing to cut it to: the colour has covered the window.
-      /*
-       * Nothing to cut it to: the colour has covered the window. The layer
-       * goes back to being the size of the window for this, which is also the
-       * only time it is ever that big.
-       */
-      this.sizeColourToWindow();
-      this.moveColour(0, 0, camera);
-      this.maskColour(null);
-      this.time('worldBlit', () => this.blitWorld(colour, world, 'color', camera), colour);
-      this.time(
-        'live',
-        () =>
-          isolate(colour, () => {
-            camera.applyTransform(colour);
-            this.drawLive(colour, scene, 'color');
-          }),
-        colour,
-      );
-    } else {
-      this.time('worldBlit', () => this.blitWorld(ctx, world, 'sketch', camera));
-      this.time('live', () =>
-        isolate(ctx, () => {
-          camera.applyTransform(ctx);
-          this.drawLive(ctx, scene, 'sketch');
-        }),
-      );
-      this.compositeColor(scene, centreX, centreY, radius);
-    }
+    this.stage.setElapsed(scene.elapsed);
 
     /*
-     * Everything from here up stands over the colour, and none of it may be
-     * cut to the shape of the light — the walker carries the colour, they are
-     * not lit by it. The mask is on the colour element, so the only way to
-     * stay out of it is to be on another element.
-     */
-    isolate(over, () => {
-      camera.applyTransform(over);
-      /*
-       * The camp belongs to the walker rather than to the world: it is pitched
-       * where they stand and packs up when they leave, so it is drawn here with
-       * them, in colour only, and never baked into a layer.
-       */
-      drawCamp(over, scene.fishing, walker.x, walker.y, walker.face);
-      /*
-       * In the hammock, the walker *is* the drawing in the hammock — the
-       * standing figure would otherwise be planted beside it looking on. Keyed
-       * on `resting` rather than on the cloth still settling, or they stay
-       * invisible for the second the hammock takes to lift.
-       */
-      if (
-        !scene.rest.resting &&
-        !scene.treehouse.inside &&
-        !scene.vigil.sitting &&
-        !scene.perches.some((p) => p.resting)
-      ) {
-        drawWalker(over, walker, scene.elapsed);
-      }
-      scene.particles.draw(over, walker.x, walker.y, scene.litRadius, flooded);
-      this.time('occluders', () => this.drawOccluders(over, scene), colour);
-      /*
-       * After the occluders, both of them. The bird sits on top of a tree and
-       * whoever is in the treehouse is inside one, and the trees are occluders
-       * — drawn any earlier, both would be painted over by the thing they are
-       * supposed to be in.
-       */
-      drawBirds(over, scene.rest);
-      /*
-       * And the owl, for the same reason: it is up a tree, and the trees are
-       * occluders. Its medium is its own — this is past the colour mask, so
-       * nothing here is masked, and an owl out in the graphite has to be drawn
-       * as a drawing rather than simply appearing in colour on a grey hillside.
-       *
-       * And under `withBoil`, which everything drawn in pencil needs and which
-       * this went without at first: outside it the hand keeps moving at seven
-       * ticks a second, so a frozen owl sat there with its eyes darting about.
-       * Asleep is asleep — pencil on paper, and paper does not move.
-       */
-      withBoil(scene.owl.awake, () =>
-        drawOwl(over, scene.owl, scene.owl.awake ? 'color' : 'sketch'),
-      );
-      /*
-       * And whoever is sitting on the bench or lying in the hay, for a third
-       * time the same reason: the haystack is tall scenery, laid back over
-       * anything standing north of it, and lying *on* the hay means being north
-       * of its base. Drawn with the rest of the live things, somebody who
-       * walked up from behind and lay down was painted over with straw and
-       * disappeared outright.
-       *
-       * In colour, always. This is the walker — the standing figure is dropped
-       * while they are down — and the walker is never in graphite.
-       */
-      for (const perch of scene.perches) {
-        if (perch.resting) drawPerch(over, perch, 'color');
-      }
-      const house = scene.treehouse;
-      if (house.inside) {
-        drawThroughWindow(over, house.x, house.y, house.offset, house.facing, house.walk, house.moving);
-      }
-    });
-
-    /*
-     * The paper over everything, so the whole frame reads as one drawing rather
-     * than as things arranged on a background. One blit, one to one.
-     */
-    /*
-     * The last thing drawn on the topmost layer, which is what "over
-     * everything" has to mean once there are three of them.
-     */
-    this.time(
-      'paper',
-      () => {
-        if (this.skipPaper) return;
-        over.setTransform(1, 0, 0, 1, 0, 0);
-        over.drawImage(this.paper.canvas, 0, 0);
-        over.setTransform(scale, 0, 0, scale, 0, 0);
-      },
-      over,
-    );
-
-    this.stages.bakes = world.bakeCount;
-    this.frameStages.bakes = world.bakeCount;
-    this.decayIdle();
-  }
-
-  /** The offset last written to the element, so an unchanged one is not rewritten. */
-  private scrolledBy = '';
-
-  /**
-   * Put back the fraction of a pixel the camera's snap threw away.
-   *
-   * The frame was drawn from a whole-pixel origin, so the image sits a fraction
-   * of a pixel away from where the camera actually is; sliding the canvas
-   * element back by that much lands it where it belongs. The compositor already
-   * has this layer and offsets it in hardware, so the smooth scroll is free —
-   * whereas asking the canvas to draw at a fractional origin costs 5.2x on
-   * Firefox. See `subX` in render/camera.ts for what this is fixing.
-   *
-   * The shift is never more than half a pixel, so at most half a pixel of the
-   * page shows past one edge. The page behind is the same paper colour and the
-   * vignette darkens the edges anyway, so there is nothing to see there.
-   */
-  private scrollSubPixel(camera: Camera): void {
-    const x = -camera.subX;
-    const y = -camera.subY;
-    const next = x || y ? `translate3d(${x.toFixed(3)}px, ${y.toFixed(3)}px, 0)` : '';
-    if (next === this.scrolledBy) return;
-    this.scrolledBy = next;
-    /*
-     * The pencil and the layer above it, by the same fraction. They are drawn
-     * from one camera and have to move as one thing.
+     * The camera's own position, not the snapped one.
      *
-     * Not the colour layer: it is not the size of the window any more and
-     * carries its own translation, which already has this fraction folded into
-     * it. See `placeColour`.
+     * `Camera.frame` rounds the view origin to whole device pixels and keeps
+     * the remainder in `subX`/`subY`, because a fractional source rectangle
+     * made Canvas2D's `drawImage` resample at 5.2x the cost. Nothing here
+     * resamples: the tiles are textures and a fractional scroll is what the
+     * vertex shader does anyway. So the fraction goes straight back on and the
+     * camera is exactly where the simulation put it.
      */
-    this.canvas.style.transform = next;
-    this.overCanvas.style.transform = next;
-  }
+    const viewX = camera.viewX + camera.subX / camera.zoom;
+    const viewY = camera.viewY + camera.subY / camera.zoom;
+    this.stage.look(viewX + camera.viewWidth / 2, viewY + camera.viewHeight / 2, camera.zoom);
 
-  private blitWorld(
-    ctx: CanvasRenderingContext2D,
-    world: World,
-    medium: Medium,
-    camera: Camera,
-  ): void {
-    world.drawRegion(
-      ctx,
-      medium,
-      camera.viewX,
-      camera.viewY,
-      camera.viewWidth,
-      camera.viewHeight,
-      0,
-      0,
+    const radius = scene.maskRadius;
+    const flooded = radius * camera.zoom > Math.hypot(this.width, this.height) * 0.85;
+    this.lastFlooded = flooded;
+
+    // Kept for the diagnostics and the tests, which ask how much of the screen
+    // the colour covers.
+    scene.field.computeDirty(
+      camera.toScreenX(walker.x),
+      camera.toScreenY(walker.y - 14),
+      radius * camera.zoom,
       this.width,
       this.height,
     );
+
+    /*
+     * The haze, as a sprite the mask shader reads. Position, size and turn are
+     * all transforms now, so all three are free — which is why the breathing
+     * and the slow turn could come back after a year as a static blob. See
+     * `ColorField.hazeAt`.
+     */
+    const haze = scene.field.hazeAt(walker.x, walker.y - 14, radius, scene.elapsed);
+    this.stage.placeHaze(haze.x, haze.y, haze.radius, haze.angle);
+
+    /*
+     * Under a full flood there is nothing for the pencil layer to show: the
+     * colour is opaque and covers the window. Switching the camera off is the
+     * whole of that saving now, where it used to be a separate code path.
+     */
+    this.stage.showLayer('sketch', !flooded);
+
+    const sceneryStarted = performance.now();
+    this.placeWorld(world, flooded);
+    this.frameStages.scenery = performance.now() - sceneryStarted;
+
+    const liveStarted = performance.now();
+    if (!flooded) this.drawLive(scene, 'sketch');
+    this.drawLive(scene, 'color');
+    this.drawOver(scene, flooded);
+    this.frameStages.live = performance.now() - liveStarted;
+
+    this.stage.endStamps();
+    this.stage.endFrame();
+
+    const submitStarted = performance.now();
+    this.stage.step(now, delta);
+    this.frameStages.submit = performance.now() - submitStarted;
+
+    this.frameStages.bakes = world.bakeCount;
+    for (const key of Object.keys(this.stages) as (keyof StageTimings)[]) {
+      this.stages[key] = this.stages[key] * 0.9 + this.frameStages[key] * 0.1;
+    }
+  }
+
+  /** Hand the valley's tiles to the GPU, once, and place them every frame. */
+  private placeWorld(world: World, flooded: boolean): void {
+    const { DEPTH } = Renderer;
+    for (const medium of flooded ? (['color'] as const) : (['sketch', 'color'] as const)) {
+      const layer = medium === 'color' ? 'colour' : 'sketch';
+      let index = 0;
+      for (const tile of world.tilesOf(medium)) {
+        this.stage.sprite({
+          id: `tile:${medium}:${index++}`,
+          layer,
+          canvas: tile.canvas,
+          left: tile.x,
+          top: tile.y,
+          width: tile.width,
+          height: tile.height,
+          depth: DEPTH.tiles,
+        });
+      }
+    }
   }
 
   /**
-   * Livestock and paint pots, in whichever medium is being laid down.
+   * Everything that is drawn by hand, in whichever medium is being laid down.
    *
-   * In the pencil pass, anything buried deep inside the colour is skipped: the
-   * colour pass will paint straight over it at full opacity, so drawing it in
-   * graphite first is work nobody ever sees. That matters because a live animal
-   * is the most expensive thing in the frame — a cow is some forty separate
-   * strokes — and standing in a herd means every one of them is awake.
+   * The body of this is the old `drawLive`, unchanged in what it decides — the
+   * same visibility checks, the same rules about which things hold still and
+   * which boil. What changed is where the strokes land: each thing now paints
+   * into a canvas of its own, and only when its pose has moved on.
    */
-  private drawLive(ctx: CanvasRenderingContext2D, scene: Scene, medium: Medium): void {
-    const { camera } = scene;
+  private drawLive(scene: Scene, medium: 'sketch' | 'color'): void {
+    const { camera, world } = scene;
+    const { DEPTH } = Renderer;
+    const layer = medium === 'color' ? 'colour' : 'sketch';
     const hidden = (x: number, y: number, margin: number) =>
       medium === 'sketch' && scene.isBuriedInColour(x, y, margin);
 
-    /*
-     * The sky first, before anything standing in front of it.
-     *
-     * Drawn here rather than beside the world blit so that both passes get it:
-     * the composite builds the coloured version by blitting the world into a
-     * scratch surface and running this again, and it assumes — reasonably,
-     * until now — that the camera is inside the map and so every pixel has a
-     * tile under it. Above the top edge there are no tiles at all.
-     *
-     * Under a still hand. The sky and the hills below it are scenery — paper,
-     * ruled strokes, two green caps and the drawings standing on them — and
-     * scenery in this world does not move: everything else up here is baked
-     * once, and only the live actors boil. The ruled strokes were the one
-     * exception, jittering away behind a house that holds perfectly still,
-     * which read as the whole northern view crawling.
-     */
-    withBoil(false, () =>
-      drawSky(
-        ctx,
-        camera.viewX,
-        camera.viewY,
-        camera.viewWidth,
+    /** A thing that carries its drawing with it: painted at the cel's centre. */
+    const at = (
+      id: string,
+      x: number,
+      y: number,
+      size: number,
+      depth: number,
+      pose: string | number,
+      draw: (ctx: CanvasRenderingContext2D) => void,
+    ) => {
+      this.stage.cel({
+        id,
+        layer,
         medium,
-        scene.elapsed,
-        scene.vigil.elephantX,
-      ),
-    );
+        left: x - size / 2,
+        top: y - size / 2,
+        width: size,
+        height: size,
+        depth,
+        pose,
+        draw,
+      });
+    };
+
+    /*
+     * The sky, which belongs to the world rather than to anything in it, so it
+     * is anchored: it covers a patch of world and must not slide with the
+     * camera. Its left edge is quantised to a wide step so that crossing one is
+     * rare, and the cel is cut wide enough to cover the view either side.
+     */
+    const skyStep = 512;
+    const skyLeft = Math.floor((camera.viewX - skyStep) / skyStep) * skyStep;
+    const skyWidth = camera.viewWidth + skyStep * 3;
+    if (camera.viewY < 40) {
+      this.stage.cel({
+        id: 'sky',
+        layer,
+        medium,
+        left: skyLeft,
+        top: -SKY_DEPTH,
+        width: skyWidth,
+        height: SKY_DEPTH + 40,
+        depth: DEPTH.sky,
+        anchored: true,
+        draw: (ctx) =>
+          withBoil(false, () =>
+            drawSky(ctx, skyLeft, -SKY_DEPTH, skyWidth, medium, scene.elapsed, scene.vigil.elephantX),
+          ),
+      });
+    }
 
     for (const pot of scene.pots) {
       if (pot.found || !camera.canSee(pot.x, pot.y, 60)) continue;
       if (hidden(pot.x, pot.y, 40)) continue;
-      drawPot(ctx, pot, medium);
+      at(`pot:${pot.x},${pot.y}`, pot.x, pot.y, 128, DEPTH.pots, poseOf(pot), (ctx) =>
+        drawPot(ctx, pot, medium),
+      );
     }
-    scene.herd.draw(
-      ctx,
-      medium,
-      (x, y) => camera.canSee(x, y, 90) && !hidden(x, y, 60),
-    );
+
+    for (const animal of scene.herd.animals) {
+      if (!camera.canSee(animal.x, animal.y, 90)) continue;
+      if (hidden(animal.x, animal.y, 60)) continue;
+      /*
+       * A sleeping animal is a cached still and never changes, so it is not
+       * animated and stops costing anything at all — which is most of a field
+       * most of the time. An awake one repaints on the step as well as on its
+       * own state, because its strokes boil even when it is standing still.
+       */
+      this.stage.cel({
+        id: `animal:${animal.slot}`,
+        layer,
+        medium,
+        left: animal.x - 110,
+        top: animal.y - 110,
+        width: 220,
+        height: 220,
+        depth: DEPTH.herd + animal.y / 10000,
+        pose: poseOf(animal),
+        animated: animal.awake,
+        draw: (ctx) => scene.herd.drawOne(ctx, animal, medium),
+      });
+    }
 
     /*
-     * Everything below is drawn live at a fixed spot, and everything below is
-     * drawn with a still hand when it is drawn in pencil.
-     *
-     * Pencil strokes jitter against a boil counter that ticks seven times a
-     * second. In the colour pass nothing jitters at all, so this only matters
-     * for the sketch pass — and the sketch pass is only ever *visible* outside
-     * the colour, where the thing is meant to be a drawing on paper. Left to
-     * the live boil, the hammock and the stump and the elephant all sat out in
-     * the graphite twitching.
+     * Everything below is drawn at a fixed spot, and everything below holds
+     * still when it is drawn in pencil. Pencil strokes jitter against a boil
+     * counter that ticks seven times a second; in the colour pass nothing
+     * jitters, so this only matters for the sketch pass — and the sketch pass
+     * is only ever visible outside the colour, where the thing is meant to be a
+     * drawing on paper. Left to the live boil, the hammock and the stump and
+     * the elephant all sat out in the graphite twitching.
      */
     const still = <T,>(fn: () => T): T => withBoil(medium === 'color', fn);
 
-    // The cloth sags under whoever is in it, so it cannot be baked — see the
-    // note in `world/hammock.ts`.
-    /*
-     * The hedgehog, which is only ever there while somebody is lying on the
-     * hay. Under a still hand like everything else drawn live in pencil.
-     */
     const { hedgehog } = scene;
     if (
       hedgehog.out > 0 &&
       camera.canSee(hedgehog.atX, hedgehog.atY, 60) &&
       !hidden(hedgehog.atX, hedgehog.atY, 20)
     ) {
-      still(() => drawHedgehog(ctx, hedgehog, medium));
+      at('hedgehog', hedgehog.atX, hedgehog.atY, 160, DEPTH.hedgehog, poseOf(hedgehog), (ctx) =>
+        still(() => drawHedgehog(ctx, hedgehog, medium)),
+      );
     }
 
     const { rest } = scene;
     if (camera.canSee(rest.x, rest.y, 130) && !hidden(rest.x, rest.y, 90)) {
-      still(() => drawHammock(ctx, rest, medium));
+      at('hammock', rest.x, rest.y, 420, DEPTH.hammock, poseOf(rest), (ctx) =>
+        still(() => drawHammock(ctx, rest, medium)),
+      );
     }
 
-    /*
-     * The stump, and whoever is sitting on it, and whatever has come to look at
-     * them. Drawn live rather than baked: a `draw` in the scenery would put its
-     * strokes into the middle of the bake's sequence of random numbers and move
-     * every tree placed after it.
-     */
     const { vigil } = scene;
     if (camera.canSee(vigil.x, vigil.y, 90) && !hidden(vigil.x, vigil.y, 60)) {
-      still(() => drawStump(ctx, vigil, medium));
+      at('stump', vigil.x, vigil.y, 300, DEPTH.stump, poseOf(vigil), (ctx) =>
+        still(() => drawStump(ctx, vigil, medium)),
+      );
     }
     /*
-     * Always, not only once something is there.
-     *
-     * The cloud it comes out of hangs in that patch of sky permanently, so this
-     * has to be asked every frame rather than gated on the animal existing.
+     * Always, not only once something is there. The cloud it comes out of hangs
+     * in that patch of sky permanently, so this has to be asked every frame
+     * rather than gated on the animal existing.
      */
     if (
       camera.canSee(vigil.elephantX, vigil.elephantY, 320) &&
       !hidden(vigil.elephantX, vigil.elephantY, 90)
     ) {
-      still(() => drawElephant(ctx, vigil, medium));
+      at('elephant', vigil.elephantX, vigil.elephantY, 760, DEPTH.elephant, poseOf(vigil), (ctx) =>
+        still(() => drawElephant(ctx, vigil, medium)),
+      );
     }
 
     const { lion } = scene;
     if (camera.canSee(lion.x, lion.y, 90) && !hidden(lion.x, lion.y, 60)) {
-      still(() => drawLion(ctx, lion, medium));
+      at('lion', lion.x, lion.y, 300, DEPTH.lion, poseOf(lion), (ctx) =>
+        still(() => drawLion(ctx, lion, medium)),
+      );
     }
 
     // Yours, over the abandoned one baked into the board. Colour only: in
     // pencil the easel keeps the drawing it came with.
     const { easel } = scene;
-    if (medium === 'color' && camera.canSee(easel.x, easel.y, 80)) {
-      drawEaselPicture(ctx, scene.easelPicture, easel.x, easel.y);
+    if (medium === 'color' && scene.easelPicture && camera.canSee(easel.x, easel.y, 80)) {
+      at('easelPicture', easel.x, easel.y, 260, DEPTH.easel, scene.easelPicture.src.length, (ctx) =>
+        drawEaselPicture(ctx, scene.easelPicture, easel.x, easel.y),
+      );
     }
+
+    void world;
   }
 
   /**
-   * Draw the coloured world onto its own layer, which is the shape of the haze.
+   * Everything that stands over the colour.
    *
-   * The colour layer is not the size of the window. It is exactly the box the
-   * haze occupies, it wears the haze as a CSS mask pinned to its own edges,
-   * and it is put where it belongs with a `transform`.
-   *
-   * That arrangement is the whole point, and it took three goes to reach.
-   * `destination-in` on the canvas cost fourteen milliseconds a frame, because
-   * Firefox's accelerated canvas cannot do it and demotes the layer to
-   * software for good. A CSS mask fixed that and cost half a core in the
-   * compositor instead, because `mask-position` and `mask-size` were rewritten
-   * every frame and every rewrite repaints the masked layer — a cost that grows
-   * with the blob, which is why it was bearable at the first paint pot and
-   * 130% of a core by the thirteenth.
-   *
-   * Measured on the machine with the fault: freezing the mask dropped it to
-   * the floor, and so did removing the layer altogether. A mask that does not
-   * change is nearly free over a canvas that does.
-   *
-   * So nothing about the mask changes any more. The size is `100% 100%` of an
-   * element sized to the blob; the element is resized once per paint pot, when
-   * the radius actually changes; and the only thing written per frame is
-   * `transform`, which a compositor answers by moving a layer it already has.
+   * None of it may be cut to the shape of the light — the walker carries the
+   * colour, they are not lit by it — so all of it is on the third camera, which
+   * the mask filter never touches.
    */
-  private compositeColor(scene: Scene, centreX: number, centreY: number, radius: number): void {
-    const { camera, field, world } = scene;
-    const { colour, scale } = this;
+  private drawOver(scene: Scene, flooded: boolean): void {
+    const { camera, walker, world } = scene;
+    const { DEPTH } = Renderer;
 
-    // Kept for the diagnostics and the tests, which ask how much of the screen
-    // the colour covers. The layer itself is not clamped to the window: it may
-    // hang off the edge, and the browser clips it there for nothing.
-    field.computeDirty(centreX, centreY, radius, this.width, this.height);
-
-    const compositeStarted = performance.now();
-    let part = performance.now();
-
-    const box = field.maskAt(centreX, centreY, radius);
-    /*
-     * Ordinarily the layer is cut to the blob. During the ending's flood it is
-     * not: the radius climbs every frame there, and an element resized every
-     * frame is a fresh allocation every frame — measured in the bunny walk as
-     * eight dropped frames in the two seconds of the sweep, at sizes up to
-     * four thousand pixels square. So past the size of the window the layer
-     * goes back to being the window, and the mask is placed on it by hand for
-     * those couple of seconds. Both halves are cheap; only doing both at once
-     * would not be.
-     */
-    if (box.size <= 0) return;
-    const fits = box.size <= Math.max(this.width, this.height);
-    const left = fits ? box.left : 0;
-    const top = fits ? box.top : 0;
-    if (fits) this.sizeColourTo(box.size);
-    else this.sizeColourToWindow();
-    this.moveColour(left, top, camera);
-    this.maskColour(fits ? 'fit' : box);
-
-    /*
-     * The element's own origin. Everything below draws in screen coordinates,
-     * as it did when this was the whole window, and this transform is what
-     * puts the window's coordinates onto a canvas that is only a corner of it.
-     *
-     * No clip: the edges of the canvas are the clip, and they cost nothing.
-     */
-    const width = fits ? box.size : this.width;
-    const height = fits ? box.size : this.height;
-    colour.setTransform(scale, 0, 0, scale, -left * scale, -top * scale);
-    world.drawRegion(
-      colour,
-      'color',
-      camera.viewX + left / camera.zoom,
-      camera.viewY + top / camera.zoom,
-      width / camera.zoom,
-      height / camera.zoom,
-      left,
-      top,
-      width,
-      height,
-    );
-    this.settle(colour);
-    this.blend('colourTiles', performance.now() - part);
-    part = performance.now();
-
-    camera.applyTransform(colour);
-    this.drawLive(colour, scene, 'color');
-    this.settle(colour);
-    this.blend('colourLive', performance.now() - part);
-
-    this.blend('composite', performance.now() - compositeStarted);
-  }
-
-  /** Give the colour layer the whole window, for the ending. */
-  private sizeColourToWindow(): void {
-    if (this.colourSize === 'window') return;
-    this.colourSize = 'window';
-    this.colourCanvas.width = Math.max(1, Math.round(this.width * this.scale));
-    this.colourCanvas.height = Math.max(1, Math.round(this.height * this.scale));
-    this.colourCanvas.style.width = `${this.width}px`;
-    this.colourCanvas.style.height = `${this.height}px`;
-  }
-
-  /**
-   * What the colour element is currently cut to: a size in CSS pixels, or the
-   * whole window during the ending's flood. Zero before the first frame.
-   *
-   * A number and a state, kept in one field on purpose — they are the two ways
-   * the element can be sized and only one can be true. This was a `-1`
-   * sentinel for a day, and a `<= 0` guard two lines away read it as "nothing
-   * to draw" and skipped the colour for the whole of the flood: the screen
-   * went to pencil for three quarters of a second and then to full colour.
-   */
-  private colourSize: number | 'window' = 0;
-  /** The translation last written to the colour element. */
-  private colourAt = '';
-
-  /**
-   * Size the colour layer to the haze and put it where the haze is.
-   *
-   * The resize is the expensive half and happens once per paint pot; the move
-   * is the cheap half and happens every frame. Keeping those two apart is the
-   * fix. The camera's discarded fraction of a pixel is folded into the move,
-   * because this element is no longer carried along by `scrollSubPixel`.
-   */
-  private sizeColourTo(size: number): void {
-    if (this.colourSize === size) return;
-    this.colourSize = size;
-    const pixels = Math.max(1, Math.round(size * this.scale));
-    this.colourCanvas.width = pixels;
-    this.colourCanvas.height = pixels;
-    this.colourCanvas.style.width = `${size}px`;
-    this.colourCanvas.style.height = `${size}px`;
-  }
-
-  /** Put the colour layer where it belongs, carrying the camera's lost fraction. */
-  private moveColour(left: number, top: number, camera: Camera): void {
-    this.colourLeft = left;
-    this.colourTop = top;
-    const x = left - camera.subX;
-    const y = top - camera.subY;
-    const next = `translate3d(${x.toFixed(3)}px, ${y.toFixed(3)}px, 0)`;
-    if (next === this.colourAt) return;
-    this.colourAt = next;
-    this.colourCanvas.style.transform = next;
-  }
-
-/**
-   * How the haze is put on the colour element.
-   *
-   *   'fit'   pinned to the element's own edges, because the element IS the
-   *           blob. Written once per paint pot, when the element is resized.
-   *   a box   placed by hand on a window-sized element. Only the ending's
-   *           flood, where the radius climbs every frame.
-   *   null    no mask at all: the colour has covered the window.
-   */
-  private maskedBy = '';
-  private maskWhere: 'fit' | { size: number; left: number; top: number } | null = null;
-
-  /**
-   * Put the haze on the colour element, move it, or take it off.
-   *
-   * The `fit` case is the one that matters and the one the frame is built
-   * around. Every rewrite of a mask property repaints the masked layer, and
-   * that repaint grows with the blob — measured on the machine with the fault
-   * at half a core by the first paint pot and 130% of one by the thirteenth,
-   * while freezing the mask dropped it to the floor. So in ordinary play
-   * nothing here is written per frame: the mask is `100% 100%` of an element
-   * that is exactly the blob, and the blob is moved by `transform`, which a
-   * compositor answers by offsetting a layer it already has.
-   */
-  private maskColour(at: 'fit' | { size: number; left: number; top: number } | null): void {
-    if (this.noMask) at = null;
-    const next =
-      at === null
-        ? 'none'
-        : at === 'fit'
-          ? 'fit'
-          : `${at.size.toFixed(2)} ${at.left.toFixed(2)} ${at.top.toFixed(2)}`;
-    this.maskWhere = at;
-    if (next === this.maskedBy) return;
-    this.maskedBy = next;
-    const style = this.colourCanvas.style as CSSStyleDeclaration & {
-      webkitMaskImage: string;
-      webkitMaskSize: string;
-      webkitMaskPosition: string;
-      webkitMaskRepeat: string;
+    const at = (
+      id: string,
+      x: number,
+      y: number,
+      size: number,
+      depth: number,
+      pose: string | number,
+      draw: (ctx: CanvasRenderingContext2D) => void,
+    ) => {
+      this.stage.cel({
+        id,
+        layer: 'over',
+        medium: 'color',
+        left: x - size / 2,
+        top: y - size / 2,
+        width: size,
+        height: size,
+        depth,
+        pose,
+        draw,
+      });
     };
-    if (at === null) {
-      style.maskImage = 'none';
-      style.webkitMaskImage = 'none';
-      return;
+
+    /*
+     * The camp belongs to the walker rather than to the world: it is pitched
+     * where they stand and packs up when they leave, so it is drawn with them,
+     * in colour only, and never baked into a layer.
+     *
+     * Asked for only while it is pitched. `drawCamp` returns at once when it is
+     * not, but the cel around it does not know that and was clearing and
+     * re-uploading a blank 360px square twelve times a second for the whole of
+     * a session in which nobody went fishing.
+     */
+    if (scene.fishing.active) {
+      at('camp', walker.x, walker.y, 360, DEPTH.camp, poseOf(scene.fishing) + walker.face, (ctx) =>
+        drawCamp(ctx, scene.fishing, walker.x, walker.y, walker.face),
+      );
     }
-    const url = `url(${hazeMaskUrl()})`;
-    const size = at === 'fit' ? '100% 100%' : `${at.size.toFixed(2)}px ${at.size.toFixed(2)}px`;
-    const position = at === 'fit' ? '0 0' : `${at.left.toFixed(2)}px ${at.top.toFixed(2)}px`;
-    style.maskImage = url;
-    style.maskRepeat = 'no-repeat';
-    style.maskSize = size;
-    style.maskPosition = position;
-    style.webkitMaskImage = url;
-    style.webkitMaskRepeat = 'no-repeat';
-    style.webkitMaskSize = size;
-    style.webkitMaskPosition = position;
-  }
 
-  /**
-   * Paint the mask into a context, the way the compositor applies it.
-   *
-   * For `pencil.composited()` only. The mask is a style on an element now, so
-   * reading the colour canvas back gives the whole painted square rather than
-   * the shape of the light.
-   */
-  drawMaskInto(ctx: CanvasRenderingContext2D): void {
-    const at = this.maskWhere;
-    const s = this.scale;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    if (at === null) {
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, this.colourCanvas.width, this.colourCanvas.height);
-      return;
+    /*
+     * In the hammock, the walker *is* the drawing in the hammock — the standing
+     * figure would otherwise be planted beside it looking on. Keyed on
+     * `resting` rather than on the cloth still settling, or they stay invisible
+     * for the second the hammock takes to lift.
+     */
+    if (
+      !scene.rest.resting &&
+      !scene.treehouse.inside &&
+      !scene.vigil.sitting &&
+      !scene.perches.some((p) => p.resting)
+    ) {
+      /*
+       * The one thing repainted every frame rather than on the step. The walker
+       * is what the eye is on, and a stepped walk cycle on the figure you are
+       * steering reads as lag rather than as pencil. One 160px cel is a
+       * hundred kilobytes — the herd is what the step rate is for.
+       */
+      this.stage.cel({
+        id: 'walker',
+        layer: 'over',
+        medium: 'color',
+        left: walker.x - 80,
+        top: walker.y - 80,
+        width: 160,
+        height: 160,
+        depth: DEPTH.walker,
+        pose: `${scene.elapsed.toFixed(3)}|${poseOf(walker)}`,
+        draw: (ctx) => drawWalker(ctx, walker, scene.elapsed),
+      });
     }
-    if (at === 'fit') {
-      ctx.drawImage(hazeMask(), 0, 0, this.colourCanvas.width, this.colourCanvas.height);
-      return;
+
+    /*
+     * The motes of colour, as sprites rather than as a drawing.
+     *
+     * They were a drawing at first, on one canvas covering everywhere they can
+     * drift — which is the whole lit area, so the canvas grew with the colour
+     * and was re-uploaded twelve times a second. Measured at 66MB a second by
+     * the thirteenth paint pot, more than every other hand-drawn thing in the
+     * frame put together. A mote is a disc of one of four colours at a position
+     * and a size, which is exactly what a sprite is.
+     */
+    for (const d of scene.particles.discs(walker.x, walker.y, scene.litRadius, flooded)) {
+      if (d.alpha <= 0.004) continue;
+      this.stage.stamp('over', disc(d.colour), d.x, d.y, d.radius, d.alpha, DEPTH.particles);
     }
-    ctx.drawImage(hazeMask(), at.left * s, at.top * s, at.size * s, at.size * s);
-  }
+    /*
+     * The hearts are still a drawing: a pair of bezier curves that change shape
+     * as they swell, three at a time, only when somebody pets the cat. Cut to
+     * the box they actually occupy rather than to the light.
+     */
+    if (scene.particles.hasHearts) {
+      const box = scene.particles.heartBounds();
+      at('hearts', box.x, box.y, box.size, DEPTH.particles, poseOf(scene.particles), (ctx) =>
+        scene.particles.drawHearts(ctx),
+      );
+    }
 
-    /** Where the colour layer sits on screen, in CSS pixels. For `composited`. */
-  get colourOrigin(): { left: number; top: number } {
-    return { left: this.colourLeft, top: this.colourTop };
-  }
-
-  private colourLeft = 0;
-  private colourTop = 0;
-
-  /**
-   * Tall scenery standing in front of the walker, laid back over them.
-   *
-   * An occluder by definition overlaps the walker, who is the centre of the
-   * colour — so it is always deep inside the lit area and the colour sprite is
-   * the right one to use.
-   */
-  private drawOccluders(ctx: CanvasRenderingContext2D, scene: Scene): void {
-    const { walker, world } = scene;
-    const body: Bounds = {
+    /*
+     * Tall scenery standing in front of the walker, laid back over them. These
+     * are baked canvases already, so they go to the GPU as they are and are
+     * never redrawn. An occluder by definition overlaps the walker, who is the
+     * centre of the colour, so it is always deep inside the lit area and the
+     * colour sprite is the right one to use.
+     */
+    const body = {
       x0: walker.x - 16,
       x1: walker.x + 16,
       y0: walker.y - 52,
@@ -1004,77 +620,126 @@ export class Renderer {
       const centre = (occluder.bounds.x0 + occluder.bounds.x1) / 2;
       const lit =
         Math.hypot(centre - walker.x, occluder.scenery.y - walker.y - 14) < scene.maskRadius;
-      const sprite = world.spriteFor(occluder, lit ? 'color' : 'sketch');
-      ctx.drawImage(sprite.canvas, sprite.x, sprite.y);
+      const medium = lit ? 'color' : 'sketch';
+      const sprite = world.spriteFor(occluder, medium);
+      this.stage.sprite({
+        id: `occluder:${occluder.id}:${medium}`,
+        layer: 'over',
+        canvas: sprite.canvas,
+        left: sprite.x,
+        top: sprite.y,
+        width: sprite.canvas.width,
+        height: sprite.canvas.height,
+        depth: DEPTH.occluders + occluder.scenery.y / 10000,
+      });
+    }
+
+    /*
+     * After the occluders, all of these. The bird sits on top of a tree, the
+     * owl is up one, and whoever is in the treehouse is inside one — and the
+     * trees are occluders. Drawn any earlier, every one of them would be
+     * painted over by the thing it is supposed to be in.
+     */
+    const { rest } = scene;
+    if (camera.canSee(rest.x, rest.y, 260)) {
+      at('birds', rest.x, rest.y, 420, DEPTH.birds, poseOf(rest), (ctx) => drawBirds(ctx, rest));
+    }
+
+    /*
+     * The owl's medium is its own: this is past the colour mask, so nothing
+     * here is cut, and an owl out in the graphite has to be drawn as a drawing
+     * rather than simply appearing in colour on a grey hillside.
+     *
+     * And under `withBoil`, which everything drawn in pencil needs and which
+     * this went without at first: outside it the hand keeps moving at seven
+     * ticks a second, so a frozen owl sat there with its eyes darting about.
+     * Asleep is asleep — pencil on paper, and paper does not move.
+     */
+    const { owl } = scene;
+    if (camera.canSee(owl.x, owl.y, 120)) {
+      this.stage.cel({
+        id: 'owl',
+        layer: 'over',
+        medium: 'color',
+        left: owl.x - 110,
+        top: owl.y - 110,
+        width: 220,
+        height: 220,
+        depth: DEPTH.owl,
+        pose: poseOf(owl),
+        // Asleep is asleep: pencil on paper, and paper does not move.
+        animated: owl.awake,
+        draw: (ctx) =>
+          withBoil(owl.awake, () => drawOwl(ctx, owl, owl.awake ? 'color' : 'sketch')),
+      });
+    }
+
+    /*
+     * And whoever is sitting on the bench or lying in the hay, for a third time
+     * the same reason: the haystack is tall scenery, laid back over anything
+     * standing north of it, and lying *on* the hay means being north of its
+     * base. Drawn with the rest of the live things, somebody who walked up from
+     * behind and lay down was painted over with straw and disappeared outright.
+     *
+     * In colour, always. This is the walker — the standing figure is dropped
+     * while they are down — and the walker is never in graphite.
+     */
+    for (const perch of scene.perches) {
+      if (!perch.resting) continue;
+      at(`perch:${perch.x},${perch.y}`, perch.x, perch.y, 260, DEPTH.perch, poseOf(perch), (ctx) =>
+        drawPerch(ctx, perch, 'color'),
+      );
+    }
+
+    const house = scene.treehouse;
+    if (house.inside) {
+      at('window', house.x, house.y, 360, DEPTH.window, poseOf(house), (ctx) =>
+        drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving),
+      );
     }
   }
 
-  /**
-   * Draw on a different set of elements from now on.
-   *
-   * For `pencil.rescue()`. Every layer is replaced: the browser's decision to
-   * stop accelerating is made per canvas, and leaving one of the three behind
-   * leaves a third of the frame on the software path. The old ones are shrunk
-   * to a pixel on the way out so the memory goes back now rather than whenever
-   * the collector gets round to it.
-   *
-   * The caller must `resize` afterwards — nothing here knows the viewport.
-   */
-  attach(
-    canvas: HTMLCanvasElement,
-    colourCanvas: HTMLCanvasElement,
-    overCanvas: HTMLCanvasElement,
-  ): void {
-    for (const old of [this.canvas, this.colourCanvas, this.overCanvas, this.paper.canvas]) {
-      old.width = 1;
-      old.height = 1;
-    }
-    this.canvas = canvas;
-    this.colourCanvas = colourCanvas;
-    this.overCanvas = overCanvas;
-    this.ctx = context2d(canvas, { alpha: false });
-    this.colour = context2d(colourCanvas, { alpha: true });
-    this.over = context2d(overCanvas, { alpha: true });
-    this.maskedBy = '';
-    this.maskWhere = null;
-    this.colourSize = 0;
-    this.colourAt = '';
-    this.paper = createSurface(1, 1);
-  }
-
-  /** Release every layer and the paper. See `World.dispose`. */
+  /** Release everything. See `World.dispose`. */
   dispose(): void {
-    for (const canvas of [this.canvas, this.colourCanvas, this.overCanvas, this.paper.canvas]) {
+    this.stage.dispose();
+    for (const canvas of [this.paperCanvas, this.hudCtx.canvas, this.paper.canvas]) {
       canvas.width = 1;
       canvas.height = 1;
     }
   }
 
   /**
-   * Direct access for the diagnostics overlay, which draws last.
+   * Where the diagnostics overlay draws.
    *
-   * The topmost layer: a readout drawn on the pencil would sit underneath the
-   * colour and the paper.
+   * Its own element, above the frame. It used to be the topmost canvas of the
+   * three the frame was made of, which meant the frame had to be cleared and
+   * redrawn to get rid of it.
    */
   get context(): CanvasRenderingContext2D {
-    return this.over;
+    return this.hudCtx;
+  }
+
+  /** Clear the overlay. It is drawn over, so it does not clear itself. */
+  clearOverlay(): void {
+    this.hudCtx.setTransform(1, 0, 0, 1, 0, 0);
+    this.hudCtx.clearRect(0, 0, this.hudCtx.canvas.width, this.hudCtx.canvas.height);
   }
 
   /**
-   * Show or hide a layer outright, for finding out what compositing costs.
-   *
-   * Three full-screen layers at a device pixel ratio of two is three times the
-   * area for the compositor to blend, and that is work no timer here can see —
-   * it does not happen on this thread. Taking one away and watching the CPU is
-   * the only way to ask.
+   * What the frame has re-uploaded to the GPU since this was last asked, in
+   * megabytes, and which cels did it. The honest measure of this design.
    */
-  showLayer(which: 'colour' | 'over', on: boolean): void {
-    const element = which === 'colour' ? this.colourCanvas : this.overCanvas;
-    element.style.display = on ? '' : 'none';
+  uploadReport(): { totalMb: number; worst: string } {
+    return this.stage.uploadReport();
   }
 
-  /** The layer below, for anything that wants the pencil drawing itself. */
-  get pencilContext(): CanvasRenderingContext2D {
-    return this.ctx;
+  /** The canvas the valley is drawn on, for tests that read the frame back. */
+  get frameCanvas(): HTMLCanvasElement | undefined {
+    return this.stage.canvas;
+  }
+
+  /** Show or hide a layer outright, for finding out what compositing costs. */
+  showLayer(which: 'sketch' | 'colour' | 'over', on: boolean): void {
+    this.stage.showLayer(which, on);
   }
 }

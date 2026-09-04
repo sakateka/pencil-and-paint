@@ -25,14 +25,19 @@ import type { Collider, Scenery } from './types';
  * same pencil strokes. The overlay lands pixel-for-pixel on the baked copy and
  * is invisible except where it covers the walker — no ghosting, no double image.
  */
-interface Occluder {
+export interface Occluder {
+  /**
+   * Stable for the life of the world, so the Phaser stage can keep this
+   * occluder's baked sprite on the GPU instead of re-uploading it every frame.
+   */
+  readonly id: number;
   readonly scenery: Scenery;
   readonly bounds: Bounds;
   readonly seed: number;
   readonly sprites: Map<Medium, OccluderSprite>;
 }
 
-interface OccluderSprite {
+export interface OccluderSprite {
   canvas: HTMLCanvasElement;
   x: number;
   y: number;
@@ -313,11 +318,23 @@ export class World {
     const occluders: Occluder[] = [];
     scenery.forEach((piece, i) => {
       if (!piece.tall || !piece.bounds) return;
-      occluders.push({ scenery: piece, bounds: piece.bounds, seed: seeds[i], sprites: new Map() });
+      occluders.push({
+        id: occluders.length,
+        scenery: piece,
+        bounds: piece.bounds,
+        seed: seeds[i],
+        sprites: new Map(),
+      });
     });
     for (const piece of layout.northernLandmarks) {
       if (!piece.tall || !piece.bounds) continue;
-      occluders.push({ scenery: piece, bounds: piece.bounds, seed: rng.forkSeed(), sprites: new Map() });
+      occluders.push({
+        id: occluders.length,
+        scenery: piece,
+        bounds: piece.bounds,
+        seed: rng.forkSeed(),
+        sprites: new Map(),
+      });
     }
 
     const world = new World(layers, colliders, occluders, layout.pond, layout.animals, layout.owl, layout.vigil, layout.lion);
@@ -392,6 +409,38 @@ export class World {
     disposeLandmarks();
     this.spriteOrder.length = 0;
     this.disposed = true;
+  }
+
+  /**
+   * Every baked tile of a layer, with where it belongs in world units.
+   *
+   * For the Phaser stage, which hands each tile to the GPU once and then never
+   * touches it again — the camera moves instead of the picture being blitted.
+   * `drawRegion` below is the Canvas2D way of asking the same question and
+   * costs a full-screen copy every frame; this costs one upload per tile, ever.
+   */
+  *tilesOf(medium: Medium): Generator<{
+    canvas: HTMLCanvasElement;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> {
+    if (this.disposed) return;
+    const layer = this.layers[medium];
+    const span = TILE / layer.scale;
+    for (let row = 0; row < layer.rows; row++) {
+      for (let col = 0; col < layer.columns; col++) {
+        const canvas = layer.tiles[row * layer.columns + col];
+        yield {
+          canvas,
+          x: col * span,
+          y: row * span,
+          width: canvas.width / layer.scale,
+          height: canvas.height / layer.scale,
+        };
+      }
+    }
   }
 
   /**
@@ -540,5 +589,3 @@ async function toTiles(
   source.canvas.height = 1;
   return { tiles, columns, rows, scale };
 }
-
-export type { Occluder, OccluderSprite };

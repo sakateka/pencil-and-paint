@@ -42,16 +42,6 @@ export interface DebugHandle {
    */
   build: string;
   /**
-   * Throw both layers away and draw on new ones, and say what happened.
-   *
-   * By hand only. There used to be a `Rescue` doing this automatically when the
-   * frames went soft; it was measured on the machine with the fault and bought
-   * ten to fifteen seconds once and about a second thereafter, so it was taken
-   * out. Still the cheapest A/B of whether a session's stutter is the browser's
-   * software fallback: if a rebuild helps at all, it is.
-   */
-  rescue(): string;
-  /**
    * Everything worth knowing about the current frame, flat enough to read.
    *
    * Deliberately one object of plain values: a browser console collapses
@@ -127,24 +117,6 @@ export interface DebugHandle {
    * readback every stage is itself the kind of stall being looked for.
    */
   /**
-   * Turn off, one at a time, each of the three things the colour layer does
-   * that the pencil layer does not, and report `drawMs` for each.
-   *
-   * The colour layer costs many times what the layer below it does for a
-   * fraction of the pixels, and the candidates are a full-screen clear of a
-   * transparent canvas, a full-screen blend of the paper, and `destination-in`
-   * — which an accelerated canvas may not support, in which case the layer
-   * falls to software for good.
-   *
-   * Every case runs on a brand-new element. The fallback is permanent for the
-   * life of a canvas, so switching an operation off mid-session only measures
-   * what that operation costs on a canvas already lost; the question is
-   * whether doing it is what loses the canvas.
-   *
-   * Takes about half a minute and the picture is visibly wrong throughout.
-   */
-  layerCost(frames?: number): Promise<Record<string, unknown>>;
-  /**
    * Switch parts of the frame off by hand, and report what is on.
    *
    * For the cost this codebase cannot measure: what the browser does after we
@@ -152,45 +124,22 @@ export interface DebugHandle {
    * of two, and rasterising a CSS mask whose size changes every frame, both
    * happen off this thread — `top` is the instrument, not `drawMs`.
    *
-   * Keys: `mask`, `paper`, `clear`, `colour`, `over`. Anything not named goes
-   * back on, so `pencil.layers({})` restores everything.
+   * Keys: `sketch`, `colour`, `over` — the three cameras the frame is made of.
+   * Anything not named goes back on, so `pencil.layers({})` restores it all.
    */
   layers(patch?: Record<string, boolean>): Record<string, boolean>;
-  settleStages(on: boolean): boolean;
   /**
-   * The finished frame, both layers stacked, as the player sees it.
+   * The finished frame, as the player sees it.
    *
-   * The renderer draws on two canvas elements now — pencil below, colour and
-   * everything above it on top — and the compositor is what puts them
-   * together, so neither element on its own holds the picture. A test reading
-   * `#game` for the walker finds nothing there, and reading `#colour` for the
-   * graphite outside the haze finds nothing there either. This stacks them the
-   * same way and hands back the pixels.
+   * The valley is a WebGL canvas with the paper over it, so neither element on
+   * its own holds the picture; this stacks them the way the compositor does and
+   * hands back the pixels. Reading the WebGL canvas back needs the drawing
+   * buffer kept, which the renderer only does when the address says `?readback`
+   * — `tests/harness.js` appends it, and nothing else should.
    *
    * In device pixels, like `getImageData`: multiply by `renderer.scale` first.
    */
   composited(x: number, y: number, width: number, height: number): ImageData;
-  /**
-   * Time the same colour-world blit into a fresh offscreen canvas and into the
-   * displayed one, and return both numbers plus the session's drawMs and a
-   * per-blit-flushed variant for the displayed canvas.
-   *
-   * The four numbers together separate the two ways `intoDisplayed` can be
-   * slow. If the per-blit-flushed figure is dozens of times the batched one,
-   * the cost is one synchronisation wait landing on whichever call forces the
-   * flush — the cross-process checkpoint of bug7 — rather than per-blit work;
-   * compare with `drawMs` to know whether the session had stepped at all.
-   * Freezes the page for up to a second on a slow session — that is the
-   * measurement. Pass true to blit the full viewport instead of the last
-   * dirty rectangle.
-   */
-  roundtrip(full?: boolean): {
-    region: string;
-    drawMs: number;
-    intoScratch: number;
-    intoDisplayed: number;
-    displayedFlushEach: number;
-  };
   /**
    * The shape of a purr, `age` seconds in.
    *
