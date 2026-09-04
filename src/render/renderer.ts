@@ -248,6 +248,18 @@ export class Renderer {
   skipPunch = false;
   skipPaper = false;
 
+  /**
+   * Freeze the mask where it is instead of moving it with the walker.
+   *
+   * The one suspect our own timers cannot see. `mask-size` changes every frame
+   * — the colour radius breathes and pulses — and if the browser rasterises
+   * the mask afresh each time, that is a few hundred thousand pixels a frame
+   * done somewhere no profiler in this codebase is looking. With this on the
+   * blob stops following, which is wrong and obvious, and the only question
+   * being asked is what happens to the CPU.
+   */
+  freezeMask = false;
+
   /** Force this context's queued work to finish, if stage timing is honest. */
   private settle(ctx: CanvasRenderingContext2D): void {
     if (!this.settleStages) return;
@@ -834,6 +846,7 @@ export class Renderer {
    * covered the window and there is nothing left to cut it to.
    */
   private maskColour(at: { size: number; left: number; top: number } | null): void {
+    if (this.freezeMask && this.maskedBy) return;
     const next = at ? `${at.size.toFixed(2)} ${at.left.toFixed(2)} ${at.top.toFixed(2)}` : '';
     this.maskWhere = at;
     if (next === this.maskedBy) return;
@@ -932,6 +945,19 @@ export class Renderer {
    */
   get context(): CanvasRenderingContext2D {
     return this.over;
+  }
+
+  /**
+   * Show or hide a layer outright, for finding out what compositing costs.
+   *
+   * Three full-screen layers at a device pixel ratio of two is three times the
+   * area for the compositor to blend, and that is work no timer here can see —
+   * it does not happen on this thread. Taking one away and watching the CPU is
+   * the only way to ask.
+   */
+  showLayer(which: 'colour' | 'over', on: boolean): void {
+    const element = which === 'colour' ? this.colourCanvas : this.overCanvas;
+    element.style.display = on ? '' : 'none';
   }
 
   /** The layer below, for anything that wants the pencil drawing itself. */

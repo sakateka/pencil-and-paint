@@ -830,6 +830,44 @@ async function boot(): Promise<void> {
         view: `${renderer.width}x${renderer.height}`,
       };
     },
+    /*
+     * Turn the parts of the frame on and off by hand, and say what is on.
+     *
+     * For the one cost nothing in this codebase can measure: the work the
+     * browser does on our behalf after we have finished drawing. `drawMs` went
+     * from 25ms to 1.16ms and a thread in another process is still at half a
+     * core, so the remaining cost is compositing, or rasterising the mask, or
+     * both — and the instrument for it is `top` in the next window.
+     *
+     * One at a time, ten seconds each, watch the CPU:
+     *
+     *   pencil.layers({ over: false })    is a third layer what costs?
+     *   pencil.layers({ colour: false })
+     *   pencil.layers({ mask: false })    is the mask re-rasterised per frame?
+     *   pencil.layers({ paper: false })   is the full-screen grain blend?
+     *   pencil.layers({ clear: false })
+     *   pencil.layers({})                 put everything back
+     *
+     * The picture is wrong with any of them off. That is expected.
+     */
+    layers: (patch?: Record<string, boolean>) => {
+      const p = patch ?? {};
+      if (p.mask === undefined) renderer.freezeMask = false;
+      else renderer.freezeMask = !p.mask;
+      if (p.paper === undefined) renderer.skipPaper = false;
+      else renderer.skipPaper = !p.paper;
+      if (p.clear === undefined) renderer.skipClear = false;
+      else renderer.skipClear = !p.clear;
+      renderer.showLayer('colour', p.colour !== false);
+      renderer.showLayer('over', p.over !== false);
+      return {
+        mask: !renderer.freezeMask,
+        paper: !renderer.skipPaper,
+        clear: !renderer.skipClear,
+        colour: p.colour !== false,
+        over: p.over !== false,
+      };
+    },
     settleStages: (on: boolean) => {
       renderer.settleStages = on;
       return renderer.settleStages;

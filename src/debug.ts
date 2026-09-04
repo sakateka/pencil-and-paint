@@ -144,6 +144,18 @@ export interface DebugHandle {
    * Takes about half a minute and the picture is visibly wrong throughout.
    */
   layerCost(frames?: number): Promise<Record<string, unknown>>;
+  /**
+   * Switch parts of the frame off by hand, and report what is on.
+   *
+   * For the cost this codebase cannot measure: what the browser does after we
+   * stop drawing. Compositing three full-screen layers at a device pixel ratio
+   * of two, and rasterising a CSS mask whose size changes every frame, both
+   * happen off this thread — `top` is the instrument, not `drawMs`.
+   *
+   * Keys: `mask`, `paper`, `clear`, `colour`, `over`. Anything not named goes
+   * back on, so `pencil.layers({})` restores everything.
+   */
+  layers(patch?: Record<string, boolean>): Record<string, boolean>;
   settleStages(on: boolean): boolean;
   /**
    * The finished frame, both layers stacked, as the player sees it.
