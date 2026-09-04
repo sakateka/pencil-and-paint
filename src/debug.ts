@@ -126,6 +126,19 @@ export interface DebugHandle {
    * *which* stage is expensive; leave it off otherwise, because forcing a
    * readback every stage is itself the kind of stall being looked for.
    */
+  /**
+   * Turn off, one at a time, each of the three things the colour layer does
+   * that the pencil layer does not, and report `drawMs` for each.
+   *
+   * The colour layer costs some seventy times what the layer below it does for
+   * a fraction of the pixels, and the candidates are a full-screen clear of a
+   * transparent canvas, a full-screen blend of the paper, and `destination-in`
+   * — which an accelerated canvas may not support, in which case the layer
+   * falls to software. Subtracting is the only honest way to tell them apart.
+   *
+   * Takes about eight seconds and the picture is visibly wrong throughout.
+   */
+  layerCost(frames?: number): Promise<Record<string, unknown>>;
   settleStages(on: boolean): boolean;
   /**
    * The finished frame, both layers stacked, as the player sees it.

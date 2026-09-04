@@ -217,6 +217,23 @@ export class Renderer {
    */
   settleStages = false;
 
+  /*
+   * Three things the colour layer does that the pencil layer does not, each
+   * switchable so the machine with the fault can say which one costs.
+   *
+   * Not settings. The frame is wrong with any of them on — no clear leaves
+   * last frame's colour smeared behind this one, no punch shows the colour as
+   * a hard-edged rectangle, no paper drops the grain — and that is fine for
+   * the second or two `pencil.layerCost()` holds them.
+   *
+   * They exist because this layer is seventy times the cost of the one below
+   * it for a fifteenth of the pixels, and three plausible reasons is two too
+   * many to act on.
+   */
+  skipClear = false;
+  skipPunch = false;
+  skipPaper = false;
+
   /** Force this context's queued work to finish, if stage timing is honest. */
   private settle(ctx: CanvasRenderingContext2D): void {
     if (!this.settleStages) return;
@@ -373,8 +390,10 @@ export class Renderer {
      * screen — a rectangle around the walker would leave last frame's copy of
      * them behind.
      */
-    colour.setTransform(1, 0, 0, 1, 0, 0);
-    colour.clearRect(0, 0, this.colourCanvas.width, this.colourCanvas.height);
+    if (!this.skipClear) {
+      colour.setTransform(1, 0, 0, 1, 0, 0);
+      colour.clearRect(0, 0, this.colourCanvas.width, this.colourCanvas.height);
+    }
     colour.setTransform(scale, 0, 0, scale, 0, 0);
 
     world.bakeCount = 0;
@@ -489,6 +508,7 @@ export class Renderer {
     this.time(
       'paper',
       () => {
+        if (this.skipPaper) return;
         colour.setTransform(1, 0, 0, 1, 0, 0);
         colour.drawImage(this.paper.canvas, 0, 0);
         colour.setTransform(scale, 0, 0, scale, 0, 0);
@@ -731,7 +751,7 @@ export class Renderer {
     this.blend('colourLive', performance.now() - part);
     part = performance.now();
 
-    field.punch(colour, scene.elapsed, centreX, centreY, radius, scale);
+    if (!this.skipPunch) field.punch(colour, scene.elapsed, centreX, centreY, radius, scale);
     colour.restore();
     this.settle(colour);
     this.blend('maskPunch', performance.now() - part);

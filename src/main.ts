@@ -765,6 +765,49 @@ async function boot(): Promise<void> {
      * of stall under investigation, so this is a diagnostic to switch on for a
      * capture, not a setting to leave on.
      */
+    /*
+     * Which part of the colour layer is the expensive one.
+     *
+     * The layer costs seventy times what the pencil layer below it does, for a
+     * fifteenth of the pixels, and three things it does are candidates: a
+     * full-screen clear of a transparent canvas every frame, a full-screen
+     * blend of the paper over it, and `destination-in` — which an accelerated
+     * canvas may not support at all, in which case the whole layer falls to
+     * software for the frame.
+     *
+     * Each is turned off in turn for a second and a half of real frames and
+     * `drawMs` read back, so the answer is a subtraction rather than an
+     * argument. The picture is wrong while it runs — smeared, or hard-edged,
+     * or without its grain — and right again at the end.
+     */
+    layerCost: async (frames = 90) => {
+      const probe = globalThis.pencil?.probe;
+      if (!probe) return {};
+      const runs: Record<string, number> = {};
+      const cases: [string, () => void][] = [
+        ['all on', () => {}],
+        ['no clear', () => (renderer.skipClear = true)],
+        ['no punch', () => (renderer.skipPunch = true)],
+        ['no paper', () => (renderer.skipPaper = true)],
+        ['none of the three', () => {
+          renderer.skipClear = true;
+          renderer.skipPunch = true;
+          renderer.skipPaper = true;
+        }],
+      ];
+      for (const [label, set] of cases) {
+        renderer.skipClear = false;
+        renderer.skipPunch = false;
+        renderer.skipPaper = false;
+        set();
+        const watched = await probe(frames);
+        runs[label] = Math.round((watched.drawMs ?? 0) * 100) / 100;
+      }
+      renderer.skipClear = false;
+      renderer.skipPunch = false;
+      renderer.skipPaper = false;
+      return { drawMs: runs, dirty: `${game.field.lastDirty.width}x${game.field.lastDirty.height}`, view: `${renderer.width}x${renderer.height}` };
+    },
     settleStages: (on: boolean) => {
       renderer.settleStages = on;
       return renderer.settleStages;
