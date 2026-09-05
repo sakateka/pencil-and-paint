@@ -6,7 +6,7 @@ import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
 import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
 import { drawLion, type Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
-import { drawSkyBackdrop, drawSun, SKY_DEPTH, SUN_BOUNDS, sunVisible } from '../world/sky';
+import { bakeSkyStrip, drawSun, SUN_BOUNDS, sunVisible } from '../world/sky';
 import { withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
@@ -242,6 +242,31 @@ export class Renderer {
     this.stage.setElapsed(scene.elapsed);
 
     /*
+     * Both sky strips, baked AND handed to the GPU on the first frame — during
+     * the warm-up a start already pays for, not halfway through a walk. Each is
+     * a few megabytes; placing one lazily at the top of the map stalled exactly
+     * the frame the sky first appeared. They are persistent, so this is the
+     * only place they are ever touched.
+     */
+    if (this.skyStrips.size === 0) {
+      for (const medium of ['sketch', 'color'] as const) {
+        const strip = bakeSkyStrip(medium, world.width, scene.vigil.elephantX);
+        this.skyStrips.set(medium, strip);
+        this.stage.sprite({
+          id: `sky:${medium}`,
+          layer: medium === 'color' ? 'colour' : 'sketch',
+          canvas: strip.canvas,
+          left: strip.x,
+          top: strip.y,
+          width: strip.canvas.width,
+          height: strip.canvas.height,
+          depth: Renderer.DEPTH.sky,
+          persistent: true,
+        });
+      }
+    }
+
+    /*
      * The camera's own position, not the snapped one.
      *
      * `Camera.frame` rounds the view origin to whole device pixels and keeps
@@ -286,7 +311,7 @@ export class Renderer {
     this.stage.showLayer('sketch', !flooded);
 
     const sceneryStarted = performance.now();
-    this.placeWorld(world, flooded);
+    this.placeWorld(world);
     this.frameStages.scenery = performance.now() - sceneryStarted;
 
     const liveStarted = performance.now();
@@ -310,36 +335,34 @@ export class Renderer {
 
   private placedWorldTiles = false;
 
-  /** Hand the valley's tiles to the GPU, once, and place them every frame. */
-  private placeWorld(world: World, flooded: boolean): void {
+  /** The sky strips, one per medium, each baked once at the first sight of sky. */
+  private readonly skyStrips = new Map<
+    'sketch' | 'color',
+    { canvas: HTMLCanvasElement; x: number; y: number }
+  >();
+
+  /** Hand the valley's tiles to the GPU once, where the camera finds them. */
+  private placeWorld(world: World): void {
     const { DEPTH } = Renderer;
-    if (!this.placedWorldTiles) {
-      for (const medium of ['sketch', 'color'] as const) {
-        const layer = medium === 'color' ? 'colour' : 'sketch';
-        let index = 0;
-        for (const tile of world.tilesOf(medium)) {
-          this.stage.sprite({
-            id: `tile:${medium}:${index++}`,
-            layer,
-            canvas: tile.canvas,
-            left: tile.x,
-            top: tile.y,
-            width: tile.width,
-            height: tile.height,
-            depth: DEPTH.tiles,
-          });
-        }
-      }
-      this.placedWorldTiles = true;
-    } else {
-      // Re-touch tile sprites so endFrame does not touch them
-      for (const medium of flooded ? (['color'] as const) : (['sketch', 'color'] as const)) {
-        let index = 0;
-        for (let i = 0; i < 24; i++) {
-          this.stage.touchSprite(`tile:${medium}:${index++}`);
-        }
+    if (this.placedWorldTiles) return;
+    for (const medium of ['sketch', 'color'] as const) {
+      const layer = medium === 'color' ? 'colour' : 'sketch';
+      let index = 0;
+      for (const tile of world.tilesOf(medium)) {
+        this.stage.sprite({
+          id: `tile:${medium}:${index++}`,
+          layer,
+          canvas: tile.canvas,
+          left: tile.x,
+          top: tile.y,
+          width: tile.width,
+          height: tile.height,
+          depth: DEPTH.tiles,
+          persistent: true,
+        });
       }
     }
+    this.placedWorldTiles = true;
   }
 
   /**
@@ -366,6 +389,7 @@ export class Renderer {
       depth: number,
       pose: string | number,
       draw: (ctx: CanvasRenderingContext2D) => void,
+      animated?: boolean,
     ) => {
       this.stage.cel({
         id,
@@ -377,55 +401,31 @@ export class Renderer {
         height: size,
         depth,
         pose,
+        animated,
         draw,
       });
     };
 
     /*
-     * The sky, which belongs to the world rather than to anything in it, so it
-     * is anchored: it covers a patch of world and must not slide with the
-     * camera. Its left edge is quantised to a wide step so that crossing one is
-     * rare, and the cel is cut wide enough to cover the view either side.
-     *
-     * The sun is separated onto its own small rotating cel: otherwise its shine
-     * would re-upload the entire multi-megapixel sky canvas 12 times a second.
+     * The sky is a strip baked once and handed to the GPU at warm-up — see
+     * `render` — so the camera simply scrolls it. Only the sun is asked for
+     * here: its own small cel above the strip, turning at a gentle 6 Hz in
+     * colour and painted once in graphite.
      */
-    const skyStep = 512;
-    const skyLeft = Math.floor((camera.viewX - skyStep) / skyStep) * skyStep;
-    const skyWidth = camera.viewWidth + skyStep * 3;
-    if (camera.viewY < 40) {
+    if (camera.viewY < 40 && sunVisible(camera.viewX, camera.viewWidth)) {
       this.stage.cel({
-        id: 'sky',
+        id: 'sun',
         layer,
         medium,
-        left: skyLeft,
-        top: -SKY_DEPTH,
-        width: skyWidth,
-        height: SKY_DEPTH + 40,
-        depth: DEPTH.sky,
-        anchored: true,
+        left: SUN_BOUNDS.x,
+        top: SUN_BOUNDS.y,
+        width: SUN_BOUNDS.size,
+        height: SUN_BOUNDS.size,
+        depth: DEPTH.sky + 0.001,
         animated: false,
-        pose: `${skyLeft},${skyWidth}`,
-        draw: (ctx) =>
-          withBoil(false, () =>
-            drawSkyBackdrop(ctx, skyLeft, -SKY_DEPTH, skyWidth, medium, scene.vigil.elephantX),
-          ),
+        pose: medium === 'color' ? Math.floor(scene.elapsed * 6) : 'still',
+        draw: (ctx) => drawSun(ctx, medium, scene.elapsed),
       });
-
-      if (sunVisible(skyLeft - 8, skyWidth + 16)) {
-        this.stage.cel({
-          id: 'sun',
-          layer,
-          medium,
-          left: SUN_BOUNDS.x,
-          top: SUN_BOUNDS.y,
-          width: SUN_BOUNDS.size,
-          height: SUN_BOUNDS.size,
-          depth: DEPTH.sky + 0.001,
-          animated: medium === 'color',
-          draw: (ctx) => drawSun(ctx, medium, scene.elapsed),
-        });
-      }
     }
 
     for (const pot of scene.pots) {
@@ -494,15 +494,29 @@ export class Renderer {
 
     const { rest } = scene;
     if (camera.canSee(rest.x, rest.y, 130) && !hidden(rest.x, rest.y, 90)) {
-      at('hammock', rest.x, rest.y, 420, DEPTH.hammock, poseOf(rest), (ctx) =>
-        still(() => drawHammock(ctx, rest, medium)),
+      at(
+        'hammock',
+        rest.x,
+        rest.y,
+        420,
+        DEPTH.hammock,
+        poseOf(rest),
+        (ctx) => still(() => drawHammock(ctx, rest, medium)),
+        medium === 'color',
       );
     }
 
     const { vigil } = scene;
     if (camera.canSee(vigil.x, vigil.y, 90) && !hidden(vigil.x, vigil.y, 60)) {
-      at('stump', vigil.x, vigil.y, 300, DEPTH.stump, poseOf(vigil), (ctx) =>
-        still(() => drawStump(ctx, vigil, medium)),
+      at(
+        'stump',
+        vigil.x,
+        vigil.y,
+        300,
+        DEPTH.stump,
+        poseOf(vigil),
+        (ctx) => still(() => drawStump(ctx, vigil, medium)),
+        medium === 'color',
       );
     }
     /*
@@ -514,24 +528,46 @@ export class Renderer {
       camera.canSee(vigil.elephantX, vigil.elephantY, 320) &&
       !hidden(vigil.elephantX, vigil.elephantY, 90)
     ) {
-      at('elephant', vigil.elephantX, vigil.elephantY, 760, DEPTH.elephant, poseOf(vigil), (ctx) =>
-        still(() => drawElephant(ctx, vigil, medium)),
+      at(
+        'elephant',
+        vigil.elephantX,
+        vigil.elephantY,
+        760,
+        DEPTH.elephant,
+        poseOf(vigil),
+        (ctx) => still(() => drawElephant(ctx, vigil, medium)),
+        medium === 'color',
       );
     }
 
     const { lion } = scene;
     if (camera.canSee(lion.x, lion.y, 90) && !hidden(lion.x, lion.y, 60)) {
-      at('lion', lion.x, lion.y, 300, DEPTH.lion, poseOf(lion), (ctx) =>
-        still(() => drawLion(ctx, lion, medium)),
+      at(
+        'lion',
+        lion.x,
+        lion.y,
+        300,
+        DEPTH.lion,
+        poseOf(lion),
+        (ctx) => still(() => drawLion(ctx, lion, medium)),
+        medium === 'color',
       );
     }
 
     // Yours, over the abandoned one baked into the board. Colour only: in
-    // pencil the easel keeps the drawing it came with.
+    // pencil the easel keeps the drawing it came with. A still life: it only
+    // ever changes when the picture does, keyed by the data URL's length.
     const { easel } = scene;
     if (medium === 'color' && scene.easelPicture && camera.canSee(easel.x, easel.y, 80)) {
-      at('easelPicture', easel.x, easel.y, 260, DEPTH.easel, scene.easelPicture.src.length, (ctx) =>
-        drawEaselPicture(ctx, scene.easelPicture, easel.x, easel.y),
+      at(
+        'easelPicture',
+        easel.x,
+        easel.y,
+        260,
+        DEPTH.easel,
+        scene.easelPicture.src.length,
+        (ctx) => drawEaselPicture(ctx, scene.easelPicture, easel.x, easel.y),
+        false,
       );
     }
 
@@ -557,6 +593,7 @@ export class Renderer {
       depth: number,
       pose: string | number,
       draw: (ctx: CanvasRenderingContext2D) => void,
+      animated?: boolean,
     ) => {
       this.stage.cel({
         id,
@@ -568,6 +605,7 @@ export class Renderer {
         height: size,
         depth,
         pose,
+        animated,
         draw,
       });
     };
@@ -736,8 +774,16 @@ export class Renderer {
 
     const house = scene.treehouse;
     if (house.inside) {
-      at('window', house.x, house.y, 360, DEPTH.window, poseOf(house), (ctx) =>
-        drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving),
+      at(
+        'window',
+        house.x,
+        house.y,
+        360,
+        DEPTH.window,
+        poseOf(house),
+        (ctx) =>
+          drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving),
+        false,
       );
     }
   }

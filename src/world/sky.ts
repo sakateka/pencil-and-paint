@@ -1,5 +1,6 @@
 import { Rng } from '../core/rng';
 import { TAU } from '../core/math';
+import { createSurface } from '../core/canvas';
 import { ink, jitter } from '../media/ink';
 import { PAPER, PENCIL, type Medium } from '../media/medium';
 import { drawNorthernLandscape } from './hills';
@@ -87,10 +88,13 @@ export function sunVisible(left: number, width: number): boolean {
   return SUN.x + SUN.r * 2.4 > left && SUN.x - SUN.r * 2.4 < left + width;
 }
 
+/** How far past the disc the flames can reach, plus a whisker for the hook. */
+const SUN_PAD = SUN.r * 1.4;
+
 export function drawSun(ctx: CanvasRenderingContext2D, medium: Medium, t: number): void {
   const { r } = SUN;
   ctx.save();
-  ctx.translate(r * 2.4, r * 2.4);
+  ctx.translate(SUN_PAD, SUN_PAD);
   if (medium === 'color') {
     ctx.fillStyle = '#f6d64a';
     sunFlames(ctx, t);
@@ -112,9 +116,9 @@ export function drawSun(ctx: CanvasRenderingContext2D, medium: Medium, t: number
 }
 
 export const SUN_BOUNDS = {
-  x: SUN.x - SUN.r * 2.4,
-  y: SUN.y - SUN.r * 2.4,
-  size: Math.ceil(SUN.r * 4.8),
+  x: SUN.x - SUN_PAD,
+  y: SUN.y - SUN_PAD,
+  size: Math.ceil(SUN_PAD * 2),
 };
 
 export function drawSkyBackdrop(
@@ -227,8 +231,41 @@ export function drawSky(
   const width = viewWidth + 16;
   if (sunVisible(left, width)) {
     ctx.save();
-    ctx.translate(SUN.x - SUN.r * 2.4, SUN.y - SUN.r * 2.4);
+    ctx.translate(SUN.x - SUN_PAD, SUN.y - SUN_PAD);
     drawSun(ctx, medium, t);
     ctx.restore();
   }
+}
+
+/** Margin baked into the sky strip either side of the world, in world units. */
+const SKY_STRIP_MARGIN = 32;
+
+/**
+ * The whole sky, painted once onto a canvas the camera can simply scroll.
+ *
+ * Everything the backdrop holds is fixed in world coordinates — the gradient,
+ * the clouds at their places, the horizon, the northern hills — and the ruled
+ * strokes are hashed, not boiled, so the painting is deterministic. Baking it
+ * removes the one stall that arrived exactly while walking: the old anchored
+ * cel was as wide as the view, and every 512 world pixels of progress re-painted
+ * and re-uploaded several megabytes to the GPU, twice, in the middle of a frame.
+ *
+ * The sun is not in the strip: in colour its flames turn, so it keeps its own
+ * small cel above this.
+ */
+export function bakeSkyStrip(
+  medium: Medium,
+  worldWidth: number,
+  clearAt: number,
+): { canvas: HTMLCanvasElement; x: number; y: number } {
+  const width = worldWidth + SKY_STRIP_MARGIN * 2;
+  const height = Math.ceil(SKY_DEPTH + 2);
+  const surface = createSurface(width, height);
+  // The backdrop draws in world coordinates; this is what puts world
+  // (-SKY_STRIP_MARGIN, -SKY_DEPTH) at the canvas's own corner. Without it the
+  // whole painting lands above the canvas and is clipped away — an empty strip,
+  // and a valley with no sky, hills or house on it.
+  surface.ctx.setTransform(1, 0, 0, 1, SKY_STRIP_MARGIN, SKY_DEPTH);
+  drawSkyBackdrop(surface.ctx, -SKY_STRIP_MARGIN, -SKY_DEPTH, width, medium, clearAt);
+  return { canvas: surface.canvas, x: -SKY_STRIP_MARGIN, y: -SKY_DEPTH };
 }

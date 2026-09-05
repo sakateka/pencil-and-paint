@@ -561,7 +561,15 @@ export class World {
  * Yields between tiles. Copying six 1024px tiles in one go was half the entire
  * bake — measured at 91ms of 178ms — and being a single uninterrupted call it
  * was the longest freeze in the whole load.
+ *
+ * Each tile carries two device pixels of the source beyond its own edge, so
+ * neighbouring tiles overlap by exactly the same picture. A quad edge landing
+ * mid-pixel under linear sampling cannot then manufacture a seam — which over
+ * the pond showed as a vertical hairline, where the column boundary at x=1024
+ * crosses dark water.
  */
+const TILE_GUTTER = 2;
+
 async function toTiles(
   source: Surface,
   scale: number,
@@ -575,10 +583,12 @@ async function toTiles(
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < columns; col++) {
-      const width = Math.min(TILE, pixelWidth - col * TILE);
-      const height = Math.min(TILE, pixelHeight - row * TILE);
+      const x = col * TILE;
+      const y = row * TILE;
+      const width = Math.min(TILE + TILE_GUTTER, pixelWidth - x);
+      const height = Math.min(TILE + TILE_GUTTER, pixelHeight - y);
       const tile = createSurface(width, height);
-      tile.ctx.drawImage(source.canvas, -col * TILE, -row * TILE);
+      tile.ctx.drawImage(source.canvas, -x, -y);
       tiles.push(tile.canvas);
       await breathe();
     }

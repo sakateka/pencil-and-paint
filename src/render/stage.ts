@@ -81,6 +81,17 @@ const IGNORED_POSE_KEYS = new Set([
   'collectedAt',
   'burstCount',
   'purr',
+  /*
+   * Continuous animation phases. These change every frame while something
+   * moves, which defeated the step counter: a frog surfacing, whose `dive`
+   * eases 0..1 over a third of a second, repainted its 220px cel sixty times a
+   * second instead of twelve — and a shoal of them at the pond is what made
+   * fishing heavy. The strokes are stepped drawings; the step counter is what
+   * steps them, and the pose is for discrete state only.
+   */
+  'walkPhase',
+  'headDown',
+  'dive',
 ]);
 
 export function poseOf(value: unknown, depth = 1): string {
@@ -302,6 +313,12 @@ export class Stage {
     width: number;
     height: number;
     depth: number;
+    /**
+     * Stays for the life of the world — the valley's tiles and the baked sky.
+     * Never hidden for being off-screen and never evicted; the camera simply
+     * scrolls them in and out of view.
+     */
+    persistent?: boolean;
   }): void {
     const scene = this.scene;
     if (!scene) return;
@@ -317,7 +334,7 @@ export class Stage {
       if (!scene.textures.addCanvas(key, request.canvas)) return;
       const image = scene.add.image(0, 0, key).setOrigin(0, 0);
       this.assign(image, request.layer);
-      held = { key, canvas: request.canvas, image, touched: -1 };
+      held = { key, canvas: request.canvas, image, touched: -1, persistent: request.persistent };
       this.sprites.set(request.id, held);
     }
     held.touched = this.frameNumber;
@@ -326,17 +343,15 @@ export class Stage {
     held.image.setDisplaySize(request.width, request.height);
   }
 
-  touchSprite(id: string): void {
-    const held = this.sprites.get(id);
-    if (held) {
-      held.touched = this.frameNumber;
-      held.image.setVisible(true);
-    }
-  }
-
   private readonly sprites = new Map<
     string,
-    { key: string; canvas: HTMLCanvasElement; image: Phaser.GameObjects.Image; touched: number }
+    {
+      key: string;
+      canvas: HTMLCanvasElement;
+      image: Phaser.GameObjects.Image;
+      touched: number;
+      persistent?: boolean;
+    }
   >();
 
   /**
@@ -501,15 +516,15 @@ export class Stage {
         }
       }
     }
-    // Sprites (e.g. dynamic occluders): if untouched for 180 frames, destroy image and texture.
+    // Sprites: persistent ones (tiles, the sky strip) stay whatever happens;
+    // dynamic ones (occluders) are hidden when unused and evicted after a spell.
     for (const [id, held] of this.sprites.entries()) {
-      if (held.touched !== this.frameNumber) {
-        held.image.setVisible(false);
-        if (!id.startsWith('tile:') && this.frameNumber - held.touched > 180) {
-          held.image.destroy();
-          if (scene) scene.textures.remove(held.key);
-          this.sprites.delete(id);
-        }
+      if (held.persistent || held.touched === this.frameNumber) continue;
+      held.image.setVisible(false);
+      if (this.frameNumber - held.touched > 180) {
+        held.image.destroy();
+        if (scene) scene.textures.remove(held.key);
+        this.sprites.delete(id);
       }
     }
     this.frameNumber++;
