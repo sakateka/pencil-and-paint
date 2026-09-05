@@ -83,38 +83,52 @@ function sunFlames(ctx: CanvasRenderingContext2D, t: number): void {
   ctx.closePath();
 }
 
-export function drawSky(
+export function sunVisible(left: number, width: number): boolean {
+  return SUN.x + SUN.r * 2.4 > left && SUN.x - SUN.r * 2.4 < left + width;
+}
+
+export function drawSun(ctx: CanvasRenderingContext2D, medium: Medium, t: number): void {
+  const { r } = SUN;
+  ctx.save();
+  ctx.translate(r * 2.4, r * 2.4);
+  if (medium === 'color') {
+    ctx.fillStyle = '#f6d64a';
+    sunFlames(ctx, t);
+    ctx.fill();
+    ctx.fillStyle = '#f8de5c';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TAU);
+    ctx.fill();
+  } else {
+    ink(ctx, 0.26, 1);
+    sunFlames(ctx, 0);
+    ctx.stroke();
+    ink(ctx, 0.2, 0.9);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+export const SUN_BOUNDS = {
+  x: SUN.x - SUN.r * 2.4,
+  y: SUN.y - SUN.r * 2.4,
+  size: Math.ceil(SUN.r * 4.8),
+};
+
+export function drawSkyBackdrop(
   ctx: CanvasRenderingContext2D,
   viewX: number,
   viewY: number,
   viewWidth: number,
   medium: Medium,
-  /** Seconds since the world began, for the shine. */
-  t: number,
-  /*
-   * A stretch of sky to leave empty, in world x.
-   *
-   * There is one cloud up here that is not weather — the elephant-shaped one
-   * that the animal comes out of — and an ordinary cloud drifting across the
-   * same patch buries it. Nothing else is reserved; this is the one place where
-   * something is meant to be noticed.
-   */
   clearAt: number,
 ): void {
-  // Nothing to draw until the camera has actually risen above the top edge.
   if (viewY >= 0) return;
 
   const left = viewX - 8;
   const width = viewWidth + 16;
-  /*
-   * A whisker past the horizon, not exactly to it.
-   *
-   * The camera's origin is snapped to whole device pixels and the sky's lower
-   * edge is not, so at exactly y = 0 the seam between sky and grass fell on
-   * either side of a pixel boundary depending on where the camera happened to
-   * be, and flickered as you walked. Overlapping the world by a pixel and a
-   * half costs a sliver of the topmost grass and holds still.
-   */
   const height = -viewY + 1.5;
 
   ctx.save();
@@ -129,16 +143,6 @@ export function drawSky(
     g.addColorStop(1, SKY_HORIZON);
     ctx.fillStyle = g;
     ctx.fillRect(left, viewY, width, height);
-
-    if (SUN.x + SUN.r * 2.4 > left && SUN.x - SUN.r * 2.4 < left + width) {
-      ctx.fillStyle = '#f6d64a';
-      sunFlames(ctx, t);
-      ctx.fill();
-      ctx.fillStyle = '#f8de5c';
-      ctx.beginPath();
-      ctx.arc(SUN.x, SUN.y, SUN.r, 0, TAU);
-      ctx.fill();
-    }
 
     for (const c of clouds) {
       if (c.x + c.r * 2 < left || c.x - c.r * 2 > left + width) continue;
@@ -160,13 +164,6 @@ export function drawSky(
       }
     }
 
-    /*
-     * A soft haze along the horizon.
-     *
-     * Without it the sky stops dead against the grass in a hard line, and the
-     * world looks cut out and pasted onto a backdrop rather than going on into
-     * the distance.
-     */
     const haze = ctx.createLinearGradient(0, -70, 0, 0);
     haze.addColorStop(0, 'rgba(232,244,238,0)');
     haze.addColorStop(1, 'rgba(232,244,238,.85)');
@@ -180,7 +177,6 @@ export function drawSky(
   ctx.fillStyle = PAPER;
   ctx.fillRect(left, viewY, width, height);
 
-  // Ruled strokes, thinning out towards the top: a sky begun and left.
   const step = 26;
   for (let y = -step; y > viewY; y -= step) {
     const depth = 1 - y / viewY;
@@ -191,26 +187,6 @@ export function drawSky(
     ctx.stroke();
   }
 
-  // The sun, as an outline only.
-  if (SUN.x + SUN.r * 2.4 > left && SUN.x - SUN.r * 2.4 < left + width) {
-    // At rest in graphite: out of the colour nothing in this world moves.
-    ink(ctx, 0.26, 1);
-    sunFlames(ctx, 0);
-    ctx.stroke();
-    ink(ctx, 0.2, 0.9);
-    ctx.beginPath();
-    ctx.arc(SUN.x, SUN.y, SUN.r, 0, TAU);
-    ctx.stroke();
-  }
-
-  /*
-   * Clouds as soft masses, rubbed in with the side of the pencil.
-   *
-   * Drawn as outlines they came out as rows of linked rings: every lobe's whole
-   * circumference is stroked, so you see all the arcs inside the cloud as well
-   * as its edge. One fill of the union gives the silhouette and nothing else,
-   * and a smudge is what a cloud is in a pencil drawing.
-   */
   ctx.globalAlpha = 0.12;
   ctx.fillStyle = PENCIL;
   for (const c of clouds) {
@@ -220,9 +196,6 @@ export function drawSky(
     for (let i = 0; i < c.lobes; i++) {
       const t = i / (c.lobes - 1 || 1) - 0.5;
       const cx = c.x + t * c.r * 1.5;
-      // `moveTo` first: `ellipse` continues the current subpath, so without it
-      // the lobes are strung together by chords and the non-zero rule cuts
-      // holes where they overlap.
       ctx.moveTo(cx + c.r * 0.55, c.y);
       ctx.ellipse(cx, c.y, c.r * 0.55, c.r * 0.32, 0, 0, TAU);
     }
@@ -230,7 +203,6 @@ export function drawSky(
   }
   ctx.globalAlpha = 1;
 
-  // The horizon, drawn firmly, because it is the edge of the paper.
   ink(ctx, 0.4, 1.2);
   ctx.beginPath();
   ctx.moveTo(left, jitter(9300, 1));
@@ -238,4 +210,25 @@ export function drawSky(
   ctx.stroke();
   ctx.restore();
   drawNorthernLandscape(ctx, medium, viewX, viewWidth);
+}
+
+export function drawSky(
+  ctx: CanvasRenderingContext2D,
+  viewX: number,
+  viewY: number,
+  viewWidth: number,
+  medium: Medium,
+  /** Seconds since the world began, for the shine. */
+  t: number,
+  clearAt: number,
+): void {
+  drawSkyBackdrop(ctx, viewX, viewY, viewWidth, medium, clearAt);
+  const left = viewX - 8;
+  const width = viewWidth + 16;
+  if (sunVisible(left, width)) {
+    ctx.save();
+    ctx.translate(SUN.x - SUN.r * 2.4, SUN.y - SUN.r * 2.4);
+    drawSun(ctx, medium, t);
+    ctx.restore();
+  }
 }

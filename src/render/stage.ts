@@ -66,6 +66,23 @@ const READ_BACK =
  * property reads per thing per frame, against an upload of a hundred kilobytes
  * if we get it wrong.
  */
+const IGNORED_POSE_KEYS = new Set([
+  'x',
+  'y',
+  'targetX',
+  'targetY',
+  'homeX',
+  'homeY',
+  'homeRadius',
+  'speed',
+  'clock',
+  'beastClock',
+  'timer',
+  'collectedAt',
+  'burstCount',
+  'purr',
+]);
+
 export function poseOf(value: unknown, depth = 1): string {
   if (value === null || value === undefined) return '';
   const type = typeof value;
@@ -81,6 +98,7 @@ export function poseOf(value: unknown, depth = 1): string {
   if (depth <= 0) return '';
   let out = '';
   for (const key of Object.keys(value)) {
+    if (IGNORED_POSE_KEYS.has(key)) continue;
     out += `${key}=${poseOf((value as Record<string, unknown>)[key], depth - 1)};`;
   }
   return out;
@@ -308,6 +326,14 @@ export class Stage {
     held.image.setDisplaySize(request.width, request.height);
   }
 
+  touchSprite(id: string): void {
+    const held = this.sprites.get(id);
+    if (held) {
+      held.touched = this.frameNumber;
+      held.image.setVisible(true);
+    }
+  }
+
   private readonly sprites = new Map<
     string,
     { key: string; canvas: HTMLCanvasElement; image: Phaser.GameObjects.Image; touched: number }
@@ -463,11 +489,28 @@ export class Stage {
 
   /** Hide everything nobody asked for this frame, and start the next one. */
   endFrame(): void {
-    for (const cel of this.cels.values()) {
-      if (cel.touched !== this.frameNumber) cel.image.setVisible(false);
+    const scene = this.scene;
+    // Cels: if not touched this frame, hide it. If untouched for 180 frames (~3 sec), clean it up.
+    for (const [slot, cel] of this.cels.entries()) {
+      if (cel.touched !== this.frameNumber) {
+        cel.image.setVisible(false);
+        if (this.frameNumber - cel.touched > 180) {
+          cel.destroy();
+          if (scene) scene.textures.remove(cel.texture.key);
+          this.cels.delete(slot);
+        }
+      }
     }
-    for (const held of this.sprites.values()) {
-      if (held.touched !== this.frameNumber) held.image.setVisible(false);
+    // Sprites (e.g. dynamic occluders): if untouched for 180 frames, destroy image and texture.
+    for (const [id, held] of this.sprites.entries()) {
+      if (held.touched !== this.frameNumber) {
+        held.image.setVisible(false);
+        if (!id.startsWith('tile:') && this.frameNumber - held.touched > 180) {
+          held.image.destroy();
+          if (scene) scene.textures.remove(held.key);
+          this.sprites.delete(id);
+        }
+      }
     }
     this.frameNumber++;
   }

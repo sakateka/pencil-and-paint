@@ -6,7 +6,7 @@ import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
 import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
 import { drawLion, type Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
-import { drawSky, SKY_DEPTH } from '../world/sky';
+import { drawSkyBackdrop, drawSun, SKY_DEPTH, SUN_BOUNDS, sunVisible } from '../world/sky';
 import { withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
@@ -308,23 +308,36 @@ export class Renderer {
     }
   }
 
+  private placedWorldTiles = false;
+
   /** Hand the valley's tiles to the GPU, once, and place them every frame. */
   private placeWorld(world: World, flooded: boolean): void {
     const { DEPTH } = Renderer;
-    for (const medium of flooded ? (['color'] as const) : (['sketch', 'color'] as const)) {
-      const layer = medium === 'color' ? 'colour' : 'sketch';
-      let index = 0;
-      for (const tile of world.tilesOf(medium)) {
-        this.stage.sprite({
-          id: `tile:${medium}:${index++}`,
-          layer,
-          canvas: tile.canvas,
-          left: tile.x,
-          top: tile.y,
-          width: tile.width,
-          height: tile.height,
-          depth: DEPTH.tiles,
-        });
+    if (!this.placedWorldTiles) {
+      for (const medium of ['sketch', 'color'] as const) {
+        const layer = medium === 'color' ? 'colour' : 'sketch';
+        let index = 0;
+        for (const tile of world.tilesOf(medium)) {
+          this.stage.sprite({
+            id: `tile:${medium}:${index++}`,
+            layer,
+            canvas: tile.canvas,
+            left: tile.x,
+            top: tile.y,
+            width: tile.width,
+            height: tile.height,
+            depth: DEPTH.tiles,
+          });
+        }
+      }
+      this.placedWorldTiles = true;
+    } else {
+      // Re-touch tile sprites so endFrame does not touch them
+      for (const medium of flooded ? (['color'] as const) : (['sketch', 'color'] as const)) {
+        let index = 0;
+        for (let i = 0; i < 24; i++) {
+          this.stage.touchSprite(`tile:${medium}:${index++}`);
+        }
       }
     }
   }
@@ -373,6 +386,9 @@ export class Renderer {
      * is anchored: it covers a patch of world and must not slide with the
      * camera. Its left edge is quantised to a wide step so that crossing one is
      * rare, and the cel is cut wide enough to cover the view either side.
+     *
+     * The sun is separated onto its own small rotating cel: otherwise its shine
+     * would re-upload the entire multi-megapixel sky canvas 12 times a second.
      */
     const skyStep = 512;
     const skyLeft = Math.floor((camera.viewX - skyStep) / skyStep) * skyStep;
@@ -388,19 +404,46 @@ export class Renderer {
         height: SKY_DEPTH + 40,
         depth: DEPTH.sky,
         anchored: true,
+        animated: false,
+        pose: `${skyLeft},${skyWidth}`,
         draw: (ctx) =>
           withBoil(false, () =>
-            drawSky(ctx, skyLeft, -SKY_DEPTH, skyWidth, medium, scene.elapsed, scene.vigil.elephantX),
+            drawSkyBackdrop(ctx, skyLeft, -SKY_DEPTH, skyWidth, medium, scene.vigil.elephantX),
           ),
       });
+
+      if (sunVisible(skyLeft - 8, skyWidth + 16)) {
+        this.stage.cel({
+          id: 'sun',
+          layer,
+          medium,
+          left: SUN_BOUNDS.x,
+          top: SUN_BOUNDS.y,
+          width: SUN_BOUNDS.size,
+          height: SUN_BOUNDS.size,
+          depth: DEPTH.sky + 0.001,
+          animated: medium === 'color',
+          draw: (ctx) => drawSun(ctx, medium, scene.elapsed),
+        });
+      }
     }
 
     for (const pot of scene.pots) {
       if (pot.found || !camera.canSee(pot.x, pot.y, 60)) continue;
       if (hidden(pot.x, pot.y, 40)) continue;
-      at(`pot:${pot.x},${pot.y}`, pot.x, pot.y, 128, DEPTH.pots, poseOf(pot), (ctx) =>
-        drawPot(ctx, pot, medium),
-      );
+      this.stage.cel({
+        id: `pot:${pot.x},${pot.y}`,
+        layer,
+        medium,
+        left: pot.x - 64,
+        top: pot.y - 64,
+        width: 128,
+        height: 128,
+        depth: DEPTH.pots,
+        pose: `${pot.found}|${pot.awake}`,
+        animated: pot.awake,
+        draw: (ctx) => drawPot(ctx, pot, medium),
+      });
     }
 
     for (const animal of scene.herd.animals) {
