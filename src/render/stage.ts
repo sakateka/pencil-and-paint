@@ -157,6 +157,10 @@ export class Stage {
 
   ready = false;
 
+  /** Frames Phaser has drawn, and frames we asked it to. They must agree. */
+  private drawn = 0;
+  private asked = 0;
+
   /** The pencil valley, the coloured valley, and everything standing over it. */
   private cameras: Record<Layer, Phaser.Cameras.Scene2D.Camera> | undefined;
 
@@ -188,6 +192,9 @@ export class Stage {
     class Valley extends Phaser.Scene {
       create(): void {
         stage.build(this);
+      }
+      override update(): void {
+        stage.countDrawn();
       }
     }
     this.game = new Phaser.Game({
@@ -230,14 +237,18 @@ export class Stage {
     this.cameras = { sketch: main, colour, over };
 
     /*
-     * Phaser's own loop is put to sleep and the frame is stepped by hand.
+     * Phaser's own loop is stopped, and the frame is stepped by hand.
      *
      * The game already has a loop and it drives the simulation. Two loops means
-     * two ideas of what time it is, and the picture lagging the physics by a
-     * variable fraction of a frame — which is exactly the sort of unevenness
-     * that took a week to find in the camera's sub-pixel scroll. One clock.
+     * two ideas of what time it is, and half the frames on screen drawn from
+     * where everything was *last* time — which reads as the whole picture
+     * shivering as you walk, and is what it did: `sleep()` was tried first and
+     * does not stop the request-animation-frame at all. Counted, that was three
+     * hundred frames of ours against six hundred of Phaser's.
+     *
+     * `stop()` does stop it. One clock.
      */
-    this.game.loop.sleep();
+    this.game.loop.stop();
 
     this.ready = true;
     this.onReady();
@@ -526,7 +537,38 @@ export class Stage {
   /** Draw one frame. The game's own loop decides when. */
   step(time: number, delta: number): void {
     if (!this.ready) return;
+    /*
+     * Take the loop away from Phaser here rather than at boot, and keep taking
+     * it. Stopping it inside `create()` does not stick — the scene is created
+     * from within the loop's own first step and it is running again by the
+     * time that returns — and it comes back by itself when the tab is focused.
+     * Checked every frame because the cost of missing it is that half the
+     * frames on screen are drawn from where things were last time, which reads
+     * as the picture shivering as you walk.
+     */
+    if (this.loopRunning) this.game.loop.stop();
+    this.asked++;
     this.game.step(time, delta);
+  }
+
+  /** Counted from inside the scene, which is the only honest place to count. */
+  countDrawn(): void {
+    this.drawn++;
+  }
+
+  private get loopRunning(): boolean {
+    return (this.game.loop as unknown as { running: boolean }).running;
+  }
+
+  /** What the frame actually did, for the diagnostics. See `Renderer.pacing`. */
+  get pacing(): { asked: number; drawn: number; scrollX: number; scrollY: number } {
+    const camera = this.cameras?.sketch;
+    return {
+      asked: this.asked,
+      drawn: this.drawn,
+      scrollX: camera?.scrollX ?? 0,
+      scrollY: camera?.scrollY ?? 0,
+    };
   }
 
   /** Show or hide a whole layer, for finding out what it costs. */

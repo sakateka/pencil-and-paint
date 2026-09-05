@@ -733,6 +733,20 @@ export class Renderer {
     return this.stage.uploadReport();
   }
 
+  /**
+   * Frames drawn against frames asked for, and where the picture actually was.
+   *
+   * Kept because it caught the one fault this whole rewrite introduced: Phaser
+   * went on running its own loop after being told to stop, so every frame was
+   * drawn twice and half of them from where things were the frame before. That
+   * reads as the picture shivering as you walk and looks exactly like a
+   * performance problem, which is the worst kind of bug to have. Three hundred
+   * against six hundred said what nothing else would have.
+   */
+  get pacing(): { asked: number; drawn: number; scrollX: number; scrollY: number } {
+    return this.stage.pacing;
+  }
+
   /** The canvas the valley is drawn on, for tests that read the frame back. */
   get frameCanvas(): HTMLCanvasElement | undefined {
     return this.stage.canvas;
