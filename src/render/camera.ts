@@ -1,5 +1,13 @@
-import { clamp, lerp } from '../core/math';
+import { clamp } from '../core/math';
 import { SKY_DEPTH } from '../world/sky';
+
+/** Half the viewport occupied by the camera's quiet area on either axis. */
+const DEAD_ZONE_FRACTION = 0.09;
+/** Used for the first simulation step, before the first frame has a size. */
+const DEFAULT_DEAD_ZONE = 80;
+const CAMERA_MAX_SPEED = 560;
+const CAMERA_ACCELERATION = 1350;
+const CAMERA_DECELERATION = 2100;
 
 /**
  * Follows the walker, stays inside the map, and never lets the viewport show
@@ -42,6 +50,10 @@ export class Camera {
   subX = 0;
   subY = 0;
 
+  /** Momentum in world units per second. The camera owns this, not the walker. */
+  private velocityX = 0;
+  private velocityY = 0;
+
   constructor(
     x: number,
     y: number,
@@ -55,31 +67,100 @@ export class Camera {
   snapTo(x: number, y: number): void {
     this.x = x;
     this.y = y;
+    this.velocityX = 0;
+    this.velocityY = 0;
+    this.subX = 0;
+    this.subY = 0;
   }
 
   follow(targetX: number, targetY: number, dt: number): void {
+    this.track(targetX, targetY, dt, true);
+  }
+
+  /** Smoothly pan to a scripted point of interest, without a walker dead zone. */
+  focus(targetX: number, targetY: number, dt: number): void {
+    this.track(targetX, targetY, dt, false);
+  }
+
+  private track(targetX: number, targetY: number, dt: number, useDeadZone: boolean): void {
+    if (!Number.isFinite(dt) || dt <= 0) return;
+
     /*
-     * The catch-up fraction, worked out from the frame's own length.
+     * The camera answers the walker, rather than being attached to them.
+     * Inside this quiet area the target is deliberately not recentered: a
+     * couple of steps, a turn, or a shuffle at a pot leaves the picture alone.
+     * Once the target leaves it, the goal is the near edge of the area. This
+     * lets the camera catch up without taking the walker all the way back to
+     * the middle, and means stopping at the edge does not cause a second pan.
      *
-     * `5 * dt` was near enough while every frame was the same length and is not
-     * near enough at all when they are not — and they are not: measured while
-     * walking, frames arrive anywhere between five and twenty-nine
-     * milliseconds. The walker's step varies with the frame in proportion,
-     * which is right, but a camera whose catch-up varies with it *linearly*
-     * does not keep up in the same proportion, so the gap between the two opens
-     * and closes every frame. On screen that is the walker sliding back and
-     * forth by as much as five pixels while walking in a straight line, which
-     * is what the judder was. Measured: 0.46 pixels of jitter a frame before,
-     * and a fifth of that after.
-     *
-     * The exponential is the same smoothing expressed as a rate rather than as
-     * a per-frame fraction, so a frame twice as long catches up exactly as much
-     * as two short ones would have.
+     * `targetY - 14` keeps the existing framing: the walker is a little below
+     * the camera centre, with no extra lead in the direction of travel.
      */
-    const k = 1 - Math.exp(-5 * dt);
-    // Slightly above the feet, so there is more world visible ahead than behind.
-    this.x = lerp(this.x, targetX, k);
-    this.y = lerp(this.y, targetY - 14, k);
+    const deadZoneX = useDeadZone ? this.deadZone(this.viewWidth) : 0;
+    const deadZoneY = useDeadZone ? this.deadZone(this.viewHeight) : 0;
+    [this.x, this.velocityX] = this.advanceAxis(
+      this.x,
+      this.velocityX,
+      targetX,
+      deadZoneX,
+      dt,
+    );
+    [this.y, this.velocityY] = this.advanceAxis(
+      this.y,
+      this.velocityY,
+      targetY - 14,
+      deadZoneY,
+      dt,
+    );
+  }
+
+  /** Return a viewport-relative half-size, or a useful size before first draw. */
+  private deadZone(viewportSize: number): number {
+    return viewportSize > 0 ? viewportSize * DEAD_ZONE_FRACTION : DEFAULT_DEAD_ZONE;
+  }
+
+  /** Move a scalar toward a value without stepping past it. */
+  private approach(value: number, target: number, distance: number): number {
+    if (Math.abs(target - value) <= distance) return target;
+    return value + Math.sign(target - value) * distance;
+  }
+
+  /**
+   * Advance one camera axis using acceleration and a braking-distance target.
+   *
+   * A positional spring is tempting here, but it starts fastest at the exact
+   * moment the walker moves and can ring when the walker changes direction.
+   * Instead, the speed allowed by the remaining distance is the speed from
+   * which the camera can brake to zero. The result starts at zero, gathers
+   * speed, and always arrives at a fixed goal without overshooting it.
+   */
+  private advanceAxis(
+    position: number,
+    velocity: number,
+    target: number,
+    deadZone: number,
+    dt: number,
+  ): [number, number] {
+    const offset = target - position;
+    const goal = Math.abs(offset) > deadZone ? target - Math.sign(offset) * deadZone : position;
+    const error = goal - position;
+    const distance = Math.abs(error);
+    const speedAtGoal = Math.min(CAMERA_MAX_SPEED, Math.sqrt(2 * CAMERA_DECELERATION * distance));
+    const desiredVelocity = Math.sign(error) * speedAtGoal;
+    const slowing =
+      desiredVelocity === 0 ||
+      (Math.sign(velocity) === Math.sign(desiredVelocity) &&
+        Math.abs(desiredVelocity) < Math.abs(velocity));
+    const rate = slowing ? CAMERA_DECELERATION : CAMERA_ACCELERATION;
+    const nextVelocity = this.approach(velocity, desiredVelocity, rate * dt);
+    const nextPosition = position + nextVelocity * dt;
+
+    // This also absorbs tiny floating-point leftovers at the resting point.
+    if (error !== 0 && Math.sign(error) !== Math.sign(goal - nextPosition)) {
+      return [goal, 0];
+    }
+    if (error === 0 && nextVelocity === 0) return [position, 0];
+    return [nextPosition, nextVelocity];
   }
 
   /**

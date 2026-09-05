@@ -259,11 +259,12 @@ export class Game {
       maxY: world.height - 26,
     };
     this.restart();
-    this.camera.snapTo(this.walker.x, this.walker.y);
   }
 
   restart(): void {
     resetWalker(this.walker);
+    // A restart is a new session, not a slow walk back from the old view.
+    this.camera.snapTo(this.walker.x, this.walker.y - 14);
     this.found = 0;
     this.pets = 0;
     this.radiusBoost = 0;
@@ -435,7 +436,8 @@ export class Game {
     else this.herd.calm();
     let cameraX = this.walker.x;
     let cameraY = this.walker.y;
-    if (this.vigil.sitting && this.won && this.isMobileViewport) {
+    const mobileVigilPan = this.vigil.sitting && this.won && this.isMobileViewport;
+    if (mobileVigilPan) {
       /*
        * On a narrow screen the enlarged mirage sits outside the stump's frame.
        * Pan only after sitting, while the walker is immobile: ordinary walking
@@ -453,7 +455,8 @@ export class Game {
       // `elephantY` is its baseline; the visible cloud and body are above it.
       cameraY = lerp(this.walker.y, this.vigil.elephantY - 115, focus);
     }
-    this.camera.follow(cameraX, cameraY, dt);
+    if (mobileVigilPan) this.camera.focus(cameraX, cameraY, dt);
+    else this.camera.follow(cameraX, cameraY, dt);
   }
 
   /**
@@ -901,7 +904,7 @@ export class Game {
     this.walker.y = y;
     this.walker.vx = 0;
     this.walker.vy = 0;
-    this.camera.snapTo(x, y);
+    this.camera.snapTo(x, y - 14);
   }
 
   private collectPots(): void {
