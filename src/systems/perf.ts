@@ -199,13 +199,17 @@ export function drawPerfOverlay(
   viewportHeight: number,
   extra: readonly string[],
 ): void {
-  const written = [
-    `fps ${perf.fps.toFixed(0)}   frame ${perf.frameMs.toFixed(1)}ms`,
-    `draw ${perf.drawMs.toFixed(2)}ms   slow ${perf.slowFrames}/${perf.windowFrames}`,
-    `sim ${perf.simMs.toFixed(2)}ms   other ${perf.otherMs.toFixed(1)}ms`,
-    `scale ${perf.scale} (max ${perf.maxScale}, dpr ${perf.devicePixelRatio})`,
-    ...extra,
-  ];
+  /*
+   * What to show is the caller's business now.
+   *
+   * This used to prepend four fixed lines of its own — fps, the frame split
+   * three ways, the render scale, the device pixel ratio — and none of them
+   * ever caught a stutter: the scale has been fixed at one for a year, and a
+   * frame time that reads 16.7 is exactly what a stuttering session reads while
+   * it stutters. Composing the readout in one place beats having half of it
+   * decided here and half at the call site.
+   */
+  const written = [...extra];
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);

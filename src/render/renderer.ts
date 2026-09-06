@@ -823,6 +823,18 @@ export class Renderer {
   }
 
   /**
+   * What the last frame cost the GPU: pixels re-uploaded, objects created.
+   *
+   * The frame's real currency. `drawMs` measures the time we spend asking for
+   * drawing; these two measure the work that lands in the GPU process after we
+   * have returned, which is where every stutter this project has had came from.
+   * Both should read zero once the valley is warm.
+   */
+  get frameCost(): { uploadedPx: number; created: number } {
+    return this.stage.frameCost;
+  }
+
+  /**
    * Frames drawn against frames asked for, and where the picture actually was.
    *
    * Kept because it caught the one fault this whole rewrite introduced: Phaser

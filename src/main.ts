@@ -26,7 +26,7 @@ import cuckooIntroUrl from './assets/cuckoo-intro.mp3';
 import pondUrl from './assets/pond.mp3';
 import purrUrl from './assets/purr.mp3';
 import owlHootUrl from './assets/owl-great-horned.mp3';
-import { buzzPurr, hapticStatus } from './systems/haptics';
+import { buzzPurr } from './systems/haptics';
 import { Sample } from './systems/sample';
 import { CuckooAmbience } from './systems/cuckoo';
 import { Input } from './systems/input';
@@ -142,8 +142,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function boot(): Promise<void> {
-  /** The load timings, shown in the readout once the title card is gone. */
-  let loadReport: string[] = [];
   /*
    * Three elements, and only one of them is the picture.
    *
@@ -258,14 +256,12 @@ async function boot(): Promise<void> {
     const lastLoad = remember(thisLoad);
     const report = `${BUILD_ID}\n${world.bakeSummary}\n${thisLoad}` +
       (lastLoad ? `\nprevious load: ${lastLoad}` : '');
-    stamp.textContent = report;
-
     /*
-     * The report also goes into the readout behind the button, because the
-     * title card is dismissed the moment the world is ready — a load time
-     * written only there is never readable on the device that was slow.
+     * The title card, and `pencil.report()`. It used to be carried in the F-key
+     * readout as well, which put a dozen lines of load timings under a display
+     * whose whole job is to say what this frame is doing right now.
      */
-    loadReport = ['', ...report.split('\n')];
+    stamp.textContent = report;
   }
   const renderer = new Renderer(stageHost, grainCanvas, overlayCanvas);
   const perf = new Performance();
@@ -832,17 +828,30 @@ async function boot(): Promise<void> {
      */
     renderer.clearOverlay();
     if (showPerf) {
-      const awake = game.herd.animals.reduce((n, a) => n + (a.awake ? 1 : 0), 0);
-      const s = renderer.stages;
-      const ms = (v: number) => v.toFixed(1).padStart(4);
-      drawPerfOverlay(renderer.context, perf.snapshot(), renderer.width, renderer.height, [
-        `awake ${awake}/${game.herd.animals.length}   zoom ${game.camera.zoom.toFixed(2)}`,
-        `live ${ms(s.live)}  scenery ${ms(s.scenery)}  submit ${ms(s.submit)}`,
-        `bakes ${s.bakes}   canvases ${countCanvases(game)}`,
-        hapticStatus(),
-        `purr ${purr ? (purr.paused ? 'idle' : `playing ${purr.volume.toFixed(2)}`) : 'unloaded'} · birds ${birdsong.status()} · pond ${pond.status()}`,
-        `cuckoo ${cuckoo.status()}`,
-        ...loadReport,
+      /*
+       * Three lines, and every one of them earns its place.
+       *
+       * This readout used to carry eleven: fps, the frame split three ways, the
+       * render scale, the device pixel ratio, how many animals were awake, the
+       * zoom, three stage timers, the canvas count, the haptics, every audio
+       * channel's state and the whole load report. None of it ever named a
+       * stutter. What names one is the frame's cost to the GPU, which no timer
+       * on this thread can see — so it is counted rather than timed.
+       *
+       * `upload` and `new` are the invariant the render redesign is for: once
+       * the valley is warm they are meant to be zero, every frame, for ever. A
+       * number other than zero here is the bug, before anyone feels it.
+       */
+      const cost = renderer.frameCost;
+      const worst = perf.worstFrames[0];
+      const p = perf.snapshot();
+      drawPerfOverlay(renderer.context, p, renderer.width, renderer.height, [
+        `build ${BUILD_ID}`,
+        `fps ${p.fps.toFixed(0)}   frame ${p.frameMs.toFixed(1)}ms   draw ${p.drawMs.toFixed(2)}ms`,
+        // `frameStages`, not `stages`: the latter is a rolling average, and an
+        // average of a count is a long tail of zeroes rather than a number.
+        `upload ${(cost.uploadedPx / 262144).toFixed(2)}MB/f   new ${cost.created}   bakes ${renderer.frameStages.bakes}`,
+        worst ? `worst ${worst.frameMs.toFixed(1)}ms at ${worst.at.toFixed(1)}s` : 'worst none yet',
       ]);
     }
     const drawMs = performance.now() - drawStart;
@@ -882,34 +891,6 @@ async function boot(): Promise<void> {
   requestAnimationFrame(frame);
 
   start();
-}
-
-/**
- * How many offscreen canvases are alive.
- *
- * Every cached sprite is a texture. Enough of them and the GPU starts evicting
- * and re-uploading the big world layers each frame, which shows up as draw cost
- * that does not fall when you drop the resolution.
- */
-function countCanvases(game: Game): number {
-  /*
-   * Counted, not guessed. This used to say `let n = 4 // the two world layers,
-   * the scratch and the paper`, which was wrong twice over: the world is
-   * twelve tiles rather than two surfaces, and the lazily baked occluder
-   * sprites — the one thing here that actually grows while you play — were not
-   * counted at all. So the readout behind F and `pencil.snapshot()` reported
-   * different numbers for the same moment, and a session's "canvases 28 -> 54"
-   * went into bugs/bug7.txt as unexplained accumulation when it was the sprite
-   * cache filling towards its own cap.
-   */
-  const world = game.world.canvasStats();
-  let n = world.tiles + world.sprites;
-  n += 2; // the two displayed layers, pencil and colour
-  n += 1; // the paper
-  n += 1; // the baked haze
-  n += 1; // the herd's sprite atlas
-  n += game.pots.filter((p) => p.frozenSprite).length;
-  return n;
 }
 
 /** A small kalimba note per pot, tuned up a pentatonic scale as you go. */

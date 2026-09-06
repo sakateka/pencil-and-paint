@@ -216,6 +216,27 @@ export class Stage {
   uploadedPx = 0;
   readonly uploadedBy = new Map<string, number>();
 
+  /**
+   * What this frame cost the GPU, in the only currency this design has.
+   *
+   * A frame that draws nothing new is free; a frame that repaints a cel or
+   * builds a texture is not, and neither shows up in `drawMs` because both land
+   * in another process after we return. So they are counted here rather than
+   * timed: pixels re-uploaded, and objects brought into being.
+   *
+   * The target state is all three at zero once the valley is warm. See the
+   * readout behind the F key.
+   */
+  private framePx = 0;
+  private frameCreated = 0;
+  private lastFramePx = 0;
+  private lastCreated = 0;
+
+  /** This frame's cost: pixels re-uploaded, and textures or objects created. */
+  get frameCost(): { uploadedPx: number; created: number } {
+    return { uploadedPx: this.lastFramePx, created: this.lastCreated };
+  }
+
   constructor(parent: HTMLElement, private readonly onReady: () => void) {
     const stage = this;
     class Valley extends Phaser.Scene {
@@ -332,6 +353,7 @@ export class Stage {
     if (!held) {
       const key = `sprite${this.nextTextureId++}`;
       if (!scene.textures.addCanvas(key, request.canvas)) return;
+      this.frameCreated++;
       const image = scene.add.image(0, 0, key).setOrigin(0, 0);
       this.assign(image, request.layer);
       held = { key, canvas: request.canvas, image, touched: -1, persistent: request.persistent };
@@ -404,6 +426,7 @@ export class Stage {
         this.cels.delete(slot);
       }
       cel = new Cel(scene, `cel${this.nextTextureId++}`, width, height);
+      this.frameCreated++;
       this.cels.set(slot, cel);
       this.assign(cel.image, request.layer);
     }
@@ -432,6 +455,7 @@ export class Stage {
       cel.paint(request.left, request.top, request.draw);
       const px = width * height;
       this.uploadedPx += px;
+      this.framePx += px;
       this.uploadedBy.set(request.id, (this.uploadedBy.get(request.id) ?? 0) + px);
     }
   }
@@ -463,10 +487,12 @@ export class Stage {
     if (!key) {
       key = `stamp${this.nextTextureId++}`;
       if (!scene.textures.addCanvas(key, canvas)) return;
+      this.frameCreated++;
       this.stampKeys.set(canvas, key);
     }
     let image = this.stamps[this.stampsUsed];
     if (!image) {
+      this.frameCreated++;
       image = scene.add.image(0, 0, key);
       this.assign(image, layer);
       this.stamps.push(image);
@@ -528,6 +554,10 @@ export class Stage {
       }
     }
     this.frameNumber++;
+    this.lastFramePx = this.framePx;
+    this.lastCreated = this.frameCreated;
+    this.framePx = 0;
+    this.frameCreated = 0;
   }
 
   /** Advance the step that stepped drawings are keyed on. */
