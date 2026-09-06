@@ -204,15 +204,26 @@ export function makeAnimal(
   };
 }
 
-function drawSheep(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, _t: number): void {
-  const g = a.headDown, sw = a.moving ? Math.sin(a.walkPhase) : 0;
-  const hx = 15, hy = -17 + g * 10;
-  movingShadow(ctx, a.x, a.y + 1, 20 * a.scale, 6 * a.scale, medium, a.phase * 90);
-  ctx.save();
-  ctx.translate(a.x, a.y);
-  ctx.scale(a.face * a.scale, a.scale);
-  const k = a.phase * 130;
+/**
+ * Where a sheep's head hangs, and how far it has turned into the grass.
+ *
+ * The hinge, in the body's own units. A head coming up out of the grass is one
+ * drawing on a neck rather than a row of frames, so this is what carries it:
+ * the picture is baked once and the sprite is put here and turned by this much.
+ * That is why the movement is exactly as smooth as the easing behind it.
+ */
+export function sheepHinge(headDown: number): { x: number; y: number; angle: number } {
+  return { x: 15, y: -17 + headDown * 10, angle: headDown * 0.55 };
+}
 
+/** Everything of a sheep but its head: the shadow it stands in, legs, fleece. */
+export function drawSheepBody(
+  ctx: CanvasRenderingContext2D,
+  sw: number,
+  medium: Medium,
+  k: number,
+): void {
+  movingShadow(ctx, 0, 1, 20, 6, medium, k + 200);
   if (medium === 'color') {
     ctx.strokeStyle = '#4a453e'; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
     for (const [lx, ph] of SHEEP_LEGS) {
@@ -222,7 +233,17 @@ function drawSheep(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, _t:
     for (const b of SHEEP_FLUFF) { ctx.beginPath(); ctx.arc(b[0], b[1], b[2], 0, TAU); ctx.fill(); }
     ctx.fillStyle = 'rgba(186,176,156,.30)';
     for (const b of SHEEP_FLUFF) if (b[1] > -13) { ctx.beginPath(); ctx.arc(b[0], b[1] + 2.5, b[2] * 0.78, 0, TAU); ctx.fill(); }
-    ctx.save(); ctx.translate(hx, hy); ctx.rotate(g * 0.55);
+  } else {
+    ink(ctx, 0.5, 1.1);
+    inkLines(ctx, SHEEP_LEGS.map(([lx, ph]) => [lx, -11, lx + sw * ph * 2.6, -0.5] as const), k);
+    ink(ctx, 0.46, 1.15);
+    inkArcs(ctx, SHEEP_FLUFF, k + 40);
+  }
+}
+
+/** Its head, drawn about the hinge — see `sheepHinge`. */
+export function drawSheepHead(ctx: CanvasRenderingContext2D, medium: Medium, k: number): void {
+  if (medium === 'color') {
     ctx.fillStyle = '#4a453e';
     ctx.beginPath(); ctx.ellipse(1, 0, 6.6, 5.2, 0.15, 0, TAU); ctx.fill();
     ctx.beginPath(); ctx.ellipse(-4.5, -4.6, 3.4, 2.1, -0.7, 0, TAU); ctx.fill();
@@ -230,13 +251,7 @@ function drawSheep(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, _t:
     ctx.beginPath(); ctx.arc(-3.4, -3.4, 3.4, 0, TAU); ctx.fill();
     ctx.fillStyle = '#fdfdfa';
     ctx.beginPath(); ctx.arc(3, -1.4, 1.05, 0, TAU); ctx.fill();
-    ctx.restore();
   } else {
-    ink(ctx, 0.5, 1.1);
-    inkLines(ctx, SHEEP_LEGS.map(([lx, ph]) => [lx, -11, lx + sw * ph * 2.6, -0.5] as const), k);
-    ink(ctx, 0.46, 1.15);
-    inkArcs(ctx, SHEEP_FLUFF, k + 40);
-    ctx.save(); ctx.translate(hx, hy); ctx.rotate(g * 0.55);
     ink(ctx, 0.55, 1.2);
     ctx.beginPath();
     ctx.ellipse(1 + jitter(k + 80, .6), jitter(k + 81, .6), 6.6, 5.2, 0.15, 0, TAU);
@@ -250,39 +265,89 @@ function drawSheep(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, _t:
     );
     ink(ctx, 0.5, 1);
     inkArc(ctx, -3.4, -3.4, 3.4, k + 110);
-    ctx.restore();
   }
-  ctx.restore();
 }
 
-function drawCow(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
-  const g = a.headDown, sw = a.moving ? Math.sin(a.walkPhase) : 0;
-  const tail = Math.sin(t * 2.1 + a.phase) * 4;
-  const hx = 24, hy = -26 + g * 15;
-  movingShadow(ctx, a.x, a.y + 1, 26 * a.scale, 8 * a.scale, medium, a.phase * 70);
+function drawSheep(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, _t: number): void {
+  const sw = a.moving ? Math.sin(a.walkPhase) : 0;
+  const hinge = sheepHinge(a.headDown);
   ctx.save();
   ctx.translate(a.x, a.y);
   ctx.scale(a.face * a.scale, a.scale);
-  const k = a.phase * 210;
+  const k = a.phase * 130;
+  drawSheepBody(ctx, sw, medium, k);
+  ctx.save();
+  ctx.translate(hinge.x, hinge.y);
+  ctx.rotate(hinge.angle);
+  drawSheepHead(ctx, medium, k);
+  ctx.restore();
+  ctx.restore();
+}
 
+/**
+ * Where a cow's head hangs, and how far it has turned into the grass.
+ *
+ * The reach is longer than a sheep's and the turn is deeper, which is most of
+ * what makes a cow read as a cow when it grazes. See `sheepHinge`.
+ */
+export function cowHinge(headDown: number): { x: number; y: number; angle: number } {
+  return { x: 24, y: -26 + headDown * 15, angle: headDown * 0.6 };
+}
+
+/** Where the tail hangs from, in the body's own units. */
+export const COW_TAIL: { readonly x: number; readonly y: number } = { x: -19, y: -31 };
+
+/**
+ * How far round the root the tail has swung, for a swish of `tail` units.
+ *
+ * The tail was drawn by moving the far end sideways, which is the same motion
+ * a rotation about the root gives — and a rotation is a transform, so the
+ * swish stays smooth at any frame rate instead of being quantised into a
+ * handful of tails. The tip is twenty units from the root, hence the ratio.
+ */
+export function cowTailAngle(tail: number): number {
+  return -tail * 0.075;
+}
+
+/** The tail alone, hanging from its root. */
+export function drawCowTail(ctx: CanvasRenderingContext2D, medium: Medium, k: number): void {
+  if (medium === 'color') {
+    ctx.strokeStyle = '#463c33'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-8, 7, -5, 18);
+    ctx.stroke();
+    ctx.fillStyle = '#463c33';
+    ctx.beginPath(); ctx.arc(-5, 20, 2.6, 0, TAU); ctx.fill();
+  } else {
+    ink(ctx, 0.45, 1.1);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-8, 7, -5, 18);
+    ctx.stroke();
+    inkArc(ctx, -5, 20, 2.4, k + 30);
+  }
+}
+
+/** Everything of a cow but its head and its tail. */
+export function drawCowBody(
+  ctx: CanvasRenderingContext2D,
+  sw: number,
+  medium: Medium,
+  k: number,
+  coat: string,
+  patch: string,
+): void {
+  movingShadow(ctx, 0, 1, 26, 8, medium, k + 200);
   if (medium === 'color') {
     ctx.strokeStyle = '#463c33'; ctx.lineWidth = 3.4; ctx.lineCap = 'round';
     for (const [lx, ph] of COW_LEGS) {
       ctx.beginPath(); ctx.moveTo(lx, -14); ctx.lineTo(lx + sw * ph * 3, -0.5); ctx.stroke();
     }
-    // tail
-    ctx.strokeStyle = '#463c33'; ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    ctx.moveTo(-19, -31);
-    ctx.quadraticCurveTo(-27 + tail, -24, -24 + tail * 1.5, -13);
-    ctx.stroke();
-    ctx.fillStyle = '#463c33';
-    ctx.beginPath(); ctx.arc(-24 + tail * 1.5, -11, 2.6, 0, TAU); ctx.fill();
-
-    ctx.fillStyle = a.coat;
+    ctx.fillStyle = coat;
     roundRectPath(ctx, -20, -34, 40, 22, 9); ctx.fill();
     ctx.save(); roundRectPath(ctx, -20, -34, 40, 22, 9); ctx.clip();
-    ctx.fillStyle = a.patch;
+    ctx.fillStyle = patch;
     ctx.beginPath(); ctx.ellipse(-9, -27, 7.5, 6, 0.3, 0, TAU); ctx.fill();
     ctx.beginPath(); ctx.ellipse(7, -21, 6.5, 5, -0.2, 0, TAU); ctx.fill();
     ctx.fillStyle = 'rgba(180,168,148,.28)';
@@ -291,30 +356,9 @@ function drawCow(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
     // udder
     ctx.fillStyle = '#e8a9a0';
     ctx.beginPath(); ctx.ellipse(-4, -12.5, 5, 3.4, 0, 0, TAU); ctx.fill();
-
-    ctx.save(); ctx.translate(hx, hy); ctx.rotate(g * 0.6);
-    ctx.fillStyle = a.coat;
-    roundRectPath(ctx, -8, -8, 17, 16, 6); ctx.fill();
-    ctx.fillStyle = '#e8a9a0';
-    ctx.beginPath(); ctx.ellipse(8, 3, 5.4, 4.4, 0.2, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#c98a84';
-    ctx.beginPath(); ctx.arc(9.5, 2, 1, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.arc(6.5, 4.5, 1, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#463c33';
-    ctx.beginPath(); ctx.arc(3, -3, 1.3, 0, TAU); ctx.fill();          // eye
-    ctx.beginPath(); ctx.ellipse(-8, -3, 4, 2.4, -0.5, 0, TAU); ctx.fill();  // ear
-    ctx.fillStyle = '#e6ddc8';
-    ctx.beginPath(); ctx.ellipse(-2, -9.5, 2.6, 3.4, -0.3, 0, TAU); ctx.fill();  // horn
-    ctx.restore();
   } else {
     ink(ctx, 0.5, 1.2);
     inkLines(ctx, COW_LEGS.map(([lx, ph]) => [lx, -14, lx + sw * ph * 3, -0.5] as const), k);
-    ink(ctx, 0.45, 1.1);
-    ctx.beginPath();
-    ctx.moveTo(-19, -31);
-    ctx.quadraticCurveTo(-27 + tail, -24, -24 + tail * 1.5, -13);
-    ctx.stroke();
-    inkArc(ctx, -24 + tail * 1.5, -11, 2.4, k + 30);
     // body
     ink(ctx, 0.55, 1.25);
     roundRectPath(ctx, -20 + jitter(k + 40, .7), -34 + jitter(k + 41, .7), 40, 22, 9); ctx.stroke();
@@ -333,8 +377,30 @@ function drawCow(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
       k + 60,
     );
     ctx.restore();
-    // head
-    ctx.save(); ctx.translate(hx, hy); ctx.rotate(g * 0.6);
+  }
+}
+
+/** Its head, drawn about the hinge — see `cowHinge`. */
+export function drawCowHead(
+  ctx: CanvasRenderingContext2D,
+  medium: Medium,
+  k: number,
+  coat: string,
+): void {
+  if (medium === 'color') {
+    ctx.fillStyle = coat;
+    roundRectPath(ctx, -8, -8, 17, 16, 6); ctx.fill();
+    ctx.fillStyle = '#e8a9a0';
+    ctx.beginPath(); ctx.ellipse(8, 3, 5.4, 4.4, 0.2, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#c98a84';
+    ctx.beginPath(); ctx.arc(9.5, 2, 1, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(6.5, 4.5, 1, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#463c33';
+    ctx.beginPath(); ctx.arc(3, -3, 1.3, 0, TAU); ctx.fill();          // eye
+    ctx.beginPath(); ctx.ellipse(-8, -3, 4, 2.4, -0.5, 0, TAU); ctx.fill();  // ear
+    ctx.fillStyle = '#e6ddc8';
+    ctx.beginPath(); ctx.ellipse(-2, -9.5, 2.6, 3.4, -0.3, 0, TAU); ctx.fill();  // horn
+  } else {
     ink(ctx, 0.55, 1.2);
     roundRectPath(ctx, -8 + jitter(k + 100, .6), -8 + jitter(k + 101, .6), 17, 16, 6); ctx.stroke();
     ink(ctx, 0.45, 1);
@@ -343,43 +409,67 @@ function drawCow(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
     ctx.beginPath(); ctx.ellipse(-2, -9.5, 2.6, 3.4, -0.3, 0, TAU); ctx.stroke();
     ink(ctx, 0.6, 1.4);
     ctx.beginPath(); ctx.arc(3, -3, 1.1, 0, TAU); ctx.stroke();
-    ctx.restore();
   }
-  ctx.restore();
 }
 
-function drawChicken(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
-  const peck = a.state === 'graze' ? (0.5 + 0.5 * Math.sin(t * 5.5 + a.phase)) : 0;
-  const sw = a.moving ? Math.sin(a.walkPhase * 1.7) : 0;
-  movingShadow(ctx, a.x, a.y + 1, 9 * a.scale, 3 * a.scale, medium, a.phase * 40);
+function drawCow(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
+  const sw = a.moving ? Math.sin(a.walkPhase) : 0;
+  const tail = Math.sin(t * 2.1 + a.phase) * 4;
+  const hinge = cowHinge(a.headDown);
   ctx.save();
   ctx.translate(a.x, a.y);
   ctx.scale(a.face * a.scale, a.scale);
-  const k = a.phase * 310;
+  const k = a.phase * 210;
 
+  ctx.save();
+  ctx.translate(COW_TAIL.x, COW_TAIL.y);
+  ctx.rotate(cowTailAngle(tail));
+  drawCowTail(ctx, medium, k);
+  ctx.restore();
+
+  drawCowBody(ctx, sw, medium, k, a.coat, a.patch);
+
+  ctx.save();
+  ctx.translate(hinge.x, hinge.y);
+  ctx.rotate(hinge.angle);
+  drawCowHead(ctx, medium, k, a.coat);
+  ctx.restore();
+  ctx.restore();
+}
+
+/**
+ * Where a chicken's head sits, and how far it has ducked to peck.
+ *
+ * Same hinge as a grazing sheep, on a shorter neck and a faster clock. It is
+ * the peck the head is for, and the peck is what was worst about the old
+ * twelve-frames-a-second: at five and a half radians a second a chicken got
+ * two pictures per dip.
+ */
+export function chickenHinge(peck: number): { x: number; y: number; angle: number } {
+  return { x: 5, y: -14, angle: peck * 0.85 };
+}
+
+/** Everything of a chicken but its head: shadow, legs, body, tail feathers. */
+export function drawChickenBody(
+  ctx: CanvasRenderingContext2D,
+  sw: number,
+  medium: Medium,
+  k: number,
+  coat: string,
+): void {
+  movingShadow(ctx, 0, 1, 9, 3, medium, k + 200);
   if (medium === 'color') {
     ctx.strokeStyle = '#e0982f'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
     for (const [lx, ph] of CHICKEN_LEGS) {
       ctx.beginPath(); ctx.moveTo(lx, -5); ctx.lineTo(lx + sw * ph * 1.6, -0.4); ctx.stroke();
     }
-    ctx.fillStyle = a.coat;
+    ctx.fillStyle = coat;
     ctx.beginPath(); ctx.ellipse(0, -9, 7, 5.6, 0.1, 0, TAU); ctx.fill();
     // tail feathers
-    ctx.strokeStyle = a.coat === '#f4efe3' ? '#d9d2c0' : '#a86a35';
+    ctx.strokeStyle = coat === '#f4efe3' ? '#d9d2c0' : '#a86a35';
     ctx.lineWidth = 2.4;
     ctx.beginPath(); ctx.moveTo(-5, -11); ctx.lineTo(-11, -16); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(-5, -9);  ctx.lineTo(-11, -12); ctx.stroke();
-    ctx.save(); ctx.translate(5, -14); ctx.rotate(peck * 0.85);
-    ctx.fillStyle = a.coat;
-    ctx.beginPath(); ctx.arc(0, 0, 3.7, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#d9463c';
-    ctx.beginPath(); ctx.arc(-0.8, -3.6, 1.5, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.arc(1.4, -3.9, 1.3, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#e0982f';
-    ctx.beginPath(); ctx.moveTo(3.2, -0.4); ctx.lineTo(7, 0.6); ctx.lineTo(3.2, 2); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#2e2b26';
-    ctx.beginPath(); ctx.arc(1.9, -0.9, 0.85, 0, TAU); ctx.fill();
-    ctx.restore();
   } else {
     ink(ctx, 0.5, 0.95);
     inkLine(ctx, -1.5, -5, -1.5 + sw * 1.6, -0.4, k);
@@ -391,7 +481,27 @@ function drawChicken(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t
     ink(ctx, 0.42, 1);
     inkLine(ctx, -5, -11, -11, -16, k + 20);
     inkLine(ctx, -5, -9, -11, -12, k + 26);
-    ctx.save(); ctx.translate(5, -14); ctx.rotate(peck * 0.85);
+  }
+}
+
+/** Its head, drawn about the hinge — see `chickenHinge`. */
+export function drawChickenHead(
+  ctx: CanvasRenderingContext2D,
+  medium: Medium,
+  k: number,
+  coat: string,
+): void {
+  if (medium === 'color') {
+    ctx.fillStyle = coat;
+    ctx.beginPath(); ctx.arc(0, 0, 3.7, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#d9463c';
+    ctx.beginPath(); ctx.arc(-0.8, -3.6, 1.5, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(1.4, -3.9, 1.3, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#e0982f';
+    ctx.beginPath(); ctx.moveTo(3.2, -0.4); ctx.lineTo(7, 0.6); ctx.lineTo(3.2, 2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2e2b26';
+    ctx.beginPath(); ctx.arc(1.9, -0.9, 0.85, 0, TAU); ctx.fill();
+  } else {
     ink(ctx, 0.5, 1.05);
     inkArc(ctx, 0, 0, 3.7, k + 32);
     inkArc(ctx, -0.8, -3.6, 1.4, k + 38);
@@ -401,8 +511,23 @@ function drawChicken(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t
     ctx.stroke();
     ink(ctx, 0.6, 1.3);
     ctx.beginPath(); ctx.arc(1.9, -0.9, 0.7, 0, TAU); ctx.stroke();
-    ctx.restore();
   }
+}
+
+function drawChicken(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
+  const peck = a.state === 'graze' ? (0.5 + 0.5 * Math.sin(t * 5.5 + a.phase)) : 0;
+  const sw = a.moving ? Math.sin(a.walkPhase * 1.7) : 0;
+  const hinge = chickenHinge(peck);
+  ctx.save();
+  ctx.translate(a.x, a.y);
+  ctx.scale(a.face * a.scale, a.scale);
+  const k = a.phase * 310;
+  drawChickenBody(ctx, sw, medium, k, a.coat);
+  ctx.save();
+  ctx.translate(hinge.x, hinge.y);
+  ctx.rotate(hinge.angle);
+  drawChickenHead(ctx, medium, k, a.coat);
+  ctx.restore();
   ctx.restore();
 }
 
@@ -413,15 +538,19 @@ function drawChicken(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t
  * else in the field keeps to a patch of ground; this keeps to its mother, which
  * is a different thing and the whole reason it is worth having.
  */
-function drawChick(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
-  const peck = a.state === 'graze' ? 0.5 + 0.5 * Math.sin(t * 6.5 + a.phase) : 0;
-  const sw = a.moving ? Math.sin(a.walkPhase * 2.1) : 0;
-  movingShadow(ctx, a.x, a.y + 1, 5 * a.scale, 2 * a.scale, medium, a.phase * 70);
-  ctx.save();
-  ctx.translate(a.x, a.y);
-  ctx.scale(a.face * a.scale, a.scale);
-  const k = a.phase * 710;
+/** Where the chick's head sits, and how far it has ducked to peck. */
+export function chickHinge(peck: number): { x: number; y: number; angle: number } {
+  return { x: 2.9, y: -8.6, angle: peck * 0.95 };
+}
 
+/** Everything of a chick but its head: shadow, legs, body, the stub of a wing. */
+export function drawChickBody(
+  ctx: CanvasRenderingContext2D,
+  sw: number,
+  medium: Medium,
+  k: number,
+): void {
+  movingShadow(ctx, 0, 1, 5, 2, medium, k + 200);
   if (medium === 'color') {
     ctx.strokeStyle = '#e0982f';
     ctx.lineWidth = 1.1;
@@ -443,9 +572,21 @@ function drawChick(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: 
     ctx.beginPath();
     ctx.ellipse(-0.6, -5.2, 2.2, 1.5, 0.3, 0, TAU);
     ctx.fill();
-    ctx.save();
-    ctx.translate(2.9, -8.6);
-    ctx.rotate(peck * 0.95);
+  } else {
+    ink(ctx, 0.45, 0.85);
+    for (const [lx, ph] of CHICK_LEGS) inkLine(ctx, lx, -3.4, lx + sw * ph * 1.2, -0.3, k + lx);
+    ink(ctx, 0.5, 1);
+    ctx.beginPath();
+    ctx.ellipse(jitter(k + 12, 0.4), -5.6 + jitter(k + 13, 0.4), 4.4, 3.9, 0.1, 0, TAU);
+    ctx.stroke();
+    ink(ctx, 0.35, 0.8);
+    inkArc(ctx, -0.6, -5.2, 2, k + 18);
+  }
+}
+
+/** Its head, drawn about the hinge — see `chickHinge`. */
+export function drawChickHead(ctx: CanvasRenderingContext2D, medium: Medium, k: number): void {
+  if (medium === 'color') {
     ctx.fillStyle = '#f5d24e';
     ctx.beginPath();
     ctx.arc(0, 0, 2.9, 0, TAU);
@@ -461,19 +602,7 @@ function drawChick(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: 
     ctx.beginPath();
     ctx.arc(1.3, -0.8, 0.7, 0, TAU);
     ctx.fill();
-    ctx.restore();
   } else {
-    ink(ctx, 0.45, 0.85);
-    for (const [lx, ph] of CHICK_LEGS) inkLine(ctx, lx, -3.4, lx + sw * ph * 1.2, -0.3, k + lx);
-    ink(ctx, 0.5, 1);
-    ctx.beginPath();
-    ctx.ellipse(jitter(k + 12, 0.4), -5.6 + jitter(k + 13, 0.4), 4.4, 3.9, 0.1, 0, TAU);
-    ctx.stroke();
-    ink(ctx, 0.35, 0.8);
-    inkArc(ctx, -0.6, -5.2, 2, k + 18);
-    ctx.save();
-    ctx.translate(2.9, -8.6);
-    ctx.rotate(peck * 0.95);
     ink(ctx, 0.5, 1);
     inkArc(ctx, 0, 0, 2.9, k + 24);
     ink(ctx, 0.45, 0.9);
@@ -487,8 +616,23 @@ function drawChick(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: 
     ctx.beginPath();
     ctx.arc(1.3, -0.8, 0.6, 0, TAU);
     ctx.stroke();
-    ctx.restore();
   }
+}
+
+function drawChick(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
+  const peck = a.state === 'graze' ? 0.5 + 0.5 * Math.sin(t * 6.5 + a.phase) : 0;
+  const sw = a.moving ? Math.sin(a.walkPhase * 2.1) : 0;
+  const hinge = chickHinge(peck);
+  ctx.save();
+  ctx.translate(a.x, a.y);
+  ctx.scale(a.face * a.scale, a.scale);
+  const k = a.phase * 710;
+  drawChickBody(ctx, sw, medium, k);
+  ctx.save();
+  ctx.translate(hinge.x, hinge.y);
+  ctx.rotate(hinge.angle);
+  drawChickHead(ctx, medium, k);
+  ctx.restore();
   ctx.restore();
 }
 

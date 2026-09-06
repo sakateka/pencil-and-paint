@@ -30,6 +30,7 @@ import {
   hammockSleeperLook,
 } from './looks/hammock';
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
+import { registerHerdLooks, showHerdAnimal } from './looks/herd';
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -169,6 +170,7 @@ export class Renderer {
       this.looks.register(look);
     }
     this.looks.register(birdLook);
+    registerHerdLooks(this.looks);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
       this.stage.resize(this.width, this.height);
@@ -503,6 +505,25 @@ export class Renderer {
     for (const animal of scene.herd.animals) {
       if (!camera.canSee(animal.x, animal.y, 90)) continue;
       if (hidden(animal.x, animal.y, 60)) continue;
+      /*
+       * Asleep is a drawing on paper: no paint, and a hand that has stopped.
+       * The old path had to say this by refusing to repaint a canvas; the
+       * library says it by handing back the same three pictures for ever.
+       */
+      if (medium === 'color' && !animal.awake) continue;
+      if (
+        showHerdAnimal(
+          this.stage,
+          this.looks,
+          animal,
+          medium,
+          layer,
+          DEPTH.herd + animal.y / 10000,
+          animal.awake ? boilTick() : 0,
+        )
+      ) {
+        continue;
+      }
       /*
        * A sleeping animal is a cached still and never changes, so it is not
        * animated and stops costing anything at all — which is most of a field
