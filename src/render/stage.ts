@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { context2d } from '../core/canvas';
 import type { Medium } from '../media/medium';
+import { LookLibrary } from './looks';
 
 /**
  * The Phaser side of the frame: three cameras, the baked valley, and a pool of
@@ -510,6 +511,133 @@ export class Stage {
   private readonly stampKeys = new Map<HTMLCanvasElement, string>();
   private stampsUsed = 0;
 
+  /*
+   * ---- Baked looks ------------------------------------------------------
+   *
+   * The path everything hand-drawn is moving onto. A `Look` lists its pictures,
+   * they are baked once at warm-up, and being on screen afterwards is one
+   * pooled sprite with a texture and a transform. No canvas is painted, nothing
+   * is uploaded, and nothing is created — which is the whole invariant.
+   *
+   * The old `cel` path above still runs for everything that has not moved yet.
+   * They coexist on purpose: one entity moves per commit, so that when
+   * something looks wrong it is obvious what did it.
+   */
+
+  private lookTextures = new Map<string, string>();
+
+  /**
+   * Hand every baked picture to the GPU, once.
+   *
+   * Called at the end of the load, so the first frame of play already holds
+   * everything. Uploading a texture is the one thing in this design that costs,
+   * and doing it here means it is paid under the loading screen rather than
+   * halfway through a walk — which is exactly the fault that made the sky
+   * strips stall the first walk north.
+   */
+  adoptLooks(library: LookLibrary): void {
+    const scene = this.scene;
+    if (!scene) return;
+    for (const [slot, baked] of library.entries()) {
+      if (!baked.canvas || this.lookTextures.has(slot)) continue;
+      const key = `look${this.nextTextureId++}`;
+      if (!scene.textures.addCanvas(key, baked.canvas)) continue;
+      this.lookTextures.set(slot, key);
+    }
+  }
+
+  /** Is this picture on the GPU? Callers fall back to the old path if not. */
+  hasLook(id: string, poseKey: string, medium: Medium): boolean {
+    return this.lookTextures.has(LookLibrary.slot(id, poseKey, medium));
+  }
+
+  /**
+   * Show one baked picture this frame.
+   *
+   * `x`/`y` is the look's own origin in world units — where the subject stands,
+   * not where its canvas corner goes; the bake remembers the offset between the
+   * two, so a picture lands exactly where the strokes were painted no matter
+   * how tightly it was cut.
+   */
+  showLook(request: {
+    library: LookLibrary;
+    id: string;
+    poseKey: string;
+    medium: Medium;
+    layer: Layer;
+    x: number;
+    y: number;
+    depth: number;
+    scale?: number;
+    flipX?: boolean;
+    alpha?: number;
+    tint?: number;
+  }): boolean {
+    const scene = this.scene;
+    const cameras = this.cameras;
+    if (!scene || !cameras) return false;
+    const slot = LookLibrary.slot(request.id, request.poseKey, request.medium);
+    const key = this.lookTextures.get(slot);
+    const baked = request.library.get(request.id, request.poseKey, request.medium);
+    if (!key || !baked) return false;
+
+    let image = this.lookImages[this.looksUsed];
+    if (!image) {
+      image = scene.add.image(0, 0, key).setOrigin(0, 0);
+      this.lookImages.push(image);
+    }
+    this.looksUsed++;
+
+    /*
+     * A pooled sprite serves a different layer every frame, so the camera
+     * filter is written outright rather than added to. `Camera.ignore` only
+     * ever sets bits, which for a pool means a sprite that has been on the
+     * colour layer once can never be seen on any other.
+     */
+    image.cameraFilter = this.maskExcept(request.layer);
+
+    const scale = request.scale ?? 1;
+    const flip = request.flipX ? -1 : 1;
+    image.setTexture(key);
+    image.setVisible(true);
+    image.setDepth(request.depth);
+    image.setAlpha(request.alpha ?? 1);
+    if (request.tint === undefined) image.clearTint();
+    else image.setTint(request.tint);
+    /*
+     * Mirroring reflects the offset too: the ink that sat to the left of the
+     * origin belongs to its right. Without this a mirrored thing slides by
+     * twice its own offset, which reads as the drawing detaching from whatever
+     * is carrying it.
+     */
+    image.setScale(scale * flip, scale);
+    const dx = request.flipX ? -(baked.dx + baked.width) : baked.dx;
+    image.setPosition(request.x + dx * scale, request.y + baked.dy * scale);
+    return true;
+  }
+
+  private readonly lookImages: Phaser.GameObjects.Image[] = [];
+  private looksUsed = 0;
+
+  /** The bitmask of every camera that must *not* draw this object. */
+  private maskExcept(layer: Layer): number {
+    const cameras = this.cameras;
+    if (!cameras) return 0;
+    let mask = 0;
+    for (const other of ['sketch', 'colour', 'over'] as Layer[]) {
+      if (other !== layer) mask |= cameras[other].id;
+    }
+    return mask;
+  }
+
+  /** Hide the baked pictures nobody asked for, and start counting again. */
+  endLooks(): void {
+    for (let i = this.looksUsed; i < this.lookImages.length; i++) {
+      this.lookImages[i].setVisible(false);
+    }
+    this.looksUsed = 0;
+  }
+
   /** Hide the stamps nobody asked for, and start counting again. */
   endStamps(): void {
     for (let i = this.stampsUsed; i < this.stamps.length; i++) this.stamps[i].setVisible(false);
@@ -676,6 +804,9 @@ export class Stage {
     this.cels.clear();
     for (const held of this.sprites.values()) held.image.destroy();
     this.sprites.clear();
+    for (const image of this.lookImages) image.destroy();
+    this.lookImages.length = 0;
+    this.lookTextures.clear();
     this.game.destroy(true, false);
   }
 }

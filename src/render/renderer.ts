@@ -20,6 +20,7 @@ import { disc, GRAIN } from '../media/sprites';
 import { HAZE_RADIUS, hazeMask } from './colorField';
 import type { ColorField } from './colorField';
 import { poseOf, Stage } from './stage';
+import { LookLibrary } from './looks';
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -126,6 +127,14 @@ export class Renderer {
   readonly stages: StageTimings = { live: 0, scenery: 0, submit: 0, bakes: 0 };
   readonly frameStages: StageTimings = { live: 0, scenery: 0, submit: 0, bakes: 0 };
 
+  /**
+   * Every drawing that is baked once and afterwards only moved.
+   *
+   * Empty until a look registers itself. Things move onto it one at a time —
+   * see `PLAN.md` — and until then the `cel` path below still paints them.
+   */
+  readonly looks = new LookLibrary();
+
   constructor(
     host: HTMLElement,
     private readonly paperCanvas: HTMLCanvasElement,
@@ -137,7 +146,23 @@ export class Renderer {
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
       this.stage.resize(this.width, this.height);
+      // Phaser may finish booting after the bake did; adopting twice is free.
+      this.stage.adoptLooks(this.looks);
     });
+  }
+
+  /**
+   * Bake every registered look and hand it to the GPU, under the load screen.
+   *
+   * A generator, so the caller can let the browser breathe between pictures and
+   * show progress. This is the one place in the design that pays for a texture,
+   * and it is deliberately here rather than in a frame of play: a multi-megabyte
+   * upload halfway through a walk is precisely the stall the sky strips once
+   * caused.
+   */
+  *warmUpLooks(): Generator<{ done: number; total: number }> {
+    yield* this.looks.bake();
+    this.stage.adoptLooks(this.looks);
   }
 
   resize(width: number, height: number, scale: number): void {
@@ -320,6 +345,7 @@ export class Renderer {
     this.drawOver(scene, flooded);
     this.frameStages.live = performance.now() - liveStarted;
 
+    this.stage.endLooks();
     this.stage.endStamps();
     this.stage.endFrame();
 

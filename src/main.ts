@@ -264,6 +264,30 @@ async function boot(): Promise<void> {
     stamp.textContent = report;
   }
   const renderer = new Renderer(stageHost, grainCanvas, overlayCanvas);
+
+  /*
+   * Bake every hand-drawn picture before play starts.
+   *
+   * Under the loading screen, yielding between pictures, because the whole
+   * point of baking is that nothing is painted later: a picture made during a
+   * walk is a stall in that walk. Registered looks are the ones that have moved
+   * off the old repaint-as-you-go path; while none have, this costs nothing and
+   * the loop does not run.
+   */
+  let baked = false;
+  for (const { done, total } of renderer.warmUpLooks()) {
+    baked = true;
+    if (done % 8 === 0) await yieldToBrowser();
+    if (startButton && total) {
+      startButton.setAttribute('aria-busy', 'true');
+      startButton.textContent = t('intro.building', { n: Math.round((done / total) * 100) });
+    }
+  }
+  if (baked && startButton) {
+    startButton.removeAttribute('aria-busy');
+    startButton.textContent = startLabel;
+  }
+
   const perf = new Performance();
   let showPerf = false;
   const statsButton = document.querySelector<HTMLButtonElement>('#stats');
