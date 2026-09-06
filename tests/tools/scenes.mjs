@@ -1,0 +1,146 @@
+/**
+ * Scripted moments the tools can put the game into.
+ *
+ * Shared so that "how smooth is this" and "did this change the picture" ask
+ * about exactly the same moment, and so that a moment worth looking at is
+ * written down once rather than retyped into a scratch script each time.
+ *
+ * `begin`, `step` and `still` are stringified and rebuilt inside the page, so
+ * none of them may close over anything in this file; they receive the debug
+ * handle, the same `globalThis.pencil` the suites use. `find` runs out here,
+ * over the pixels of a screenshot.
+ */
+
+/** The pale, warm cloth of the hammock against grass or paper. */
+function isCloth(r, g, b) {
+  return r > 190 && g > 175 && b > 140 && r - b > 20;
+}
+
+/** The walker's shirt. */
+function isShirt(r, g, b) {
+  return r > 150 && r - g > 60 && r - b > 60;
+}
+
+export const SCENES = {
+  hammock: {
+    describe: 'somebody lying down: the cloth sags under them over about a second',
+
+    motion: {
+      /**
+       * A column of pixels a third of the way across the cloth.
+       *
+       * Not through the middle: that is exactly where the sleeper lies, and a
+       * probe looking for pale cloth loses it the moment somebody fades in on
+       * top of it. Off to one side the cloth is uncovered the whole way down.
+       */
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        game.teleport(game.rest.x, game.rest.y + 40);
+        game.camera.snapTo(game.rest.x, game.rest.y);
+        game.running = false;
+        game.rest.resting = false;
+        game.rest.settled = 0;
+        renderOnce();
+        game.rest.resting = true;
+        return {
+          x: Math.round(game.camera.toScreenX(game.rest.x - 45)),
+          y: Math.round(game.camera.toScreenY(game.rest.y - 90)),
+          width: 1,
+          height: 120,
+        };
+      },
+      step: (pencil) => {
+        pencil.game.rest.update(1 / 60, false);
+        pencil.renderOnce();
+      },
+      /** The lowest row of cloth in that column. */
+      find: (strip) => {
+        let last = -1;
+        for (let y = 0; y < strip.height; y++) {
+          const i = y * strip.width * 4;
+          if (isCloth(strip.data[i], strip.data[i + 1], strip.data[i + 2])) last = y;
+        }
+        return last;
+      },
+    },
+
+    /** The hammock with somebody settled in it, held still. */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.teleport(game.rest.x, game.rest.y + 40);
+      game.camera.snapTo(game.rest.x, game.rest.y);
+      game.running = false;
+      game.rest.resting = true;
+      game.rest.settled = 1;
+      game.rest.clock = 0;
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(game.rest.x) - 150),
+        y: Math.round(game.camera.toScreenY(game.rest.y) - 110),
+        width: 300,
+        height: 200,
+      };
+    },
+  },
+
+  bird: {
+    describe: 'the bird on the tree, once the valley is finished',
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.collectAll();
+      game.teleport(game.rest.x, game.rest.y + 60);
+      for (let i = 0; i < 240; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.camera.snapTo(game.rest.perchX, game.rest.perchY);
+      game.running = false;
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(game.rest.perchX) - 60),
+        y: Math.round(game.camera.toScreenY(game.rest.perchY) - 45),
+        width: 120,
+        height: 90,
+      };
+    },
+  },
+
+  walk: {
+    describe: 'walking west, which is the motion the camera has to follow',
+
+    motion: {
+      /** A band of pixels across the walker's chest. */
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        game.running = false;
+        const west = { direction: () => ({ x: -1, y: 0 }) };
+        for (let i = 0; i < 30; i++) game.advance(1 / 60, west);
+        renderOnce();
+        return {
+          x: Math.round(game.camera.toScreenX(game.walker.x) - 120),
+          y: Math.round(game.camera.toScreenY(game.walker.y) - 30),
+          width: 240,
+          height: 6,
+        };
+      },
+      step: (pencil) => {
+        pencil.game.advance(1 / 60, { direction: () => ({ x: -1, y: 0 }) });
+        pencil.renderOnce();
+      },
+      /** Where the shirt is, across that band. */
+      find: (strip) => {
+        let sum = 0;
+        let n = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isShirt(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+              sum += x;
+              n++;
+            }
+          }
+        }
+        return n ? sum / n : -1;
+      },
+    },
+  },
+};
+
+export const SCENE_NAMES = Object.keys(SCENES);
