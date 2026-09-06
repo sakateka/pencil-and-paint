@@ -558,6 +558,12 @@ export class Stage {
    * not where its canvas corner goes; the bake remembers the offset between the
    * two, so a picture lands exactly where the strokes were painted no matter
    * how tightly it was cut.
+   *
+   * `rotation` turns the picture about that same origin, which is what makes a
+   * head lowering into the grass a transform rather than a row of frames: the
+   * neck is a hinge, and a hinge is geometry. It is given in the drawing's own
+   * frame, so a mirrored animal dips its head the same way it would have facing
+   * the other way.
    */
   showLook(request: {
     library: LookLibrary;
@@ -569,6 +575,9 @@ export class Stage {
     y: number;
     depth: number;
     scale?: number;
+    /** Vertical scale, if it differs — a breath, which is not a picture. */
+    scaleY?: number;
+    rotation?: number;
     flipX?: boolean;
     alpha?: number;
     tint?: number;
@@ -597,6 +606,7 @@ export class Stage {
     image.cameraFilter = this.maskExcept(request.layer);
 
     const scale = request.scale ?? 1;
+    const scaleY = request.scaleY ?? scale;
     const flip = request.flipX ? -1 : 1;
     image.setTexture(key);
     image.setVisible(true);
@@ -604,15 +614,31 @@ export class Stage {
     image.setAlpha(request.alpha ?? 1);
     if (request.tint === undefined) image.clearTint();
     else image.setTint(request.tint);
+
     /*
-     * Mirroring reflects the offset too: the ink that sat to the left of the
-     * origin belongs to its right. Without this a mirrored thing slides by
-     * twice its own offset, which reads as the drawing detaching from whatever
-     * is carrying it.
+     * Sprite, meet origin.
+     *
+     * Phaser hangs a picture by its top-left corner and turns it about its
+     * position; what a look wants is the opposite — a fixed point in the world
+     * that the picture hangs from and turns about. So the corner is worked out
+     * here: take the offset the bake measured from the look's origin to the
+     * corner, put it through the very transform the sprite is about to be
+     * given, and that is where the corner goes.
+     *
+     * Mirroring is part of that transform rather than a special case, which it
+     * used to be and got wrong: reflecting the offset by hand put a facing-left
+     * bird a full body-width off its branch, and it jumped there every time it
+     * turned round. Rotation is mirrored too, so a hinge swings the same way on
+     * both sides of the animal.
      */
-    image.setScale(scale * flip, scale);
-    const dx = request.flipX ? -(baked.dx + baked.width) : baked.dx;
-    image.setPosition(request.x + dx * scale, request.y + baked.dy * scale);
+    const rotation = (request.rotation ?? 0) * flip;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const dx = baked.dx * scale * flip;
+    const dy = baked.dy * scaleY;
+    image.setScale(scale * flip, scaleY);
+    image.setRotation(rotation);
+    image.setPosition(request.x + cos * dx - sin * dy, request.y + sin * dx + cos * dy);
     return true;
   }
 
