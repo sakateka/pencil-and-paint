@@ -826,7 +826,6 @@ async function boot(): Promise<void> {
   addEventListener('pagehide', () => {
     running = false;
     renderer.dispose();
-    game.herd.dispose();
     world.dispose();
   });
 

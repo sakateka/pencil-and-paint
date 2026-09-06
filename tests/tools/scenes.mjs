@@ -21,6 +21,11 @@ function isShirt(r, g, b) {
   return r > 150 && r - g > 60 && r - b > 60;
 }
 
+/** A frog's yellow front, the one warm thing out on the pond. */
+function isFrogBelly(r, g, b) {
+  return r > 215 && g > 165 && b < 130 && r - b > 90;
+}
+
 /** A cow's muzzle: the one pink thing in a green field, and it rides the head. */
 function isMuzzle(r, g, b) {
   return r > 190 && g > 110 && r - g > 45 && r - b > 45;
@@ -179,6 +184,68 @@ export const SCENES = {
         width: 160,
         height: 110,
       };
+    },
+  },
+
+  frog: {
+    describe: 'a frog taking fright and going under, which lasts a third of a second',
+
+    motion: {
+      /**
+       * The frog's yellow front, over the water it is about to be under.
+       *
+       * A third of a second is twenty frames, and the old path gave the whole
+       * leap four pictures — so this is the probe that says whether a dive is a
+       * leap or a slideshow.
+       */
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        const frog = game.herd.animals
+          .filter((a) => a.kind === 'frog')
+          .sort((a, b) => a.homeX - b.homeX || a.homeY - b.homeY)[0];
+        /*
+         * The whole valley in colour, because a frog cannot be walked up to:
+         * it sits out on the water and the bank holds you a long way off, far
+         * enough that the colour never reaches it.
+         */
+        game.collectAll();
+        game.teleport(frog.x, frog.y + 70);
+        for (let i = 0; i < 60; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.camera.snapTo(frog.x, frog.y - 20);
+        game.running = false;
+        frog.face = 1;
+        frog.dive = 0;
+        frog.diving = true;
+        renderOnce();
+        return {
+          x: Math.round(game.camera.toScreenX(frog.x) - 20),
+          y: Math.round(game.camera.toScreenY(frog.y) - 40),
+          width: 60,
+          height: 50,
+        };
+      },
+      step: (pencil) => {
+        const frog = pencil.game.herd.animals
+          .filter((a) => a.kind === 'frog')
+          .sort((a, b) => a.homeX - b.homeX || a.homeY - b.homeY)[0];
+        frog.dive = Math.min(1, frog.dive + 1 / 60 / 0.34);
+        pencil.renderOnce();
+      },
+      /** Where its front is, up and along. */
+      find: (strip) => {
+        let sum = 0;
+        let n = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isFrogBelly(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+              sum += y;
+              n++;
+            }
+          }
+        }
+        return n ? sum / n : -1;
+      },
     },
   },
 

@@ -1,9 +1,6 @@
-import { createSurface, type Surface } from '../core/canvas';
 import { clamp, TAU } from '../core/math';
 import { rnd, rr } from '../core/rng';
-import { withBoil } from '../media/ink';
-import type { Medium } from '../media/medium';
-import { drawAnimalLive, makeAnimal, type Animal } from './animals';
+import { makeAnimal, type Animal } from './animals';
 import type { AnimalKind } from './animalKinds';
 
 /**
@@ -20,15 +17,6 @@ export interface HerdContext {
   /** Push a body out of solid scenery. */
   resolveCollisions(body: { x: number; y: number }, radius: number): void;
 }
-
-/** Generous enough for the largest animal at its largest scale. */
-const SPRITE_WIDTH = 120;
-const SPRITE_HEIGHT = 110;
-const SPRITE_ORIGIN_X = 60;
-const SPRITE_ORIGIN_Y = 88;
-
-/** Slots per row in the atlas. */
-const ATLAS_COLUMNS = 5;
 
 /**
  * How near the float has to land for a frog to want no part of it.
@@ -69,16 +57,6 @@ const SHY_DISTANCE: Record<AnimalKind, number> = {
 export class Herd {
   readonly animals: Animal[];
 
-  /**
-   * Every frozen animal's cached still, packed into one canvas.
-   *
-   * They used to be a canvas each. Firefox treats every distinct source surface
-   * in a frame as something to synchronise, and a field of livestock meant
-   * twenty-odd of them per frame — which showed up in a profile as a busy
-   * thread doing little but memcpy and buffer mapping. One atlas is one source.
-   */
-  private readonly atlas: Surface;
-
   /** The chick's mother, and the only thing it steers by. */
   private readonly hen: Animal | undefined;
 
@@ -94,14 +72,6 @@ export class Herd {
     this.animals = spawns.map((s) => makeAnimal(s.kind, s.x, s.y, s.homeRadius, s.scale));
     this.hen = this.animals.find((a) => a.kind === 'hen');
     this.animals.forEach((a, i) => (a.slot = i));
-    const rows = Math.ceil(this.animals.length / ATLAS_COLUMNS);
-    this.atlas = createSurface(ATLAS_COLUMNS * SPRITE_WIDTH, rows * SPRITE_HEIGHT);
-  }
-
-  /** Release the sprite atlas. See `World.dispose`. */
-  dispose(): void {
-    this.atlas.canvas.width = 1;
-    this.atlas.canvas.height = 1;
   }
 
   /** Send every animal back out to pasture. */
@@ -115,7 +85,6 @@ export class Herd {
       a.timer = rr(0.5, 4);
       a.headDown = 1;
       a.moving = false;
-      a.frozen = false;
       a.purr = 0;
       a.diving = false;
       a.dive = 0;
@@ -142,7 +111,6 @@ export class Herd {
       // Asleep means asleep: no clock, no wandering, no tail. It is a drawing.
       if (!a.awake) continue;
 
-      a.frozen = false;
       a.clock += dt;
       if (a.kind === 'cat') {
         // Committed to the nap. The only thing that changes is how pleased she
@@ -206,8 +174,6 @@ export class Herd {
       f.diving = true;
       // It leaps away from whatever gave it the fright.
       f.face = f.x < x ? -1 : 1;
-      // Its cached still is of a frog sitting still, which it no longer is.
-      f.frozen = false;
     }
   }
 
@@ -217,7 +183,6 @@ export class Herd {
       if (a.kind !== 'frog' || !a.diving) continue;
       a.diving = false;
       a.timer = rr(FROG_SURFACE_DELAY[0], FROG_SURFACE_DELAY[1]);
-      a.frozen = false;
     }
   }
 
@@ -316,75 +281,5 @@ export class Herd {
 
     const wanted = a.state === 'graze' ? 1 : 0;
     a.headDown += (wanted - a.headDown) * Math.min(1, 3.2 * dt);
-  }
-
-  draw(
-    ctx: CanvasRenderingContext2D,
-    medium: Medium,
-    isVisible: (x: number, y: number) => boolean,
-  ): void {
-    for (const a of this.animals) {
-      if (!isVisible(a.x, a.y)) continue;
-      this.drawOne(ctx, a, medium);
-    }
-  }
-
-  /**
-   * One animal, wherever it is asked to be drawn.
-   *
-   * Split out of `draw` for the Phaser stage, which gives every animal its own
-   * small canvas rather than drawing the whole herd into the window — the herd
-   * is then a dozen sprites the GPU already holds, and only the ones whose pose
-   * actually changed are re-uploaded.
-   */
-  drawOne(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium): void {
-    if (a.awake) {
-      withBoil(true, () => drawAnimalLive(ctx, a, medium));
-      return;
-    }
-    // Asleep: invisible in the colour pass, a cached still in the pencil one.
-    if (medium === 'color') return;
-    if (!a.frozen) this.freeze(a);
-    const col = a.slot % ATLAS_COLUMNS;
-    const row = Math.floor(a.slot / ATLAS_COLUMNS);
-    ctx.drawImage(
-      this.atlas.canvas,
-      col * SPRITE_WIDTH,
-      row * SPRITE_HEIGHT,
-      SPRITE_WIDTH,
-      SPRITE_HEIGHT,
-      a.x - SPRITE_ORIGIN_X,
-      a.y - SPRITE_ORIGIN_Y,
-      SPRITE_WIDTH,
-      SPRITE_HEIGHT,
-    );
-  }
-
-  /**
-   * Stroking a sheep costs ~18 separate paths. A field of frozen livestock was
-   * ~400 stroke calls a frame for a picture that never changes; this makes it
-   * one blit each, all from the same atlas.
-   */
-  private freeze(a: Animal): void {
-    const col = a.slot % ATLAS_COLUMNS;
-    const row = Math.floor(a.slot / ATLAS_COLUMNS);
-    const { ctx } = this.atlas;
-
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(col * SPRITE_WIDTH, row * SPRITE_HEIGHT, SPRITE_WIDTH, SPRITE_HEIGHT);
-    ctx.translate(col * SPRITE_WIDTH + SPRITE_ORIGIN_X, row * SPRITE_HEIGHT + SPRITE_ORIGIN_Y);
-
-    const worldX = a.x;
-    const worldY = a.y;
-    a.x = 0;
-    a.y = 0;
-    // Boil off: a still drawing must not shimmer.
-    withBoil(false, () => drawAnimalLive(ctx, a, 'sketch'));
-    a.x = worldX;
-    a.y = worldY;
-    ctx.restore();
-
-    a.frozen = true;
   }
 }

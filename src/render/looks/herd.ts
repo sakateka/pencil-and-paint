@@ -1,5 +1,6 @@
 import { TAU } from '../../core/math';
 import {
+  catStir,
   chickHinge,
   chickenHinge,
   cowHinge,
@@ -12,8 +13,19 @@ import {
   drawCowBody,
   drawCowHead,
   drawCowTail,
+  drawCatBody,
+  drawCatHead,
+  drawCatTail,
+  drawFrogBody,
+  drawFrogSplash,
   drawSheepBody,
   drawSheepHead,
+  frogBlink,
+  frogBreath,
+  frogHop,
+  frogRing,
+  frogShrink,
+  frogThroat,
   sheepHinge,
   type Animal,
 } from '../../entities/animals';
@@ -217,6 +229,129 @@ const chickHead = partLook({
   draw: (ctx, medium, k) => drawChickHead(ctx, medium, k),
 });
 
+/**
+ * The cat, in three parts, and the purr in two of them.
+ *
+ * Everything a purr does to her is under a pixel — the ears turn, the eyes fold
+ * a little further shut, a small smile comes and goes — so those are pictures,
+ * and a handful is plenty. The breath is not: it is a vertical scale of the
+ * whole cat about the ground she lies on, and it stays a transform.
+ *
+ * Only paint carries any of it. In graphite she is always the sleeping one: a
+ * cat the colour has reached is drawn in paint, and one it has not is pencil on
+ * paper, which does not move.
+ */
+const CAT_EARS = [-0.7, 0, 0.7];
+const CAT_SETTLES = [0, 0.34, 0.67, 1];
+const CAT_FLICKS = [-2.6, -1.7, -0.9, 0, 0.9, 1.7, 2.6];
+
+interface CatFace {
+  readonly ear: number;
+  readonly settle: number;
+  readonly hand: number;
+}
+
+const catBody = partLook({
+  id: 'cat',
+  reach: 30,
+  variants: 1,
+  draw: (ctx, medium, k) => drawCatBody(ctx, medium, k),
+});
+
+const catTail: Look<{ flick: number; hand: number }> = {
+  id: 'cat:tail',
+  media: ['sketch', 'color'],
+  reach: 30,
+  *poses() {
+    for (let flick = 0; flick < CAT_FLICKS.length; flick++) {
+      for (let hand = 0; hand < HANDS; hand++) yield { flick, hand };
+    }
+  },
+  key: (pose, medium) => (medium === 'color' ? `f${pose.flick}` : `h${pose.hand}`),
+  draw: (ctx, pose, medium) =>
+    withBoilAt(pose.hand, () =>
+      // Still, in graphite: a sleeping cat's tail is wrapped round her.
+      drawCatTail(ctx, medium === 'color' ? CAT_FLICKS[pose.flick] : 0, medium, seedOf(pose.hand)),
+    ),
+};
+
+const catHead: Look<CatFace> = {
+  id: 'cat:head',
+  media: ['sketch', 'color'],
+  reach: 30,
+  *poses() {
+    for (let ear = 0; ear < CAT_EARS.length; ear++) {
+      for (let settle = 0; settle < CAT_SETTLES.length; settle++) {
+        for (let hand = 0; hand < HANDS; hand++) yield { ear, settle, hand };
+      }
+    }
+  },
+  key: (pose, medium) =>
+    medium === 'color' ? `e${pose.ear}s${pose.settle}` : `h${pose.hand}`,
+  draw: (ctx, pose, medium) =>
+    withBoilAt(pose.hand, () =>
+      drawCatHead(
+        ctx,
+        medium === 'color' ? CAT_EARS[pose.ear] : 0,
+        medium === 'color' ? CAT_SETTLES[pose.settle] : 0,
+        medium,
+        seedOf(pose.hand),
+      ),
+    ),
+};
+
+/**
+ * The frog, whose whole leap is a transform.
+ *
+ * It goes up and along, it shrinks, it fades, and none of that is a drawing —
+ * which is the point, because the leap lasts a third of a second and the old
+ * path gave it four frames. What is left to be a picture is the blink and the
+ * pulse of its throat, and both are quiet enough that a handful covers them.
+ * Graphite has neither: at that size a graphite frog is a dome, two eyes and a
+ * mouth.
+ */
+const FROG_LIDS = [0, 0.34, 0.67, 1];
+const FROG_THROATS = [0.94, 1, 1.06];
+
+const frogBody: Look<{ lid: number; throat: number; hand: number }> = {
+  id: 'frog',
+  media: ['sketch', 'color'],
+  reach: 24,
+  *poses() {
+    for (let lid = 0; lid < FROG_LIDS.length; lid++) {
+      for (let throat = 0; throat < FROG_THROATS.length; throat++) {
+        for (let hand = 0; hand < HANDS; hand++) yield { lid, throat, hand };
+      }
+    }
+  },
+  key: (pose, medium) =>
+    medium === 'color' ? `l${pose.lid}t${pose.throat}` : `h${pose.hand}`,
+  draw: (ctx, pose, medium) =>
+    withBoilAt(pose.hand, () =>
+      drawFrogBody(
+        ctx,
+        FROG_THROATS[pose.throat],
+        FROG_LIDS[pose.lid],
+        medium,
+        seedOf(pose.hand),
+      ),
+    ),
+};
+
+/** The ring on the water, opening and closing again. */
+const SPLASH_RINGS = 8;
+
+const frogSplash: Look<{ ring: number }> = {
+  id: 'frog:splash',
+  media: ['sketch', 'color'],
+  reach: 30,
+  *poses() {
+    for (let ring = 0; ring < SPLASH_RINGS; ring++) yield { ring };
+  },
+  key: (pose) => `r${pose.ring}`,
+  draw: (ctx, pose, medium) => drawFrogSplash(ctx, (pose.ring + 0.5) / SPLASH_RINGS, medium),
+};
+
 /** Everything the field bakes. Called once, at warm-up. */
 export function registerHerdLooks(library: LookLibrary): void {
   library.register(sheepBody);
@@ -228,12 +363,30 @@ export function registerHerdLooks(library: LookLibrary): void {
   library.register(chickenHead);
   library.register(chickBody);
   library.register(chickHead);
+  library.register(catBody);
+  library.register(catTail);
+  library.register(catHead);
+  library.register(frogBody);
+  library.register(frogSplash);
 }
 
-/** Which kinds have moved to the pose library. The rest keep the old path. */
-export function hasHerdLook(a: Animal): boolean {
-  return a.kind === 'sheep' || a.kind === 'cow' || a.kind === 'chicken' || a.kind === 'hen' ||
-    a.kind === 'chick';
+/** The whole field is on the pose library now. Nothing falls back. */
+export function hasHerdLook(_a: Animal): boolean {
+  return true;
+}
+
+/** Which of a list of levels a continuous value is nearest to. */
+function nearest(levels: readonly number[], value: number): number {
+  let best = 0;
+  let gap = Infinity;
+  for (let i = 0; i < levels.length; i++) {
+    const d = Math.abs(levels[i] - value);
+    if (d < gap) {
+      gap = d;
+      best = i;
+    }
+  }
+  return best;
 }
 
 /**
@@ -279,12 +432,7 @@ function variantOf(a: Animal): number {
   return Math.max(0, among.indexOf(mine));
 }
 
-/**
- * Show one animal, as its two or three baked parts.
- *
- * Returns false for the kinds that have not moved over yet, so the caller can
- * fall back to painting them into a canvas.
- */
+/** Show one animal, as its two or three baked parts. */
 export function showHerdAnimal(
   stage: Stage,
   library: LookLibrary,
@@ -294,9 +442,10 @@ export function showHerdAnimal(
   depth: number,
   tick: number,
 ): boolean {
-  if (!hasHerdLook(a)) return false;
-
   const hand = handOf(a, tick);
+  if (a.kind === 'cat') return showCat(stage, library, a, medium, layer, depth, hand);
+  if (a.kind === 'frog') return showFrog(stage, library, a, medium, layer, depth, hand);
+
   const variant = variantOf(a);
   const step = walkStep(a);
   const flipX = a.face < 0;
@@ -384,4 +533,113 @@ function hingeOf(a: Animal): { x: number; y: number; angle: number } {
     return chickHinge((0.5 + 0.5 * Math.sin(a.clock * 6.5 + a.phase)) * a.headDown);
   }
   return chickenHinge((0.5 + 0.5 * Math.sin(a.clock * 5.5 + a.phase)) * a.headDown);
+}
+
+/**
+ * The cat, and how far into her purr she is.
+ *
+ * The breath is a scale and the leap of faith of this whole design: a drawing
+ * that swells and settles without a single repaint.
+ */
+function showCat(
+  stage: Stage,
+  library: LookLibrary,
+  a: Animal,
+  medium: Medium,
+  layer: Layer,
+  depth: number,
+  hand: number,
+): boolean {
+  const { breath, flick, ear, settled } = catStir(a, a.clock);
+  const flipX = a.face < 0;
+  const common = {
+    library,
+    medium,
+    layer,
+    x: a.x,
+    y: a.y,
+    scale: a.scale,
+    scaleY: a.scale * breath,
+    flipX,
+  } as const;
+
+  stage.showLook({
+    ...common,
+    id: catBody.id,
+    poseKey: catBody.key({ hand, variant: 0 }, medium),
+    depth,
+  });
+  const tail = { flick: nearest(CAT_FLICKS, flick), hand };
+  stage.showLook({
+    ...common,
+    id: catTail.id,
+    poseKey: catTail.key(tail, medium),
+    depth: depth + 0.000002,
+  });
+  const face = { ear: nearest(CAT_EARS, ear), settle: nearest(CAT_SETTLES, settled), hand };
+  stage.showLook({
+    ...common,
+    id: catHead.id,
+    poseKey: catHead.key(face, medium),
+    depth: depth + 0.000004,
+  });
+  return true;
+}
+
+/**
+ * The frog, and its leap.
+ *
+ * Under the water there is nothing to draw, which is the whole effect. On the
+ * way there it rises, travels, shrinks and fades, and every one of those is a
+ * number handed to a sprite — so the leap is as smooth as the clock, where the
+ * old path quantised a third of a second into four frames.
+ */
+function showFrog(
+  stage: Stage,
+  library: LookLibrary,
+  a: Animal,
+  medium: Medium,
+  layer: Layer,
+  depth: number,
+  hand: number,
+): boolean {
+  const ring = frogRing(a.dive);
+  if (ring !== undefined) {
+    stage.showLook({
+      library,
+      id: frogSplash.id,
+      poseKey: frogSplash.key({ ring: Math.min(SPLASH_RINGS - 1, Math.floor(ring * SPLASH_RINGS)) }, medium),
+      medium,
+      layer,
+      x: a.x + a.face * 13 * a.scale,
+      y: a.y + 1,
+      depth: depth - 0.000002,
+      scale: a.scale,
+    });
+  }
+  if (a.dive >= 1) return true;
+
+  const shrink = frogShrink(a.dive);
+  stage.showLook({
+    library,
+    id: frogBody.id,
+    poseKey: frogBody.key(
+      {
+        lid: nearest(FROG_LIDS, Math.min(1, frogBlink(a, a.clock))),
+        throat: nearest(FROG_THROATS, frogThroat(a, a.clock)),
+        hand,
+      },
+      medium,
+    ),
+    medium,
+    layer,
+    x: a.x + a.face * 13 * a.scale * a.dive,
+    y: a.y - frogHop(a.dive) * a.scale,
+    depth,
+    scale: a.scale * shrink,
+    scaleY: a.scale * frogBreath(a, a.clock) * shrink,
+    flipX: a.face < 0,
+    alpha: 1 - a.dive * 0.35,
+  });
+  return true;
 }

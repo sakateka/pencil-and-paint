@@ -75,11 +75,14 @@ export interface Animal {
    */
   dive: number;
 
-  /** Its reserved slot in the herd's sprite atlas. */
+  /**
+   * Its place in the herd, fixed when the field is laid out.
+   *
+   * Which of the three inked variants it is drawn with, so that a field of
+   * sheep is not the same drawing stamped out a dozen times, and so that a
+   * sleeping one keeps the same hand for as long as it sleeps.
+   */
   slot: number;
-
-  /** Whether its atlas slot currently holds a valid still. */
-  frozen: boolean;
 }
 
 const SHEEP_LEGS: readonly (readonly [number, number])[] = [
@@ -200,7 +203,6 @@ export function makeAnimal(
     diving: false,
     dive: 0,
     slot: 0,
-    frozen: false,
   };
 }
 
@@ -266,22 +268,6 @@ export function drawSheepHead(ctx: CanvasRenderingContext2D, medium: Medium, k: 
     ink(ctx, 0.5, 1);
     inkArc(ctx, -3.4, -3.4, 3.4, k + 110);
   }
-}
-
-function drawSheep(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, _t: number): void {
-  const sw = a.moving ? Math.sin(a.walkPhase) : 0;
-  const hinge = sheepHinge(a.headDown);
-  ctx.save();
-  ctx.translate(a.x, a.y);
-  ctx.scale(a.face * a.scale, a.scale);
-  const k = a.phase * 130;
-  drawSheepBody(ctx, sw, medium, k);
-  ctx.save();
-  ctx.translate(hinge.x, hinge.y);
-  ctx.rotate(hinge.angle);
-  drawSheepHead(ctx, medium, k);
-  ctx.restore();
-  ctx.restore();
 }
 
 /**
@@ -412,31 +398,6 @@ export function drawCowHead(
   }
 }
 
-function drawCow(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
-  const sw = a.moving ? Math.sin(a.walkPhase) : 0;
-  const tail = Math.sin(t * 2.1 + a.phase) * 4;
-  const hinge = cowHinge(a.headDown);
-  ctx.save();
-  ctx.translate(a.x, a.y);
-  ctx.scale(a.face * a.scale, a.scale);
-  const k = a.phase * 210;
-
-  ctx.save();
-  ctx.translate(COW_TAIL.x, COW_TAIL.y);
-  ctx.rotate(cowTailAngle(tail));
-  drawCowTail(ctx, medium, k);
-  ctx.restore();
-
-  drawCowBody(ctx, sw, medium, k, a.coat, a.patch);
-
-  ctx.save();
-  ctx.translate(hinge.x, hinge.y);
-  ctx.rotate(hinge.angle);
-  drawCowHead(ctx, medium, k, a.coat);
-  ctx.restore();
-  ctx.restore();
-}
-
 /**
  * Where a chicken's head sits, and how far it has ducked to peck.
  *
@@ -514,30 +475,6 @@ export function drawChickenHead(
   }
 }
 
-function drawChicken(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
-  const peck = a.state === 'graze' ? (0.5 + 0.5 * Math.sin(t * 5.5 + a.phase)) : 0;
-  const sw = a.moving ? Math.sin(a.walkPhase * 1.7) : 0;
-  const hinge = chickenHinge(peck);
-  ctx.save();
-  ctx.translate(a.x, a.y);
-  ctx.scale(a.face * a.scale, a.scale);
-  const k = a.phase * 310;
-  drawChickenBody(ctx, sw, medium, k, a.coat);
-  ctx.save();
-  ctx.translate(hinge.x, hinge.y);
-  ctx.rotate(hinge.angle);
-  drawChickenHead(ctx, medium, k, a.coat);
-  ctx.restore();
-  ctx.restore();
-}
-
-/**
- * Her chick, from the same painting: a yellow puff with a beak on it.
- *
- * There is only one, and it never strays — see `Herd.stepChick`. Everything
- * else in the field keeps to a patch of ground; this keeps to its mother, which
- * is a different thing and the whole reason it is worth having.
- */
 /** Where the chick's head sits, and how far it has ducked to peck. */
 export function chickHinge(peck: number): { x: number; y: number; angle: number } {
   return { x: 2.9, y: -8.6, angle: peck * 0.95 };
@@ -619,33 +556,13 @@ export function drawChickHead(ctx: CanvasRenderingContext2D, medium: Medium, k: 
   }
 }
 
-function drawChick(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
-  const peck = a.state === 'graze' ? 0.5 + 0.5 * Math.sin(t * 6.5 + a.phase) : 0;
-  const sw = a.moving ? Math.sin(a.walkPhase * 2.1) : 0;
-  const hinge = chickHinge(peck);
-  ctx.save();
-  ctx.translate(a.x, a.y);
-  ctx.scale(a.face * a.scale, a.scale);
-  const k = a.phase * 710;
-  drawChickBody(ctx, sw, medium, k);
-  ctx.save();
-  ctx.translate(hinge.x, hinge.y);
-  ctx.rotate(hinge.angle);
-  drawChickHead(ctx, medium, k);
-  ctx.restore();
-  ctx.restore();
-}
-
-/**
- * The cat asleep by the cottage door — the one creature here that answers back.
- *
- * Everything else runs away from you. She does not run, and she does not wake
- * up either: a stroke sets `purr` counting down, and for those few seconds she
- * breathes deeper and quicker, the tail comes unwound and sways, the ears turn,
- * and the shut eyes fold into the crescents a contented cat makes. Then it ebbs
- * away and she is a drawing of a sleeping cat again.
- */
-function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
+/** How the purr moves her, `t` seconds into her own clock. */
+export function catStir(a: Animal, t: number): {
+  breath: number;
+  flick: number;
+  ear: number;
+  settled: number;
+} {
   /*
    * Two different clocks, because a cat does two different things at once.
    *
@@ -655,44 +572,90 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
    * through the quiet seconds between murrrs, and only lets go at the end.
    */
   const joy = purrStrength(PURR_SECONDS - a.purr);
-  const settled = clamp(Math.min((PURR_SECONDS - a.purr) / 0.6, a.purr / 0.9), 0, 1);
-  /*
-   * The breath is the same asleep and purring, on purpose.
-   *
-   * It is a vertical scale of the whole cat about the ground line, so deepening
-   * it does not make her chest rise — it makes her ears rise, and quickening it
-   * as well made her bounce like something on a spring. A purring cat lies
-   * heavier than a sleeping one, not lighter. So the purr is said with the
-   * things that do not lift her off the ground: the tail, the ears, the face.
-   */
-  const breath = 1 + Math.sin(t * 1.5 + a.phase) * 0.035;
-  const flick = joy * Math.sin(t * 2.3 + a.phase) * 2.6;
-  const ear = joy * Math.sin(t * 1.7 + a.phase * 2) * 0.7;
-  const squint = settled * 0.85;
-  const eyeR = 2 + squint;
+  return {
+    /*
+     * The breath is the same asleep and purring, on purpose.
+     *
+     * It is a vertical scale of the whole cat about the ground line, so
+     * deepening it does not make her chest rise — it makes her ears rise, and
+     * quickening it as well made her bounce like something on a spring. A
+     * purring cat lies heavier than a sleeping one, not lighter. So the purr is
+     * said with the things that do not lift her off the ground: the tail, the
+     * ears, the face.
+     */
+    breath: 1 + Math.sin(t * 1.5 + a.phase) * 0.035,
+    flick: joy * Math.sin(t * 2.3 + a.phase) * 2.6,
+    ear: joy * Math.sin(t * 1.7 + a.phase * 2) * 0.7,
+    settled: clamp(Math.min((PURR_SECONDS - a.purr) / 0.6, a.purr / 0.9), 0, 1),
+  };
+}
 
-  movingShadow(ctx, a.x, a.y + 1, 15 * a.scale, 4.5 * a.scale, medium, a.phase * 20);
-  ctx.save();
-  ctx.translate(a.x, a.y);
-  ctx.scale(a.face * a.scale, a.scale * breath);
-  const k = a.phase * 410;
-  // The tail's tip, wrapped round the front and swinging while she purrs.
-  const tipX = 6 + flick * 1.4;
-  const tipY = -1.5 + flick * 0.5;
-
+/** The curled body she sleeps in, and the tabby stripes down it. */
+export function drawCatBody(ctx: CanvasRenderingContext2D, medium: Medium, k: number): void {
+  movingShadow(ctx, 0, 1, 15, 4.5, medium, k + 200);
   if (medium === 'color') {
     ctx.fillStyle = '#c9834b';
     ctx.beginPath(); ctx.ellipse(0, -8, 13, 8, 0, 0, TAU); ctx.fill();        // curled body
-    // tail wrapped round the front
-    ctx.strokeStyle = '#c9834b'; ctx.lineWidth = 4.6; ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(9, -6);
-    ctx.quadraticCurveTo(16, -2 - flick * 0.6, tipX, tipY);
-    ctx.stroke();
     ctx.fillStyle = '#b06f3c';
     for (const s of [-6, 0, 6]) {                                        // tabby stripes
       ctx.beginPath(); ctx.ellipse(s, -11, 1.7, 3.4, 0.25, 0, TAU); ctx.fill();
     }
+  } else {
+    ink(ctx, 0.5, 1.15);
+    ctx.beginPath();
+    ctx.ellipse(jitter(k, .6), -8 + jitter(k + 1, .6), 13, 8, 0, 0, TAU);
+    ctx.stroke();
+    ink(ctx, 0.28, 0.8);
+    for (const s of [-6, 0, 6]) inkLine(ctx, s - 1, -13, s + 1, -9, k + 30 + s);
+  }
+}
+
+/**
+ * The tail, wrapped round the front of her and swinging while she purrs.
+ *
+ * Pictures rather than a rotation, which the head of a grazing cow gets: this
+ * tail is curled round on itself and its tip is barely five units from where it
+ * leaves the body, so turning it about that point would swing the middle of the
+ * curl right across her face. Seven of them cover the whole sway, and the sway
+ * only happens while somebody is stroking her.
+ */
+export function drawCatTail(
+  ctx: CanvasRenderingContext2D,
+  flick: number,
+  medium: Medium,
+  _k: number,
+): void {
+  const tipX = 6 + flick * 1.4;
+  const tipY = -1.5 + flick * 0.5;
+  if (medium === 'color') {
+    ctx.strokeStyle = '#c9834b'; ctx.lineWidth = 4.6; ctx.lineCap = 'round';
+  } else {
+    ink(ctx, 0.45, 1.05);
+  }
+  ctx.beginPath();
+  ctx.moveTo(9, -6);
+  ctx.quadraticCurveTo(16, -2 - flick * 0.6, tipX, tipY);
+  ctx.stroke();
+}
+
+/**
+ * Her head: the ears turning, the shut eyes folding, the small smile.
+ *
+ * All three are the purr talking, and all three are a fraction of a pixel — so
+ * they are pictures, and few of them. In graphite she is only ever the sleeping
+ * one: a cat the colour has reached is drawn in paint, and a cat it has not is
+ * pencil on paper, which does not move.
+ */
+export function drawCatHead(
+  ctx: CanvasRenderingContext2D,
+  ear: number,
+  settled: number,
+  medium: Medium,
+  k: number,
+): void {
+  const squint = settled * 0.85;
+  const eyeR = 2 + squint;
+  if (medium === 'color') {
     ctx.fillStyle = '#c9834b';
     ctx.beginPath(); ctx.arc(-11, -10, 6.2, 0, TAU); ctx.fill();               // head
     ctx.beginPath(); ctx.moveTo(-15, -14); ctx.lineTo(-16 - ear, -19 - ear); ctx.lineTo(-11, -15.5); ctx.closePath(); ctx.fill();
@@ -704,23 +667,14 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
       ctx.globalAlpha = settled;
       ctx.beginPath(); ctx.arc(-12.4, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();  // the small smile
       ctx.beginPath(); ctx.arc(-9.6, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();
+      ctx.globalAlpha = 1;
     }
   } else {
-    ink(ctx, 0.5, 1.15);
-    ctx.beginPath();
-    ctx.ellipse(jitter(k, .6), -8 + jitter(k + 1, .6), 13, 8, 0, 0, TAU);
-    ctx.stroke();
     ink(ctx, 0.45, 1.05);
-    ctx.beginPath();
-    ctx.moveTo(9, -6);
-    ctx.quadraticCurveTo(16, -2 - flick * 0.6, tipX, tipY);
-    ctx.stroke();
     inkArc(ctx, -11, -10, 6.2, k + 10);
     ink(ctx, 0.4, 0.95);
     inkPoly(ctx, [[-15, -14], [-16 - ear, -19 - ear], [-11, -15.5]], k + 16, true);
     inkPoly(ctx, [[-8, -15], [-6 + ear, -19.5 - ear], [-5, -13.5]], k + 24, true);
-    ink(ctx, 0.28, 0.8);
-    for (const s of [-6, 0, 6]) inkLine(ctx, s - 1, -13, s + 1, -9, k + 30 + s);
     ink(ctx, 0.5, 1);
     ctx.beginPath(); ctx.arc(-13, -9.5 - squint, eyeR, 0.15, Math.PI - 0.15); ctx.stroke();
     ctx.beginPath(); ctx.arc(-8.5, -9.5 - squint, eyeR * 0.85, 0.15, Math.PI - 0.15); ctx.stroke();
@@ -730,7 +684,6 @@ function drawCat(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: nu
       ctx.beginPath(); ctx.arc(-9.6, -6.6, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();
     }
   }
-  ctx.restore();
 }
 
 /** The ring left on the water where something went in. */
@@ -755,6 +708,20 @@ function splash(
   ctx.restore();
 }
 
+/** How far the ring has opened, or nothing if it has not started. */
+export function frogRing(dive: number): number | undefined {
+  return dive > 0.45 ? (dive - 0.45) / 0.55 : undefined;
+}
+
+/** The ring on the water, at unit size — the caller scales it to the frog. */
+export function drawFrogSplash(
+  ctx: CanvasRenderingContext2D,
+  spread: number,
+  medium: Medium,
+): void {
+  splash(ctx, 0, 0, spread, 9, medium);
+}
+
 /**
  * A frog on a lily pad, out on the pond.
  *
@@ -763,44 +730,18 @@ function splash(
  * out there, and at the end you get to see the picture they came from.
  *
  * It does not move, and that is the joke: a frog on a pad is the stillest thing
- * in the valley until the moment it is not. All it does is breathe and blink.
+ * in the valley until the moment it is not. All it does is breathe and blink —
+ * and the breath is a scale, so the only pictures here are the blink and the
+ * pulse of the throat. The leap is a transform from beginning to end: up, along,
+ * smaller, fainter, gone.
  */
-function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: number): void {
-  const breath = 1 + Math.sin(t * 1.9 + a.phase) * 0.045;
-  // Blinks are rare and quick, and never in time with the one next to it.
-  const blink = Math.max(0, Math.sin(t * 0.7 + a.phase * 3) - 0.985) * 60;
-  const lid = Math.min(1, blink);
-  const throat = 1 + Math.sin(t * 3.1 + a.phase) * 0.06;
-
-  // Gone under. The leaf is left empty, which is the whole effect.
-  if (a.dive >= 1) return;
-
-  /*
-   * The leap in.
-   *
-   * It goes up before it goes down — a frog does not sink, it launches — so the
-   * height is a half sine over the dive, while the sideways travel and the
-   * shrinking run straight through it. It leaps the way it is facing, which is
-   * set away from whatever startled it.
-   */
-  const d = a.dive;
-  const hop = Math.sin(d * Math.PI) * 13 * a.scale;
-  const shrink = 1 - d * 0.55;
-  const landX = a.x + a.face * 13 * a.scale;
-
-  // The ring it leaves on the water, opening as it goes under and closing again
-  // as it comes back up.
-  if (d > 0.45) {
-    const ring = (d - 0.45) / 0.55;
-    splash(ctx, landX, a.y + 1, ring, 9 * a.scale, medium);
-  }
-
-  ctx.save();
-  ctx.globalAlpha *= 1 - d * 0.35;
-  ctx.translate(a.x + a.face * 13 * a.scale * d, a.y - hop);
-  ctx.scale(a.face * a.scale * shrink, a.scale * breath * shrink);
-  const k = a.phase * 510;
-
+export function drawFrogBody(
+  ctx: CanvasRenderingContext2D,
+  throat: number,
+  lid: number,
+  medium: Medium,
+  k: number,
+): void {
   if (medium === 'color') {
     /*
      * Bright against the pad, and outlined.
@@ -875,7 +816,6 @@ function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: n
     ctx.beginPath();
     ctx.arc(0, -7.4, 6.2, 0.32, Math.PI - 0.32);
     ctx.stroke();
-    ctx.restore();
     return;
   }
 
@@ -902,30 +842,28 @@ function drawFrog(ctx: CanvasRenderingContext2D, a: Animal, medium: Medium, t: n
   ctx.beginPath();
   ctx.arc(0, -6.2, 5.2, 0.5, Math.PI - 0.5);
   ctx.stroke();
-  ctx.restore();
 }
 
-/** Dispatch to the right animal. */
-export function drawAnimalLive(
-  ctx: CanvasRenderingContext2D,
-  a: Animal,
-  medium: Medium,
-): void {
-  switch (a.kind) {
-    case 'sheep':
-      return drawSheep(ctx, a, medium, a.clock);
-    case 'cow':
-      return drawCow(ctx, a, medium, a.clock);
-    // A hen is a chicken. She is simply a bigger one, in white, and the layout
-    // is what makes her the size she is.
-    case 'chicken':
-    case 'hen':
-      return drawChicken(ctx, a, medium, a.clock);
-    case 'chick':
-      return drawChick(ctx, a, medium, a.clock);
-    case 'cat':
-      return drawCat(ctx, a, medium, a.clock);
-    case 'frog':
-      return drawFrog(ctx, a, medium, a.clock);
-  }
+/** How high the leap has carried it, at unit scale. */
+export function frogHop(dive: number): number {
+  return Math.sin(dive * Math.PI) * 13;
+}
+
+/** How far away it has got, as a scale. */
+export function frogShrink(dive: number): number {
+  return 1 - dive * 0.55;
+}
+
+/** How far the lid has come down, 0 to 1. Rare, quick, and out of step. */
+export function frogBlink(a: Animal, t: number): number {
+  return Math.max(0, Math.sin(t * 0.7 + a.phase * 3) - 0.985) * 60;
+}
+
+/** Its breath and the pulse of its throat, both of them small. */
+export function frogBreath(a: Animal, t: number): number {
+  return 1 + Math.sin(t * 1.9 + a.phase) * 0.045;
+}
+
+export function frogThroat(a: Animal, t: number): number {
+  return 1 + Math.sin(t * 3.1 + a.phase) * 0.06;
 }

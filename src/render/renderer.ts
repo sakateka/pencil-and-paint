@@ -507,42 +507,20 @@ export class Renderer {
       if (hidden(animal.x, animal.y, 60)) continue;
       /*
        * Asleep is a drawing on paper: no paint, and a hand that has stopped.
-       * The old path had to say this by refusing to repaint a canvas; the
-       * library says it by handing back the same three pictures for ever.
+       * The old path had to say this by refusing to repaint a canvas, and kept
+       * an atlas of stills to say it with; the library says it by handing back
+       * the same picture for ever.
        */
       if (medium === 'color' && !animal.awake) continue;
-      if (
-        showHerdAnimal(
-          this.stage,
-          this.looks,
-          animal,
-          medium,
-          layer,
-          DEPTH.herd + animal.y / 10000,
-          animal.awake ? boilTick() : 0,
-        )
-      ) {
-        continue;
-      }
-      /*
-       * A sleeping animal is a cached still and never changes, so it is not
-       * animated and stops costing anything at all — which is most of a field
-       * most of the time. An awake one repaints on the step as well as on its
-       * own state, because its strokes boil even when it is standing still.
-       */
-      this.stage.cel({
-        id: `animal:${animal.slot}`,
-        layer,
+      showHerdAnimal(
+        this.stage,
+        this.looks,
+        animal,
         medium,
-        left: animal.x - 110,
-        top: animal.y - 110,
-        width: 220,
-        height: 220,
-        depth: DEPTH.herd + animal.y / 10000,
-        pose: poseOf(animal),
-        animated: animal.awake,
-        draw: (ctx) => scene.herd.drawOne(ctx, animal, medium),
-      });
+        layer,
+        DEPTH.herd + animal.y / 10000,
+        animal.awake ? boilTick() : 0,
+      );
     }
 
     /*
