@@ -30,6 +30,10 @@ export async function run(url) {
       const { game, renderer } = pencil;
       game.teleport(1300, 1330);
 
+      /*
+       * Every eighth pixel in both directions, over the whole window: the point
+       * is how much of it is painted, not what is painted on it.
+       */
       const litShare = () => {
         const w = renderer.width;
         const h = renderer.height;
@@ -49,19 +53,25 @@ export async function run(url) {
         return lit / seen;
       };
 
-      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-      return (async () => {
-        await frame();
-        const before = litShare();
-        game.collectAll();
-        const shares = [];
-        // Long enough to cross the whole sweep and settle well past it.
-        for (let i = 0; i < 300; i++) {
-          await frame();
-          if (i % 3 === 0) shares.push(+litShare().toFixed(3));
-        }
-        return { before: +before.toFixed(3), shares };
-      })();
+      /*
+       * Stepped by hand rather than waited for.
+       *
+       * The sweep is driven by `advance`, so five seconds of it is five
+       * seconds of clock, not five seconds of sitting still watching frames go
+       * past — and on a loaded machine the frames come slower than the clock
+       * anyway, which made this the longest thing in the suite by a factor of
+       * two.
+       */
+      pencil.renderOnce();
+      const before = litShare();
+      game.collectAll();
+      const shares = [];
+      for (let i = 0; i < 300; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        pencil.renderOnce();
+        if (i % 10 === 0) shares.push(+litShare().toFixed(3));
+      }
+      return { before: +before.toFixed(3), shares };
     });
 
     suite.atLeast(sweep.before, 0.01, 'the colour is a blob before the last pot');

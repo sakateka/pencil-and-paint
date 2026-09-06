@@ -363,10 +363,18 @@ export async function run(url) {
         return mass ? weighted / mass : NaN;
       };
 
+      /*
+       * Fourteen samples across two seconds of her, not forty.
+       *
+       * Each one is a render and a read back out of the GPU, and a readback is
+       * a full pipeline stall — eighty of them was eight seconds, a fifth of
+       * the whole suite, to answer a question about the span of a movement
+       * that a dozen samples pins just as well.
+       */
       const sample = (purr) => {
         const out = [];
-        for (let i = 0; i < 40; i++) {
-          cat.clock = 10 + i * 0.05;
+        for (let i = 0; i < 14; i++) {
+          cat.clock = 10 + i * 0.14;
           cat.purr = purr;
           out.push(centreOfCat());
         }
