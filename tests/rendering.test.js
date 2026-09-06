@@ -368,6 +368,139 @@ export async function run(url) {
     const snapshot = await game.evaluate((p) => p.perf.snapshot());
     suite.equal(snapshot.scale, 1, 'the render scale is one to one');
 
+    /*
+     * A cow standing still is drawn by a hand that has stopped.
+     *
+     * Not obvious, because a cow the colour has reached is alive, and the boil
+     * is exactly what a live pencil drawing is meant to do. But `hand` is a
+     * graphite dimension only — the paint ignores it — so a boiling hand moves
+     * nothing except the pencil copy underneath the paint, and the only part of
+     * that copy anyone can see is the sliver of outline the paint does not
+     * quite cover. That fringe was reported as a shimmer along the cows' backs,
+     * and measured at forty-odd pixels changing seven times a second.
+     *
+     * The simulation is stopped and the clock is not: `advance` counts elapsed
+     * before it checks whether it is running, so the ink clock keeps ticking
+     * over a world that is holding perfectly still. Anything that moves here is
+     * the hand.
+     *
+     * Two things this is deliberately not.
+     *
+     * It is not a hash of the region, which is how the owl and the lion are
+     * pinned. Those two stand outside the colour, where the mask is nothing and
+     * the pencil is byte-for-byte the same frame after frame. Inside the colour
+     * nothing ever is: the haze breathes four units either side of its radius
+     * every four seconds, on purpose, and that walks the alpha of the whole
+     * coloured layer by a unit or two continuously. So this counts pixels that
+     * moved *visibly* — the same threshold the shimmer instrument uses — rather
+     * than pixels that moved.
+     *
+     * And it reads screenshots rather than `pencil.composited`, which every
+     * other picture test here uses. Phaser presents on its own frame, so a
+     * `renderOnce` followed by a read-back returns whatever was last put on the
+     * screen and not necessarily what that call drew. That is invisible while
+     * the question is "what does this look like" and fatal when it is "did this
+     * change between two frames": measured, it smeared a boiling cow's shimmer
+     * evenly across ticks and hid the fault this asserts.
+     */
+    const hand = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      /*
+       * One named cow, alone in the frame.
+       *
+       * Both halves of that matter. The field is laid out from a random seed,
+       * so "the first cow" is a different cow with different neighbours every
+       * run, and a suite that has already walked the walker about the valley
+       * hands this one whatever state it finished in. Sending everybody else
+       * off the map and picking the animal by where she lives makes the
+       * picture the same picture twice — without which this measured anything
+       * between nought and a hundred and twenty-seven pixels of "shimmer" on a
+       * build that has none.
+       */
+      const cow = game.herd.animals
+        .filter((a) => a.kind === 'cow')
+        .sort((a, b) => a.homeX - b.homeX || a.homeY - b.homeY)[0];
+      for (const a of game.herd.animals) {
+        if (a === cow) continue;
+        a.x = -9000;
+        a.y = -9000;
+      }
+      cow.x = cow.homeX;
+      cow.y = cow.homeY;
+      /*
+       * Beside her, not on her.
+       *
+       * Close enough that the colour has reached her, far enough that the
+       * walker is below the patch being watched — and, the point of the
+       * distance, out where the paint does not completely bury the pencil.
+       * Standing on top of her hides the fault outright, which is worth
+       * knowing: it only ever showed on animals towards the rim of the colour,
+       * which early in a game is most of them.
+       */
+      game.teleport(cow.x, cow.y + 90);
+      for (let i = 0; i < 30; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.camera.snapTo(cow.x, cow.y - 20);
+      game.running = false;
+      cow.face = 1;
+      cow.moving = false;
+      cow.state = 'graze';
+      cow.timer = 999;
+      // The camera only works out what it can see while a frame is being
+      // drawn, so the snap above means nothing to `toScreenX` until one is.
+      pencil.renderOnce();
+      return {
+        awake: cow.awake,
+        buried: game.isBuriedInColour(cow.x, cow.y, 60),
+        tick: pencil.boilTick(),
+        clip: {
+          x: Math.round(game.camera.toScreenX(cow.homeX) - 45),
+          y: Math.round(game.camera.toScreenY(cow.homeY) - 55),
+          width: 90,
+          height: 60,
+        },
+      };
+    });
+
+    /*
+     * Blank shots are dropped. Under a throwaway display the frame comes back
+     * as bare paper now and then — a known environment fault, not this build's
+     * — and a blank shot beside a real one reads as the whole cow having moved.
+     */
+    const { PNG } = await import('pngjs');
+    const shots = [];
+    for (let i = 0; i < 14; i++) {
+      const png = PNG.sync.read(await game.page.screenshot({ clip: hand.clip }));
+      let dark = 0;
+      for (let p = 0; p < png.data.length; p += 4) {
+        if (png.data[p] + png.data[p + 1] + png.data[p + 2] < 450) dark++;
+      }
+      if (dark > png.width * png.height / 100) shots.push(png.data);
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    const ticked = await game.evaluate((pencil) => {
+      pencil.game.running = true;
+      return pencil.boilTick();
+    });
+
+    let stir = 0;
+    for (let i = 1; i < shots.length; i++) {
+      let moved = 0;
+      for (let p = 0; p < shots[i].length; p += 4) {
+        const d =
+          Math.abs(shots[i][p] - shots[i - 1][p]) +
+          Math.abs(shots[i][p + 1] - shots[i - 1][p + 1]) +
+          Math.abs(shots[i][p + 2] - shots[i - 1][p + 2]);
+        if (d > 24) moved++;
+      }
+      if (moved > stir) stir = moved;
+    }
+
+    suite.ok(hand.awake, 'the colour has reached the cow being watched');
+    suite.ok(!hand.buried, 'and has not buried her pencil drawing outright');
+    suite.atLeast(shots.length, 8, 'enough frames of her came back to compare');
+    suite.atLeast(ticked - hand.tick, 4, 'the ink clock ticked several times while she stood there');
+    suite.atMost(stir, 8, 'and a grazing cow does not twitch as the hand re-inks her');
+
     // The ending grows the colour past anything ordinary play needs, and it
     // has to reach the edges of the window when it does. There used to be a
     // scratch surface sized for ordinary play in the way: until it was grown

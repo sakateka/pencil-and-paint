@@ -414,15 +414,27 @@ function walkStep(a: Animal): number {
 }
 
 /**
- * Which inked variant this animal is showing.
+ * Which inked variant this animal is showing. One, for as long as it stands
+ * there — but its own, so a field of sheep is not one drawing stamped out
+ * twelve times.
  *
- * Awake, it steps with the boil, so the hand keeps moving. Asleep, it is pencil
- * on paper and paper does not move — but each animal still gets its own hand,
- * so a field of sleeping sheep is not the same drawing stamped out twelve
- * times.
+ * It used to step with the live boil while the animal was awake, which is what
+ * the boil is for and was wrong here for a reason that only appeared once the
+ * field moved onto this library. The hand is a *graphite* dimension: `key`
+ * throws it away in paint, because nothing in the colour pass jitters. So the
+ * boil moved the pencil copy alone — and the pencil copy of an awake animal is
+ * the underlay beneath its paint, showing through only where the paint has not
+ * quite covered it, which is a one-pixel fringe along the silhouette. The
+ * pencil outline jittering three-quarters of a pixel in and out from under the
+ * painted one, seven times a second, is the shimmer that was reported along the
+ * cows' backs. Measured on a still, paused cow: fifty pixels changing on a
+ * three-tick cycle, and none at all once the paint covered the pencil.
+ *
+ * This is the same rule the scenery already keeps — see `still` in the renderer
+ * — and the field is simply the last thing to learn it.
  */
-function handOf(a: Animal, tick: number): number {
-  return a.awake ? (a.slot + tick) % HANDS : a.slot % HANDS;
+function handOf(a: Animal): number {
+  return a.slot % HANDS;
 }
 
 /** Which colourway. Only paint has one; graphite ignores it. */
@@ -440,9 +452,8 @@ export function showHerdAnimal(
   medium: Medium,
   layer: Layer,
   depth: number,
-  tick: number,
 ): boolean {
-  const hand = handOf(a, tick);
+  const hand = handOf(a);
   if (a.kind === 'cat') return showCat(stage, library, a, medium, layer, depth, hand);
   if (a.kind === 'frog') return showFrog(stage, library, a, medium, layer, depth, hand);
 

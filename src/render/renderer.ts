@@ -506,10 +506,11 @@ export class Renderer {
       if (!camera.canSee(animal.x, animal.y, 90)) continue;
       if (hidden(animal.x, animal.y, 60)) continue;
       /*
-       * Asleep is a drawing on paper: no paint, and a hand that has stopped.
-       * The old path had to say this by refusing to repaint a canvas, and kept
-       * an atlas of stills to say it with; the library says it by handing back
-       * the same picture for ever.
+       * Asleep is a drawing on paper: no paint. The old path had to say this by
+       * refusing to repaint a canvas, and kept an atlas of stills to say it
+       * with; the library says it by handing back the same picture for ever.
+       *
+       * The hand that drew it never moves now, awake or asleep — see `handOf`.
        */
       if (medium === 'color' && !animal.awake) continue;
       showHerdAnimal(
@@ -519,7 +520,6 @@ export class Renderer {
         medium,
         layer,
         DEPTH.herd + animal.y / 10000,
-        animal.awake ? boilTick() : 0,
       );
     }
 
