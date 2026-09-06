@@ -29,7 +29,29 @@ import { run as cuckoo } from './cuckoo.test.js';
 import { run as ending } from './ending.test.js';
 import { run as camera } from './camera.test.js';
 
-const SUITES = [startup, collision, stillness, progression, rendering, devpanel, petting, fishing, hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch, hedgehog, cuckoo, ending, i18n, camera];
+/* Named, because every suite exports a function called `run`. */
+const ALL_SUITES = Object.entries({
+  startup, collision, stillness, progression, rendering, devpanel, petting, fishing,
+  hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch,
+  hedgehog, cuckoo, ending, i18n, camera,
+});
+
+/**
+ * Run a few suites instead of all of them: `npm test -- hammock rest`.
+ *
+ * The whole run is around forty seconds, most of it a fresh build, and that is
+ * too long to sit through while iterating on one drawing. Names are matched
+ * loosely against the suite function's own name, so a fragment will do. With
+ * `PENCIL_DIST` pointing at a build you already have, one suite takes seconds.
+ */
+const WANTED = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
+const SUITES = WANTED.length
+  ? ALL_SUITES.filter(([name]) => WANTED.some((want) => name.includes(want.toLowerCase())))
+  : ALL_SUITES;
+if (!SUITES.length) {
+  console.error(`no suite matches ${WANTED.join(' ')}\nhave: ${ALL_SUITES.map(([n]) => n).join(' ')}`);
+  process.exit(1);
+}
 
 // Standard GitHub-hosted Linux runners have 2 vCPU for private repositories
 // and 4 vCPU for public ones. Cap local runs at that public standard too: the
@@ -61,7 +83,7 @@ async function runSuites(url, concurrency) {
       const index = next++;
       if (index >= SUITES.length) return;
       try {
-        results[index] = { suite: await SUITES[index](url) };
+        results[index] = { suite: await SUITES[index][1](url) };
       } catch (error) {
         // Let the other workers finish so teardown never races a still-running
         // browser context; report the rejection with the other suite results.
