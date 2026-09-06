@@ -504,6 +504,24 @@ export class World {
    * Tall scenery standing in front of `body` — closer to the viewer and
    * overlapping it. These get drawn over the walker so they hide them.
    */
+  /**
+   * Tall scenery standing over a fixed spot, whoever is or is not near it.
+   *
+   * The hammock is the case this exists for. It hangs between two trees, and
+   * the trees are baked into the world beneath everything that is drawn live,
+   * so the cloth is painted over their crowns — until the walker happens to
+   * stand where one of the trees overlaps them, at which point the ordinary
+   * occluder pass lifts that tree above the walker and above the hammock too.
+   * Approach the hammock and its trees jump in front of it; step away and they
+   * fall behind. Nothing about a hammock's own trees should depend on where
+   * anybody is standing.
+   */
+  *occludersOver(box: Bounds): Generator<Occluder> {
+    for (const occluder of this.occluders) {
+      if (boundsOverlap(occluder.bounds, box)) yield occluder;
+    }
+  }
+
   *occludersInFrontOf(bodyY: number, body: Bounds): Generator<Occluder> {
     for (const occluder of this.occluders) {
       if (occluder.scenery.y <= bodyY) continue; // behind the walker

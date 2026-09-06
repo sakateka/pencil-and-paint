@@ -265,6 +265,8 @@ export class Renderer {
     herd: 20,
     hedgehog: 30,
     hammock: 40,
+    /* The hammock's own trees, over the cloth but under whoever walks past. */
+    hammockTrees: 45,
     stump: 50,
     elephant: 60,
     lion: 70,
@@ -780,6 +782,38 @@ export class Renderer {
     }
 
     /*
+     * The trees the hammock hangs from, always over the cloth.
+     *
+     * They are baked into the world beneath everything drawn live, so the cloth
+     * is painted over their crowns — and then the ordinary occluder pass lifts
+     * one of them above everything the moment the walker stands where it
+     * overlaps them. Approach the hammock and its trees jump in front of it;
+     * step away and they fall behind. So they are placed here instead, above
+     * the hammock and below the walker, whoever is standing where.
+     */
+    const { rest } = scene;
+    if (camera.canSee(rest.x, rest.y, 130)) {
+      const box = { x0: rest.x - 90, x1: rest.x + 90, y0: rest.y - 130, y1: rest.y + 8 };
+      for (const occluder of world.occludersOver(box)) {
+        const centre = (occluder.bounds.x0 + occluder.bounds.x1) / 2;
+        const lit =
+          Math.hypot(centre - walker.x, occluder.scenery.y - walker.y - 14) < scene.maskRadius;
+        const medium = lit ? 'color' : 'sketch';
+        const sprite = world.spriteFor(occluder, medium);
+        this.stage.sprite({
+          id: `hammockTree:${occluder.id}:${medium}`,
+          layer: 'over',
+          canvas: sprite.canvas,
+          left: sprite.x,
+          top: sprite.y,
+          width: sprite.canvas.width,
+          height: sprite.canvas.height,
+          depth: DEPTH.hammockTrees + occluder.scenery.y / 10000,
+        });
+      }
+    }
+
+    /*
      * Tall scenery standing in front of the walker, laid back over them. These
      * are baked canvases already, so they go to the GPU as they are and are
      * never redrawn. An occluder by definition overlaps the walker, who is the
@@ -824,7 +858,6 @@ export class Renderer {
      * know that and re-uploaded a blank 420px square twelve times a second for
      * the whole of any session in which nobody finished the game.
      */
-    const { rest } = scene;
     if (rest.perched && camera.canSee(rest.x, rest.y, 260)) {
       const t = rest.birdTime;
       const pose = birdPose(rest.landed, t);
