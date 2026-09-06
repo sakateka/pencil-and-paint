@@ -27,8 +27,27 @@ const MIME = {
 
 let browserPromise;
 
+/**
+ * The shared browser.
+ *
+ * `PENCIL_HEADED=1` launches it against a real display instead of headless,
+ * which is the difference between a browser with a GPU process and one without.
+ * Headless Chromium in some environments — this development box among them —
+ * cannot create a WebGL context at all, and since the frame moved to WebGL that
+ * means every suite times out waiting for the game to appear. A display it can
+ * draw into is enough; it does not have to be a screen:
+ *
+ *   nix-shell -p xorg-server --run '
+ *     Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp & XPID=$!
+ *     sleep 3
+ *     PENCIL_HEADED=1 DISPLAY=:99 npm test
+ *     kill $XPID'
+ *
+ * Off by default, because on a workstation it would open four browser windows
+ * on top of whatever you were doing.
+ */
 async function browser() {
-  browserPromise ??= chromium.launch();
+  browserPromise ??= chromium.launch({ headless: !process.env.PENCIL_HEADED });
   return browserPromise;
 }
 
@@ -43,6 +62,17 @@ export async function closeBrowser() {
 export async function serve(root = ROOT) {
   const server = createServer(async (req, res) => {
     const path = (req.url ?? '/').split('?')[0];
+    /*
+     * A headed browser asks for a favicon and a headless one does not, so
+     * `PENCIL_HEADED=1` turned a 404 into a console error in every suite and
+     * failed the "no page errors" check thirteen times over. Answer it the way
+     * a real host would rather than teach the check to ignore things.
+     */
+    if (path === '/favicon.ico') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     const file = join(root, normalize(path === '/' ? '/index.html' : path));
     try {
       const body = await readFile(file);
