@@ -126,6 +126,23 @@ export async function openGame(url, { viewport = { width: 1280, height: 800 }, s
   if (start) {
     await page.click('#startBtn');
     await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 30000 });
+    /*
+     * And wait for the title card to actually go.
+     *
+     * It fades out over a quarter of a second, and the debug handle appears
+     * before it has finished — so a screenshot taken the moment the game is
+     * reachable can be a picture of the card. That is not hypothetical: it
+     * turned a before-and-after comparison of a cow into a comparison of a
+     * white rectangle, and the tool reported the difference without complaint.
+     */
+    await page.waitForFunction(
+      () => {
+        const intro = document.querySelector('#intro');
+        return !intro || getComputedStyle(intro).visibility === 'hidden';
+      },
+      null,
+      { timeout: 30000 },
+    );
   }
 
   return {

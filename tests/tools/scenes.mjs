@@ -21,6 +21,11 @@ function isShirt(r, g, b) {
   return r > 150 && r - g > 60 && r - b > 60;
 }
 
+/** A cow's muzzle: the one pink thing in a green field, and it rides the head. */
+function isMuzzle(r, g, b) {
+  return r > 190 && g > 110 && r - g > 45 && r - b > 45;
+}
+
 export const SCENES = {
   hammock: {
     describe: 'somebody lying down: the cloth sags under them over about a second',
@@ -79,6 +84,100 @@ export const SCENES = {
         y: Math.round(game.camera.toScreenY(game.rest.y) - 110),
         width: 300,
         height: 200,
+      };
+    },
+  },
+
+  herd: {
+    describe: 'a cow bringing its head up out of the grass over about a second',
+
+    motion: {
+      /**
+       * A box around the head, watching the one pink thing on a cow.
+       *
+       * The muzzle rides the head and nothing else in a field is that colour,
+       * so its centroid answers "where is the head" to a fraction of a pixel —
+       * which is the resolution the question needs. A head that comes up in
+       * steps and a head that comes up smoothly look identical in a still.
+       */
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        /*
+         * The same cow every time, standing where it was put.
+         *
+         * Two things about a field are not seeded: the scatter that spreads the
+         * animals out at the start, and the order they end up in once they have
+         * been sorted by depth — so both "which cow" and "where is it" have to
+         * be pinned, or two runs are looking at different animals in different
+         * places and any difference between them means nothing.
+         */
+        const cow = game.herd.animals
+          .filter((a) => a.kind === 'cow')
+          .sort((a, b) => a.homeX - b.homeX || a.homeY - b.homeY)[0];
+        cow.x = cow.homeX;
+        cow.y = cow.homeY;
+        game.teleport(cow.x, cow.y + 90);
+        // Let the colour reach it, so there is a coloured cow to look at.
+        for (let i = 0; i < 30; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.camera.snapTo(cow.x, cow.y - 20);
+        game.running = false;
+        cow.face = 1;
+        cow.moving = false;
+        cow.state = 'idle';
+        cow.headDown = 1;
+        renderOnce();
+        return {
+          x: Math.round(game.camera.toScreenX(cow.x + 18 * cow.scale)),
+          y: Math.round(game.camera.toScreenY(cow.y - 50 * cow.scale)),
+          width: 34,
+          height: 56,
+        };
+      },
+      /** The head rises on the game's own easing, one frame at a time. */
+      step: (pencil) => {
+        const cow = pencil.game.herd.animals
+          .filter((a) => a.kind === 'cow')
+          .sort((a, b) => a.homeX - b.homeX || a.homeY - b.homeY)[0];
+        cow.headDown += (0 - cow.headDown) * Math.min(1, 3.2 / 60);
+        pencil.renderOnce();
+      },
+      find: (strip) => {
+        let sum = 0;
+        let n = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isMuzzle(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+              sum += y;
+              n++;
+            }
+          }
+        }
+        return n ? sum / n : -1;
+      },
+    },
+
+    /** A cow standing in its field, head down, held still. */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      const cow = game.herd.animals
+        .filter((a) => a.kind === 'cow')
+        .sort((a, b) => a.homeX - b.homeX || a.homeY - b.homeY)[0];
+      cow.x = cow.homeX;
+      cow.y = cow.homeY;
+      game.teleport(cow.x, cow.y + 90);
+      for (let i = 0; i < 30; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.camera.snapTo(cow.x, cow.y - 20);
+      game.running = false;
+      cow.face = 1;
+      cow.moving = false;
+      cow.headDown = 1;
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(cow.x) - 80),
+        y: Math.round(game.camera.toScreenY(cow.y) - 80),
+        width: 160,
+        height: 110,
       };
     },
   },
