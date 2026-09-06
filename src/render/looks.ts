@@ -177,8 +177,20 @@ export class LookLibrary {
     const { ctx } = scratch;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, size, size);
+    /*
+     * A pose starts from a clean context, not from whatever the last one left.
+     *
+     * The scratch is shared between every picture a look bakes, and graphite
+     * sets `globalAlpha` per stroke and does not put it back — so the paint
+     * copy of anything drawn straight after a pencil one came out at the
+     * weight of the last pencil stroke. A cow's head baked at six tenths and
+     * you could see the field through it. The bodies were fine only because
+     * they happen to start by laying down a shadow, which resets the alpha.
+     */
+    ctx.save();
     ctx.translate(centre, centre);
     look.draw(ctx, pose, medium);
+    ctx.restore();
 
     const box = inkBounds(ctx, size);
     if (!box) return EMPTY;
