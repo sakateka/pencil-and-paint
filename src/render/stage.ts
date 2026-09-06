@@ -52,6 +52,23 @@ const READ_BACK =
   typeof location !== 'undefined' && new URLSearchParams(location.search).has('readback');
 
 /**
+ * Whether to build a picture at all.
+ *
+ * `?nodraw` leaves Phaser uncreated: no WebGL context, no cameras, no textures.
+ * Everything else — the world bake, the simulation, the sounds, the interface —
+ * runs exactly as it does in play, and every drawing call here finds no stage
+ * and quietly does nothing.
+ *
+ * It exists for the tests. Most of them are about what the valley *does*, not
+ * what it looks like, and a headless browser on a machine with no display
+ * cannot make a WebGL context at all — so without this they cannot run at all,
+ * and with it they run without a display, without a driver, and in a fraction
+ * of the time.
+ */
+const DRAW =
+  typeof location === 'undefined' || !new URLSearchParams(location.search).has('nodraw');
+
+/**
  * A short string that changes whenever a thing's own state does.
  *
  * This is what decides whether a drawing has to be painted again, and it is
@@ -182,7 +199,7 @@ class Cel {
  * is invisible behind the loading screen.
  */
 export class Stage {
-  private game: Phaser.Game;
+  private game: Phaser.Game | undefined;
   private scene: Phaser.Scene | undefined;
 
   ready = false;
@@ -239,6 +256,7 @@ export class Stage {
   }
 
   constructor(parent: HTMLElement, private readonly onReady: () => void) {
+    if (!DRAW) return;
     const stage = this;
     class Valley extends Phaser.Scene {
       create(): void {
@@ -299,7 +317,7 @@ export class Stage {
      *
      * `stop()` does stop it. One clock.
      */
-    this.game.loop.stop();
+    this.game?.loop.stop();
 
     this.ready = true;
     this.onReady();
@@ -844,7 +862,7 @@ export class Stage {
     // a framebuffer of no size, which is not a thing drivers support.
     const w = Math.max(1, Math.round(width));
     const h = Math.max(1, Math.round(height));
-    this.game.scale.resize(w, h);
+    this.game?.scale.resize(w, h);
     const cameras = this.cameras;
     if (!cameras) return;
     for (const layer of ['sketch', 'colour', 'over'] as Layer[]) {
@@ -864,9 +882,9 @@ export class Stage {
      * frames on screen are drawn from where things were last time, which reads
      * as the picture shivering as you walk.
      */
-    if (this.loopRunning) this.game.loop.stop();
+    if (this.loopRunning) this.game?.loop.stop();
     this.asked++;
-    this.game.step(time, delta);
+    this.game?.step(time, delta);
   }
 
   /** Counted from inside the scene, which is the only honest place to count. */
@@ -875,7 +893,7 @@ export class Stage {
   }
 
   private get loopRunning(): boolean {
-    return (this.game.loop as unknown as { running: boolean }).running;
+    return !!(this.game?.loop as unknown as { running: boolean } | undefined)?.running;
   }
 
   /** What the frame actually did, for the diagnostics. See `Renderer.pacing`. */
@@ -898,7 +916,7 @@ export class Stage {
 
   /** The canvas Phaser draws into, for anything that must sit over the frame. */
   get canvas(): HTMLCanvasElement | undefined {
-    return this.game.canvas ?? undefined;
+    return this.game?.canvas ?? undefined;
   }
 
   dispose(): void {
@@ -911,6 +929,6 @@ export class Stage {
     for (const rope of this.ropes) rope.destroy();
     this.ropes.length = 0;
     this.lookTextures.clear();
-    this.game.destroy(true, false);
+    this.game?.destroy(true, false);
   }
 }

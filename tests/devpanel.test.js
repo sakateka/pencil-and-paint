@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import { Suite } from './assert.js';
-import { openGame } from './harness.js';
+import { gameUrl, openGame } from './harness.js';
 
 /**
  * The development panel exists only when the page is served locally.
@@ -73,7 +73,7 @@ export async function run(url) {
         body: Buffer.from(await upstream.arrayBuffer()),
       });
     });
-    await page.goto('https://pencil.example.com/');
+    await page.goto(gameUrl('https://pencil.example.com/'));
     await page.waitForSelector('#startBtn');
     await page.click('#startBtn');
     await page.waitForFunction(() => globalThis.pencil !== undefined, null, { timeout: 30000 });

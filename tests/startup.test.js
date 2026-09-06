@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import { Suite } from './assert.js';
+import { gameUrl } from './harness.js';
 
 /**
  * Starting up must not lock the page.
@@ -20,7 +21,7 @@ export async function run(url) {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     const loadStarted = Date.now();
-    await page.goto(url);
+    await page.goto(gameUrl(url));
     await page.waitForSelector('#startBtn');
     await page.click('#startBtn');
 
@@ -59,7 +60,7 @@ export async function run(url) {
 
     // --- a press that lands during the build is remembered ---
     const early = await browser.newPage({ viewport: { width: 412, height: 892 } });
-    await early.goto(url);
+    await early.goto(gameUrl(url));
     await early.waitForSelector('#startBtn');
     // The button must not be `disabled`: a disabled button dispatches no click,
     // and the click is what starts the whole thing now.

@@ -11,6 +11,9 @@
     "preview": "vite preview --port 4173",
     "typecheck": "tsc --noEmit",
     "test": "node tests/run.js",
+    "test:frame": "bash tests/with-display.sh node tests/run.js --frames",
+    "test:all": "bash tests/with-display.sh node tests/run.js --all",
+    "display": "bash tests/with-display.sh",
     "test:clean": "node tests/cleanup.js",
     "benchmark": "node tests/benchmark.js"
   },

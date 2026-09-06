@@ -28,6 +28,55 @@ const MIME = {
 let browserPromise;
 
 /**
+ * Whether the game under test should build a picture at all.
+ *
+ * Most suites ask what the valley *does*, not what it looks like, and for those
+ * the browser needs no display, no driver and no WebGL context: `?nodraw`
+ * leaves Phaser uncreated and everything else — the world bake, the simulation,
+ * the sounds, the interface — runs exactly as in play. That is the difference
+ * between a suite that needs Xvfb and forty seconds, and one that runs plain
+ * headless in a couple.
+ *
+ * The runner turns it *off* for the suites that do not read pixels. Drawing is
+ * the default everywhere else, so an instrument or a one-off script gets a real
+ * picture without having to know any of this.
+ */
+export function drawing() {
+  return !process.env.PENCIL_NODRAW;
+}
+
+/**
+ * The address to open the game at, with whatever this run needs on the end.
+ *
+ * `?readback` keeps the drawing buffer so pixels can be read after the fact;
+ * `?nodraw` says not to build a picture at all. Suites that drive a page
+ * themselves go through here too, or they get a browser that cannot draw and a
+ * game that insists on trying.
+ */
+export function gameUrl(url) {
+  const query = drawing() ? 'readback' : 'readback&nodraw';
+  return url + (url.includes('?') ? '&' : '?') + query;
+}
+
+/**
+ * Ask for the actual graphics card.
+ *
+ * Without these, Chromium draws through SwiftShader — a software renderer —
+ * even on a machine with a perfectly good GPU sitting idle. It works, but every
+ * readback out of the frame costs about forty milliseconds instead of about
+ * one, and the suite is full of readbacks: it was the single biggest thing in a
+ * forty-second run.
+ *
+ * The driver has to be reachable, which on this box means mesa in the shell:
+ *
+ *   nix-shell -p xorg-server mesa --run '…'
+ *
+ * If it is not, Chromium falls back to SwiftShader on its own and everything
+ * still passes, only slower — so these are safe to ask for anywhere.
+ */
+const GPU_ARGS = ['--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist'];
+
+/**
  * The shared browser.
  *
  * `PENCIL_HEADED=1` launches it against a real display instead of headless,
@@ -37,17 +86,19 @@ let browserPromise;
  * means every suite times out waiting for the game to appear. A display it can
  * draw into is enough; it does not have to be a screen:
  *
- *   nix-shell -p xorg-server --run '
- *     Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp & XPID=$!
- *     sleep 3
- *     PENCIL_HEADED=1 DISPLAY=:99 npm test
- *     kill $XPID'
+ *   npm run test:frame        # the suites that read pixels
+ *   npm run display -- node tests/tools/look.mjs herd
  *
- * Off by default, because on a workstation it would open four browser windows
- * on top of whatever you were doing.
+ * Both go through `tests/with-display.sh`, which puts a throwaway display
+ * behind the command. Off by default, because on a workstation it would open
+ * four browser windows on top of whatever you were doing — and because the
+ * suites that do not read pixels do not need one at all.
  */
 async function browser() {
-  browserPromise ??= chromium.launch({ headless: !process.env.PENCIL_HEADED });
+  browserPromise ??= chromium.launch({
+    headless: !process.env.PENCIL_HEADED,
+    args: GPU_ARGS,
+  });
   return browserPromise;
 }
 
@@ -111,7 +162,7 @@ export async function openGame(url, { viewport = { width: 1280, height: 800 }, s
    * as soon as it has been handed to the compositor. It is off in play because
    * it costs the driver a full-screen copy every frame.
    */
-  await page.goto(url + (url.includes('?') ? '&' : '?') + 'readback');
+  await page.goto(gameUrl(url));
   // Nothing heavy runs until the page is touched — see `firstGesture` in
   // main.ts — so the click comes first and the game appears after it.
   await page.waitForSelector('#startBtn');
@@ -135,14 +186,16 @@ export async function openGame(url, { viewport = { width: 1280, height: 800 }, s
      * turned a before-and-after comparison of a cow into a comparison of a
      * white rectangle, and the tool reported the difference without complaint.
      */
-    await page.waitForFunction(
-      () => {
-        const intro = document.querySelector('#intro');
-        return !intro || getComputedStyle(intro).visibility === 'hidden';
-      },
-      null,
-      { timeout: 30000 },
-    );
+    if (drawing()) {
+      await page.waitForFunction(
+        () => {
+          const intro = document.querySelector('#intro');
+          return !intro || getComputedStyle(intro).visibility === 'hidden';
+        },
+        null,
+        { timeout: 30000 },
+      );
+    }
   }
 
   return {

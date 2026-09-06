@@ -8,19 +8,22 @@ every guess cost days.
 
 The frame is WebGL, and headless Chromium cannot make a WebGL context in every
 environment — where it cannot, the game never appears and everything times out.
-A display fixes it, and it does not have to be a screen:
+A display fixes it, and it does not have to be a screen. `npm run display` puts
+a throwaway one behind whatever you ask it to run, and takes it away again:
 
 ```sh
-nix-shell -p xorg-server --run '
-  Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp >/dev/null 2>&1 & XPID=$!
-  sleep 3
-  PENCIL_HEADED=1 DISPLAY=:99 node tests/tools/look.mjs
-  kill $XPID'
+npm run display -- node tests/tools/look.mjs herd
 ```
 
-`PENCIL_HEADED=1` is what makes `tests/harness.js` launch against that display
-instead of headless. It is off by default, because on a workstation it would
-open browser windows over whatever you were doing.
+It fetches Xvfb and the graphics driver from a nix shell if they are not on the
+PATH already, picks a free display number, and sets `PENCIL_HEADED=1` so the
+harness launches against it. `PENCIL_KEEP_DISPLAY=1` uses the display you
+already have instead, which on a real desktop means you can watch.
+
+Most of the test suite needs none of this — `npm test` runs headless in a couple
+of seconds, because the suites that do not read pixels open the game with
+`?nodraw` and it never makes a context at all. The instruments here are the
+other kind by definition: they are all about the picture.
 
 Every tool reads a build from `tmp/dist` unless told otherwise with `--dist=`:
 

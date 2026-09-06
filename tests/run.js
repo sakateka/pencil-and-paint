@@ -37,6 +37,22 @@ const ALL_SUITES = Object.entries({
 });
 
 /**
+ * The suites that read pixels, and so need a browser that can actually draw.
+ *
+ * Everything else asks what the valley does rather than what it looks like, and
+ * runs against `?nodraw` — no WebGL context, no display, no driver — in a small
+ * fraction of the time. This list is the exception, kept in one place because
+ * the alternative is every suite paying for the few.
+ *
+ * A machine with no display cannot run these at all: headless Chromium here
+ * cannot make a WebGL context, whatever flags it is given, because ANGLE goes
+ * looking for an X server and finds none. `npm run test:frame` puts one there.
+ */
+const NEEDS_A_PICTURE = new Set([
+  'rendering', 'vigil', 'sky', 'petting', 'perch', 'owl', 'lion', 'hills', 'fishing', 'ending',
+]);
+
+/**
  * Run a few suites instead of all of them: `npm test -- hammock rest`.
  *
  * The whole run is around forty seconds, most of it a fresh build, and that is
@@ -45,13 +61,24 @@ const ALL_SUITES = Object.entries({
  * `PENCIL_DIST` pointing at a build you already have, one suite takes seconds.
  */
 const WANTED = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
-const SUITES = WANTED.length
+const FLAGS = new Set(process.argv.slice(2).filter((arg) => arg.startsWith('-')));
+const CHOSEN = WANTED.length
   ? ALL_SUITES.filter(([name]) => WANTED.some((want) => name.includes(want.toLowerCase())))
   : ALL_SUITES;
-if (!SUITES.length) {
+if (!CHOSEN.length) {
   console.error(`no suite matches ${WANTED.join(' ')}\nhave: ${ALL_SUITES.map(([n]) => n).join(' ')}`);
   process.exit(1);
 }
+
+/*
+ * Which group this run is: the quick one that needs no picture, or the slow one
+ * that does. `--frames` asks for the second, `--all` for both.
+ */
+const WANT_FRAMES = FLAGS.has('--frames') || FLAGS.has('--all');
+const WANT_QUICK = !FLAGS.has('--frames') || FLAGS.has('--all');
+const QUICK = CHOSEN.filter(([name]) => !NEEDS_A_PICTURE.has(name));
+const FRAMED = CHOSEN.filter(([name]) => NEEDS_A_PICTURE.has(name));
+const SUITES = WANT_QUICK ? QUICK : [];
 
 // Standard GitHub-hosted Linux runners have 2 vCPU for private repositories
 // and 4 vCPU for public ones. Cap local runs at that public standard too: the
@@ -70,20 +97,20 @@ function suiteConcurrency() {
   if (!Number.isInteger(value) || value < 1) {
     throw new Error('PENCIL_SUITE_CONCURRENCY must be a positive integer');
   }
-  return Math.min(SUITES.length, value);
+  return value;
 }
 
 /** Run suites concurrently, but keep their reports in the declared order. */
-async function runSuites(url, concurrency) {
-  const results = new Array(SUITES.length);
+async function runSuites(suites, url, concurrency) {
+  const results = new Array(suites.length);
   let next = 0;
 
   const worker = async () => {
     while (true) {
       const index = next++;
-      if (index >= SUITES.length) return;
+      if (index >= suites.length) return;
       try {
-        results[index] = { suite: await SUITES[index][1](url) };
+        results[index] = { suite: await suites[index][1](url) };
       } catch (error) {
         // Let the other workers finish so teardown never races a still-running
         // browser context; report the rejection with the other suite results.
@@ -92,9 +119,7 @@ async function runSuites(url, concurrency) {
     }
   };
 
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, SUITES.length) }, worker),
-  );
+  await Promise.all(Array.from({ length: Math.min(concurrency, suites.length) }, worker));
   return results;
 }
 
@@ -151,20 +176,42 @@ async function main() {
     ours = true;
   }
 
-  const concurrency = suiteConcurrency();
   const server = await serve(root);
   let allPassed = true;
 
-  try {
-    console.log(`running ${SUITES.length} suites with concurrency ${concurrency}`);
-    const results = await runSuites(server.url, concurrency);
+  /** One group of suites, with the browser set up the way that group needs. */
+  const runGroup = async (suites, drawing) => {
+    if (!suites.length) return;
+    // The browser is launched per group: one of them wants a picture and the
+    // other must not have one, and that is decided when Chromium starts.
+    await closeBrowser();
+    if (drawing) delete process.env.PENCIL_NODRAW;
+    else process.env.PENCIL_NODRAW = '1';
+    const concurrency = Math.min(suiteConcurrency(), suites.length);
+    console.log(
+      `running ${suites.length} ${drawing ? 'drawing' : 'headless'} suites ` +
+        `with concurrency ${concurrency}`,
+    );
+    const results = await runSuites(suites, server.url, concurrency);
     for (const [index, result] of results.entries()) {
       if (result.error) {
-        console.error(`\nsuite ${index + 1} threw:`, result.error);
+        console.error(`\n${suites[index][0]} threw:`, result.error);
         allPassed = false;
       } else if (!result.suite.report()) {
         allPassed = false;
       }
+    }
+  };
+
+  try {
+    await runGroup(SUITES, false);
+    if (WANT_FRAMES) await runGroup(FRAMED, true);
+    else if (FRAMED.length) {
+      console.log(
+        `\n${FRAMED.length} suites read pixels and were not run: ` +
+          `${FRAMED.map(([name]) => name).join(' ')}\n` +
+          `they need a browser that can draw — npm run test:frame`,
+      );
     }
   } finally {
     await closeBrowser();
