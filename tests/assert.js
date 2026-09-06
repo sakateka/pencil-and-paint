@@ -34,11 +34,19 @@ export class Suite {
     return this.check(Boolean(value), description, detail);
   }
 
-  equal(actual, expected, description) {
+  /**
+   * `note` is shown alongside the numbers when this fails.
+   *
+   * Every suite passes the page's own error messages here and they were being
+   * thrown away: a failure that says only "expected 0, got 1" sends whoever
+   * reads it hunting for an error the browser had already written down.
+   */
+  equal(actual, expected, description, note) {
     return this.check(
       Object.is(actual, expected),
       description,
-      `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+      `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}` +
+        (note ? ` — ${note}` : ''),
     );
   }
 

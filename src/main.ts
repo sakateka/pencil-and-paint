@@ -142,6 +142,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function boot(): Promise<void> {
+  const bootAt = performance.now();
+  const bootAtWall = Date.now();
   /*
    * Three elements, and only one of them is the picture.
    *
@@ -172,31 +174,46 @@ async function boot(): Promise<void> {
   const startButton = document.querySelector<HTMLButtonElement>('#startBtn');
   const startLabel = startButton?.textContent ?? 'Start walking';
 
-  await firstGesture(startButton);
-  const tappedAt = performance.now();
-  const tappedAtWall = Date.now();
+  /*
+   * Everything is built before anybody presses anything.
+   *
+   * It used to wait for the first gesture and then build, which meant the load
+   * report appeared under the title card for the instant between the world
+   * being ready and the card being dismissed — information nobody could read,
+   * shown at the one moment nobody was looking. Now the card is up for the whole
+   * build, its button counts the progress, and pressing it only takes the card
+   * away.
+   *
+   * The gesture used to be waited for because Firefox on Android will not
+   * schedule a tab nobody has touched — measured on a device, 945ms of work
+   * spread over 100 seconds of wall clock. That has not changed and this is
+   * strictly better in the face of it: the work starts anyway, runs slowly if
+   * the browser is throttling us, and speeds up the moment the page is touched.
+   * The `work` figures in the report below say which happened.
+   */
+  /*
+   * The listeners go on now, the waiting happens later.
+   *
+   * Somebody who presses the button while the valley is still building means it,
+   * and a promise created only after the build would miss that press entirely —
+   * they would sit in front of a finished card that no longer answers. So the
+   * gesture is armed here and awaited at the bottom of the build.
+   */
+  const gesture = firstGesture(startButton);
+
+  const progress = (fraction: number) => {
+    if (!startButton) return;
+    startButton.textContent = t('intro.building', { n: Math.round(fraction * 100) });
+  };
   if (startButton) {
     startButton.setAttribute('aria-busy', 'true');
-    startButton.textContent = t('intro.building', { n: 0 });
+    progress(0);
   }
   // Let the label paint before the bake takes the thread.
   await yieldToBrowser();
 
-  /*
-   * Encoding the grain to a data URL is a canvas readback plus a PNG encode.
-   * Kept here, after the gesture, rather than on the critical path to first
-   * paint.
-   */
-
-  const world = await World.generate((fraction) => {
-    if (!startButton) return;
-    startButton.textContent = t('intro.building', { n: Math.round(fraction * 100) });
-  });
-
-  if (startButton) {
-    startButton.removeAttribute('aria-busy');
-    startButton.textContent = startLabel;
-  }
+  /* The world is the long pole, so it gets most of the bar. */
+  const world = await World.generate((fraction) => progress(fraction * 0.8));
   // Read this off the device: it says which phase of the bake was slow.
   /*
    * Keep the report across loads.
@@ -215,6 +232,25 @@ async function boot(): Promise<void> {
       return null; // private browsing, or storage disabled
     }
   };
+
+  const renderer = new Renderer(stageHost, grainCanvas, overlayCanvas);
+
+  /*
+   * Bake every hand-drawn picture before play starts.
+   *
+   * Under the title card, yielding between pictures, because the whole point of
+   * baking is that nothing is painted later: a picture made during a walk is a
+   * stall in that walk.
+   */
+  for (const { done, total } of renderer.warmUpLooks()) {
+    if (done % 8 === 0) await yieldToBrowser();
+    if (total) progress(0.8 + (done / total) * 0.2);
+  }
+
+  if (startButton) {
+    startButton.removeAttribute('aria-busy');
+    startButton.textContent = startLabel;
+  }
 
   if (stamp) {
     const nav = performance.getEntriesByType('navigation')[0] as
@@ -244,14 +280,15 @@ async function boot(): Promise<void> {
       ` · wall ${(Date.now() - performance.timeOrigin).toFixed(0)}` +
       ` · hidden ${(hiddenMs + (hiddenSince ? performance.now() - hiddenSince : 0)).toFixed(0)}` +
       /*
-       * The gap between the tap and a playable world, in both clocks.
+       * How long the build took, in both clocks.
        *
        * They disagree when the page is suspended: the monotonic clock stops and
-       * the wall clock does not. So `tap 80/15000` is fifteen seconds of the
-       * browser refusing to run us, while `tap 15000/15000` is fifteen seconds
-       * of our own work — a different bug entirely.
+       * the wall clock does not. So `work 80/15000` is fifteen seconds of the
+       * browser refusing to run us — which is what an untouched tab on Firefox
+       * for Android does — while `work 15000/15000` is fifteen seconds of our
+       * own work. A different bug entirely.
        */
-      ` · tap ${(performance.now() - tappedAt).toFixed(0)}/${(Date.now() - tappedAtWall).toFixed(0)}` +
+      ` · work ${(performance.now() - bootAt).toFixed(0)}/${(Date.now() - bootAtWall).toFixed(0)}` +
       (nav ? `\n${netPhases(nav)}` : '');
     const lastLoad = remember(thisLoad);
     const report = `${BUILD_ID}\n${world.bakeSummary}\n${thisLoad}` +
@@ -263,30 +300,9 @@ async function boot(): Promise<void> {
      */
     stamp.textContent = report;
   }
-  const renderer = new Renderer(stageHost, grainCanvas, overlayCanvas);
 
-  /*
-   * Bake every hand-drawn picture before play starts.
-   *
-   * Under the loading screen, yielding between pictures, because the whole
-   * point of baking is that nothing is painted later: a picture made during a
-   * walk is a stall in that walk. Registered looks are the ones that have moved
-   * off the old repaint-as-you-go path; while none have, this costs nothing and
-   * the loop does not run.
-   */
-  let baked = false;
-  for (const { done, total } of renderer.warmUpLooks()) {
-    baked = true;
-    if (done % 8 === 0) await yieldToBrowser();
-    if (startButton && total) {
-      startButton.setAttribute('aria-busy', 'true');
-      startButton.textContent = t('intro.building', { n: Math.round((done / total) * 100) });
-    }
-  }
-  if (baked && startButton) {
-    startButton.removeAttribute('aria-busy');
-    startButton.textContent = startLabel;
-  }
+  /* The card is readable for as long as they like; this only takes it away. */
+  await gesture;
 
   const perf = new Performance();
   let showPerf = false;

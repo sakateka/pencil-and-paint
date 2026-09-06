@@ -742,11 +742,15 @@ export class Stage {
   }
 
   resize(width: number, height: number): void {
-    this.game.scale.resize(width, height);
+    // Never zero: a camera of no size makes the mask filter ask the driver for
+    // a framebuffer of no size, which is not a thing drivers support.
+    const w = Math.max(1, Math.round(width));
+    const h = Math.max(1, Math.round(height));
+    this.game.scale.resize(w, h);
     const cameras = this.cameras;
     if (!cameras) return;
     for (const layer of ['sketch', 'colour', 'over'] as Layer[]) {
-      cameras[layer].setSize(width, height);
+      cameras[layer].setSize(w, h);
     }
   }
 
