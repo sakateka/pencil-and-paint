@@ -294,6 +294,21 @@ function drawPerchedBird(ctx: CanvasRenderingContext2D, rest: Rest): void {
   ctx.globalAlpha = Math.min(1, settle * 2.5);
   ctx.translate(x, y + bob);
   ctx.scale(turn, 1);
+  drawBirdBody(ctx, flick, flutter);
+  ctx.restore();
+}
+
+/**
+ * The bird itself, at the origin, facing right.
+ *
+ * Split out so it can be baked. Everything the old function did around it —
+ * where it sits, the drop as it lands, the bob, which way it faces, how far it
+ * has faded in — is a transform, and a transform is free. What is left here is
+ * the only part that is genuinely a different drawing: how far the tail is
+ * flicked and how far the wing is up.
+ */
+export function drawBirdBody(ctx: CanvasRenderingContext2D, flick: number, flutter: number): void {
+  ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 

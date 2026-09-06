@@ -1,6 +1,6 @@
 import { context2d, createSurface, isolate, type Surface } from '../core/canvas';
 import { drawCamp, type Fishing } from '../entities/fishing';
-import { drawBirds, drawEaselPicture, type Rest } from '../entities/rest';
+import { drawEaselPicture, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
 import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
 import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
@@ -22,6 +22,7 @@ import type { ColorField } from './colorField';
 import { poseOf, Stage } from './stage';
 import { LookLibrary } from './looks';
 import { hammockLook, hammockPose } from './looks/hammock';
+import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -144,8 +145,21 @@ export class Renderer {
     this.paperCtx = context2d(paperCanvas, { alpha: true });
     this.hudCtx = context2d(hudCanvas, { alpha: true });
     this.paper = createSurface(1, 1);
+    /*
+     * A size before anybody has called `resize`.
+     *
+     * Phaser boots asynchronously and tells us when it is ready, and what it
+     * gets told back is the viewport. Left at zero — which it was, until the
+     * build moved ahead of the first gesture and gave Phaser time to finish
+     * booting first — the colour camera's mask filter asks the driver for a
+     * framebuffer of no size at all, and the page throws "Framebuffer status:
+     * Framebuffer Unsupported". The host element knows the answer already.
+     */
+    this.width = Math.max(1, host.clientWidth || globalThis.innerWidth || 1);
+    this.height = Math.max(1, host.clientHeight || globalThis.innerHeight || 1);
     // One look at a time moves off the repaint-as-you-go path. See PLAN.md.
     this.looks.register(hammockLook);
+    this.looks.register(birdLook);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
       this.stage.resize(this.width, this.height);
@@ -760,9 +774,30 @@ export class Renderer {
      * trees are occluders. Drawn any earlier, every one of them would be
      * painted over by the thing it is supposed to be in.
      */
+    /*
+     * The bird, and only when there is one.
+     *
+     * The old cel was asked for whenever the tree was in view: `drawBirds`
+     * returns at once before the bird arrives, but the canvas around it did not
+     * know that and re-uploaded a blank 420px square twelve times a second for
+     * the whole of any session in which nobody finished the game.
+     */
     const { rest } = scene;
-    if (camera.canSee(rest.x, rest.y, 260)) {
-      at('birds', rest.x, rest.y, 420, DEPTH.birds, poseOf(rest), (ctx) => drawBirds(ctx, rest));
+    if (rest.perched && camera.canSee(rest.x, rest.y, 260)) {
+      const t = rest.birdTime;
+      const pose = birdPose(rest.landed, t);
+      this.stage.showLook({
+        library: this.looks,
+        id: birdLook.id,
+        poseKey: birdLook.key(pose, 'color'),
+        medium: 'color',
+        layer: 'over',
+        x: rest.perchX,
+        y: rest.perchY + birdOffsetY(rest.landed, t),
+        depth: DEPTH.birds,
+        flipX: birdFacesLeft(t),
+        alpha: birdAlpha(rest.landed),
+      });
     }
 
     /*
