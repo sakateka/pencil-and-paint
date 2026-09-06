@@ -1,13 +1,13 @@
 import { context2d, createSurface, isolate, type Surface } from '../core/canvas';
 import { drawCamp, type Fishing } from '../entities/fishing';
-import { drawBirds, drawEaselPicture, drawHammock, type Rest } from '../entities/rest';
+import { drawBirds, drawEaselPicture, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
 import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
 import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
 import { drawLion, type Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
 import { bakeSkyStrip, drawSun, SUN_BOUNDS, sunVisible } from '../world/sky';
-import { withBoil } from '../media/ink';
+import { boilTick, withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
 import { drawWalker, type Walker } from '../entities/player';
@@ -21,6 +21,7 @@ import { HAZE_RADIUS, hazeMask } from './colorField';
 import type { ColorField } from './colorField';
 import { poseOf, Stage } from './stage';
 import { LookLibrary } from './looks';
+import { hammockLook, hammockPose } from './looks/hammock';
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -143,6 +144,8 @@ export class Renderer {
     this.paperCtx = context2d(paperCanvas, { alpha: true });
     this.hudCtx = context2d(hudCanvas, { alpha: true });
     this.paper = createSurface(1, 1);
+    // One look at a time moves off the repaint-as-you-go path. See PLAN.md.
+    this.looks.register(hammockLook);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
       this.stage.resize(this.width, this.height);
@@ -518,18 +521,28 @@ export class Renderer {
       );
     }
 
+    /*
+     * The hammock, off the repaint path and onto baked pictures.
+     *
+     * Its cloth bends, so the bend is a set of pictures; its swing is a slide
+     * sideways, so the swing is the sprite's own position and costs nothing.
+     * The old cel was 420 square around ink measuring 170 by 71, repainted
+     * whenever any field of `Rest` moved — including a private counter that
+     * ticks for ever after the valley is finished.
+     */
     const { rest } = scene;
     if (camera.canSee(rest.x, rest.y, 130) && !hidden(rest.x, rest.y, 90)) {
-      at(
-        'hammock',
-        rest.x,
-        rest.y,
-        420,
-        DEPTH.hammock,
-        poseOf(rest),
-        (ctx) => still(() => drawHammock(ctx, rest, medium)),
-        medium === 'color',
-      );
+      const pose = hammockPose(rest.settled, rest.resting, medium === 'color' ? boilTick() : 0);
+      this.stage.showLook({
+        library: this.looks,
+        id: hammockLook.id,
+        poseKey: hammockLook.key(pose, medium),
+        medium,
+        layer,
+        x: rest.x + rest.swing,
+        y: rest.y,
+        depth: DEPTH.hammock,
+      });
     }
 
     const { vigil } = scene;

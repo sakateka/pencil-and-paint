@@ -42,6 +42,24 @@ export function withBoil<T>(alive: boolean, fn: () => T): T {
   }
 }
 
+/**
+ * Draw `fn` at a named boil tick, rather than at whatever the clock says.
+ *
+ * For baking. A picture painted once has to choose its hand-tremor rather than
+ * inherit it, and a look that wants to keep boiling bakes two or three ticks and
+ * cycles between them — which is how hand-drawn animation has always done boil,
+ * and costs nothing once the pictures are on the GPU.
+ */
+export function withBoilAt<T>(tick: number, fn: () => T): T {
+  const previous = boil;
+  boil = tick;
+  try {
+    return fn();
+  } finally {
+    boil = previous;
+  }
+}
+
 /** Deterministic jitter for stroke `index`, stable within the current boil tick. */
 export function jitter(index: number, amplitude: number): number {
   const n = Math.sin(index * 127.1 + boil * 311.7) * 43758.5453;

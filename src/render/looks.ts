@@ -49,8 +49,13 @@ export interface Look<Pose> {
   /** Every picture this look can ever show. Finite, and that is the point. */
   poses(): Iterable<Pose>;
 
-  /** A stable name for one pose. Two poses with one key are one picture. */
-  key(pose: Pose): string;
+  /**
+   * A stable name for one pose in one medium. Two poses with one key are one
+   * picture, and the library bakes it once — which is how a look whose graphite
+   * copy ignores a dimension (the boil, say) avoids baking three identical
+   * pencil drawings of the same thing.
+   */
+  key(pose: Pose, medium: Medium): string;
 
   /**
    * Paint one pose with its own origin at (0, 0).
@@ -133,8 +138,8 @@ export class LookLibrary {
       const scratch = createSurface(size, size, { willReadFrequently: true });
       const centre = size / 2;
       for (const pose of look.poses()) {
-        const poseKey = look.key(pose);
         for (const medium of look.media) {
+          const poseKey = look.key(pose, medium);
           const slot = LookLibrary.slot(look.id, poseKey, medium);
           if (!this.baked.has(slot)) {
             this.baked.set(slot, this.paint(look, pose, medium, scratch, centre, size));
