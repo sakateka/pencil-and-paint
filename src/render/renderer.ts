@@ -10,7 +10,7 @@ import { bakeSkyStrip, drawSun, SUN_BOUNDS, sunVisible } from '../world/sky';
 import { boilTick, withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
-import { drawWalker, type Walker } from '../entities/player';
+import type { Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import type { Particles } from '../entities/particles';
 import { drawPot, type Pot } from '../entities/pots';
@@ -31,6 +31,7 @@ import {
 } from './looks/hammock';
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
+import { registerWalkerLooks, showWalker } from './looks/walker';
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -171,6 +172,7 @@ export class Renderer {
     }
     this.looks.register(birdLook);
     registerHerdLooks(this.looks);
+    registerWalkerLooks(this.looks);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
       this.stage.resize(this.width, this.height);
@@ -735,23 +737,15 @@ export class Renderer {
       !scene.perches.some((p) => p.resting)
     ) {
       /*
-       * The one thing repainted every frame rather than on the step. The walker
-       * is what the eye is on, and a stepped walk cycle on the figure you are
-       * steering reads as lag rather than as pencil. One 160px cel is a
-       * hundred kilobytes — the herd is what the step rate is for.
+       * Three sprites: the shadow, the figure, the paint on the brush.
+       *
+       * This was the last thing in the game repainted every frame, and the
+       * first thing the instrument caught — a hundred kilobytes a frame while
+       * standing perfectly still, because a 160px cel is a hundred kilobytes
+       * whether the person in it moved or not. See `looks/walker.ts` for why a
+       * stepped walk cycle on the figure you are steering does not read as one.
        */
-      this.stage.cel({
-        id: 'walker',
-        layer: 'over',
-        medium: 'color',
-        left: walker.x - 80,
-        top: walker.y - 80,
-        width: 160,
-        height: 160,
-        depth: DEPTH.walker,
-        pose: `${scene.elapsed.toFixed(3)}|${poseOf(walker)}`,
-        draw: (ctx) => drawWalker(ctx, walker, scene.elapsed),
-      });
+      showWalker(this.stage, this.looks, walker, 'over', DEPTH.walker, scene.elapsed);
     }
 
     /*

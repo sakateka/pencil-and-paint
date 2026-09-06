@@ -324,6 +324,61 @@ export async function run(url) {
     // The hair is a filled cap, not a thin band around the crown.
     suite.atLeast(gait.hairShare, 0.3, 'the walker has hair on their head');
 
+    /*
+     * The paint on the brush is whichever pot was picked up last.
+     *
+     * Which is why the tip is a picture of its own: the walker is baked once,
+     * and fourteen paint pots would otherwise be fourteen walkers. It is baked
+     * white and the sprite is tinted, so this is the assertion that the tint is
+     * arriving — a white brush and a wrong-coloured one both pass every other
+     * test in this file.
+     */
+    const loaded = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      const near = (a, b, t) => Math.abs(a - b) <= t;
+      const hex = (h) => [
+        Number.parseInt(h.slice(1, 3), 16),
+        Number.parseInt(h.slice(3, 5), 16),
+        Number.parseInt(h.slice(5, 7), 16),
+      ];
+      const count = (brush, wanted) => {
+        game.walker.x = 1300;
+        game.walker.y = 1330;
+        game.walker.vx = 0;
+        game.walker.vy = 0;
+        game.walker.face = 1;
+        game.walker.facing = 'side';
+        game.walker.step = 0;
+        game.walker.brush = brush;
+        game.camera.snapTo(game.walker.x, game.walker.y - 14);
+        renderer.render(game.scene);
+        const cx = Math.round(game.camera.toScreenX(game.walker.x) * renderer.scale);
+        const cy = Math.round(game.camera.toScreenY(game.walker.y) * renderer.scale);
+        const R = 60;
+        const img = pencil.composited(cx - R, cy - R * 1.4, R * 2, R * 1.6);
+        const [wr, wg, wb] = hex(wanted);
+        let n = 0;
+        for (let i = 0; i < img.data.length; i += 4) {
+          if (img.data[i + 3] < 200) continue;
+          if (near(img.data[i], wr, 10) && near(img.data[i + 1], wg, 10) && near(img.data[i + 2], wb, 10)) n++;
+        }
+        return n;
+      };
+      // Teal, which appears nowhere else on the walker — the default brush is
+      // the same red as the shirt, so counting that would prove nothing.
+      const teal = '#2fa39a';
+      const blue = '#4a90c2';
+      return {
+        tealWhileTeal: count(teal, teal),
+        tealWhileBlue: count(blue, teal),
+        blueWhileBlue: count(blue, blue),
+      };
+    });
+
+    suite.atLeast(loaded.tealWhileTeal, 8, 'the brush shows the colour it is loaded with');
+    suite.atLeast(loaded.blueWhileBlue, 8, 'and the next colour after that');
+    suite.equal(loaded.tealWhileBlue, 0, 'and only the one it is loaded with');
+
     // Blitting the world is the biggest thing in the frame, and it is only
     // cheap when it is one-to-one. Every rung of an earlier scale ladder was
     // slower than simply staying at 1, so dropping the resolution to save time

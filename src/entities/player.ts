@@ -59,7 +59,7 @@ export function resetWalker(player: Walker): void {
   player.brush = DEFAULT_BRUSH;
 }
 
-function drawWalkerShadow(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+export function drawWalkerShadow(ctx: CanvasRenderingContext2D, x: number, y: number): void {
   drawShadowBlob(ctx, x, y, 17, 7.2);
 }
 
@@ -180,13 +180,12 @@ function drawArm(
   ctx.restore();
 }
 
-/** The near arm, with a hand and the brush it is carrying. */
-function drawBrushArm(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  angle: number,
-  brush: string,
-): void {
+/**
+ * The near arm, with a hand and the handle of the brush it is carrying —
+ * everything except the loaded tip, which is a different colour every few pots
+ * and is therefore drawn on its own. See `drawBrushTip`.
+ */
+function drawBrushArm(ctx: CanvasRenderingContext2D, x: number, angle: number): void {
   ctx.save();
   ctx.translate(x, SHOULDER_Y);
   ctx.rotate(angle);
@@ -204,8 +203,31 @@ function drawBrushArm(
   ctx.moveTo(0, 13);
   ctx.lineTo(6, 22);
   ctx.stroke();
-  ctx.strokeStyle = brush;
+  ctx.restore();
+}
+
+/**
+ * The tip of the brush, on the end of the same arm, in `colour`.
+ *
+ * Split out because the colour is the one thing about this drawing that is not
+ * known in advance: it is whichever of fourteen pots was picked up last, and
+ * baking a whole walker for each would be fourteen walkers. Drawn white, it is
+ * a picture the sprite can be tinted to any of them for nothing — which is what
+ * the renderer does, and why this takes a colour at all only for the sake of
+ * anyone drawing a walker straight onto a canvas.
+ */
+function drawBrushTip(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  angle: number,
+  colour: string,
+): void {
+  ctx.save();
+  ctx.translate(x, SHOULDER_Y);
+  ctx.rotate(angle);
+  ctx.strokeStyle = colour;
   ctx.lineWidth = 3.4;
+  ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(6, 22);
   ctx.lineTo(9, 26.5);
@@ -261,22 +283,43 @@ function drawScarf(ctx: CanvasRenderingContext2D, sw: number, sideOn: boolean): 
   ctx.fill();
 }
 
-export function drawWalker(ctx: CanvasRenderingContext2D, player: Walker, t: number): void {
-  const moving = Math.hypot(player.vx, player.vy) > 6;
-  const sw = moving ? Math.sin(player.step) : 0;
-  const bob = moving ? Math.abs(Math.sin(player.step)) * 2.2 : Math.sin(t * 2) * 0.8;
-  const sideOn = player.facing === 'side';
+/**
+ * How far through the swing the limbs are, from a walk phase.
+ *
+ * The one number the whole figure is shaped by: legs, arms and the trailing end
+ * of the scarf are all a multiple of it, so two phases with the same `swing`
+ * are the same drawing and the library bakes them once.
+ */
+export function walkSwing(step: number, moving: boolean): number {
+  return moving ? Math.sin(step) : 0;
+}
 
-  ctx.save();
-  drawWalkerShadow(ctx, player.x, player.y + 3);
-  ctx.translate(player.x, player.y - bob);
-  ctx.scale(player.face, 1);
+/** How far the figure rides above its feet. A translate, never a drawing. */
+export function walkBob(step: number, moving: boolean, t: number): number {
+  return moving ? Math.abs(Math.sin(step)) * 2.2 : Math.sin(t * 2) * 0.8;
+}
+
+/**
+ * The figure, drawn about its own feet, facing +x, with the brush unloaded.
+ *
+ * Everything that used to be worked out from the walker is a parameter now, so
+ * that the same strokes serve a live walker and a picture of one baked at
+ * warm-up. What is deliberately *not* here: the shadow, which does not ride the
+ * bob; the mirror, which is a scale; and the tip of the brush, which is a
+ * colour nobody knows in advance.
+ */
+export function drawWalkerFigure(
+  ctx: CanvasRenderingContext2D,
+  facing: Facing,
+  swing: number,
+): void {
+  const sideOn = facing === 'side';
 
   // Legs swing as pendulums from the hip, near and far taking opposite signs.
   for (const side of [-1, 1] as const) {
     ctx.save();
     ctx.translate(side * 3.0, HIP_Y);
-    ctx.rotate(side * sw * LEG_SWING);
+    ctx.rotate(side * swing * LEG_SWING);
     ctx.fillStyle = side > 0 ? '#3d5a80' : '#33496a';
     roundRectPath(ctx, -3, 0, 6, 13, 3);
     ctx.fill();
@@ -286,22 +329,62 @@ export function drawWalker(ctx: CanvasRenderingContext2D, player: Walker, t: num
     ctx.restore();
   }
 
-  const farAngle = sw * ARM_SWING + ARM_REST;
-  const nearAngle = -sw * ARM_SWING + ARM_REST;
-
   // In profile the far arm belongs *behind* the torso, so it is drawn first and
   // only shows where it swings clear of the body. Drawn over the chest it read
   // as a second front arm attached at the back.
-  if (sideOn) drawArm(ctx, SHOULDER_SIDE_FAR, farAngle, SHIRT_SHADE);
+  if (sideOn) drawArm(ctx, SHOULDER_SIDE_FAR, farArmAngle(swing), SHIRT_SHADE);
 
   drawTorso(ctx, sideOn);
-  drawScarf(ctx, sw, sideOn);
+  drawScarf(ctx, swing, sideOn);
 
-  if (!sideOn) drawArm(ctx, SHOULDER_FRONT_FAR, farAngle, SHIRT_SHADE);
+  if (!sideOn) drawArm(ctx, SHOULDER_FRONT_FAR, farArmAngle(swing), SHIRT_SHADE);
 
-  drawHead(ctx, player.facing);
+  drawHead(ctx, facing);
 
-  drawBrushArm(ctx, sideOn ? SHOULDER_SIDE_NEAR : SHOULDER_FRONT_NEAR, nearAngle, player.brush);
+  drawBrushArm(ctx, nearShoulder(facing), nearArmAngle(swing));
+}
 
+/** The loaded tip alone, in the same frame as the figure. */
+export function drawWalkerBrush(
+  ctx: CanvasRenderingContext2D,
+  facing: Facing,
+  swing: number,
+  colour: string,
+): void {
+  drawBrushTip(ctx, nearShoulder(facing), nearArmAngle(swing), colour);
+}
+
+function nearShoulder(facing: Facing): number {
+  return facing === 'side' ? SHOULDER_SIDE_NEAR : SHOULDER_FRONT_NEAR;
+}
+
+function farArmAngle(swing: number): number {
+  return swing * ARM_SWING + ARM_REST;
+}
+
+function nearArmAngle(swing: number): number {
+  return -swing * ARM_SWING + ARM_REST;
+}
+
+/**
+ * A whole walker onto a canvas, in world coordinates.
+ *
+ * The renderer does not go through here any more — it hangs the three pieces on
+ * sprites of their own, so that walking costs a transform rather than a
+ * hundred-kilobyte repaint every frame — but a walker drawn in one call is
+ * still the readable definition of what the pieces add up to, and the tests
+ * that ask about the figure ask it here.
+ */
+export function drawWalker(ctx: CanvasRenderingContext2D, player: Walker, t: number): void {
+  const moving = Math.hypot(player.vx, player.vy) > 6;
+  const swing = walkSwing(player.step, moving);
+  const bob = walkBob(player.step, moving, t);
+
+  ctx.save();
+  drawWalkerShadow(ctx, player.x, player.y + 3);
+  ctx.translate(player.x, player.y - bob);
+  ctx.scale(player.face, 1);
+  drawWalkerFigure(ctx, player.facing, swing);
+  drawWalkerBrush(ctx, player.facing, swing, player.brush);
   ctx.restore();
 }
