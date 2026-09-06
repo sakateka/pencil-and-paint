@@ -187,6 +187,119 @@ export const SCENES = {
     },
   },
 
+  cownorth: {
+    describe: 'a cow walking north, across the one long horizontal edge she has',
+
+    motion: {
+      /*
+       * The top of her back, which is where a shimmer was reported.
+       *
+       * Walking north moves that edge along its own normal, which is the worst
+       * case for it: a long horizontal boundary sliding vertically shows every
+       * fraction of a pixel it is resampled at.
+       *
+       * Time is slowed rather than the cow: a fifth of a frame per step, so
+       * consecutive samples are a fifth of a pixel apart. At her own pace she
+       * covers exactly one pixel a frame, which is the one speed at which a
+       * sprite that snapped to whole pixels and one that did not would produce
+       * the same numbers.
+       */
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        const cow = game.herd.animals
+          .filter((a) => a.kind === 'cow')
+          .sort((a, b) => a.homeX - b.homeX || a.homeY - b.homeY)[0];
+        cow.x = cow.homeX;
+        cow.y = cow.homeY;
+        // Everybody else off the map: two cows in one box is two edges.
+        for (const a of game.herd.animals) {
+          if (a === cow) continue;
+          a.x = -9000;
+          a.y = -9000;
+        }
+        game.teleport(cow.x, cow.y + 90);
+        for (let i = 0; i < 30; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.camera.snapTo(cow.homeX, cow.homeY - 20);
+        /*
+         * The page's own loop is stopped and the field is stepped by hand.
+         *
+         * Left running, the wall-clock time a screenshot takes goes into the
+         * simulation between samples, and she covers two or three pixels
+         * between one frame and the next however small a `dt` the probe asks
+         * for — which is exactly the resolution this is trying to get below.
+         */
+        game.running = false;
+        cow.face = 1;
+        cow.headDown = 0;
+        renderOnce();
+        /*
+         * Only the columns right of her middle. The near blotch comes within a
+         * pixel of the top of her back on the left, and a dark ellipse under
+         * the edge being measured is a second edge for the probe to find.
+         */
+        return {
+          x: Math.round(game.camera.toScreenX(cow.homeX + 1 * cow.scale)),
+          y: Math.round(game.camera.toScreenY(cow.homeY - 34 * cow.scale) - 12),
+          width: 12,
+          height: 20,
+        };
+      },
+
+      step: (pencil) => {
+        const { game } = pencil;
+        const cow = game.herd.animals
+          .filter((a) => a.kind === 'cow')
+          .sort((a, b) => a.homeX - b.homeX || a.homeY - b.homeY)[0];
+        // Held on course: the field's own state machine would otherwise roll a
+        // new destination partway through and turn her.
+        cow.state = 'walk';
+        cow.timer = 999;
+        cow.targetX = cow.x;
+        cow.targetY = cow.homeY - 4000;
+        game.herd.update(1 / 300, {
+          walkerX: game.walker.x,
+          walkerY: game.walker.y,
+          isAwakeAt: game.isAwakeAt,
+          resolveCollisions: () => {},
+        });
+        game.camera.snapTo(cow.homeX, cow.homeY - 20);
+        pencil.renderOnce();
+      },
+
+      /**
+       * Where the grass gives way to her back, to a fraction of a pixel.
+       *
+       * Per column, because averaging a curved edge over columns that come and
+       * go moves the answer on its own. The crossing is interpolated on how
+       * green the pixel is, which is what actually fades across the edge.
+       */
+      find: (strip) => {
+        const green = (x, y) => {
+          const i = (y * strip.width + x) * 4;
+          return strip.data[i + 1] - (strip.data[i] + strip.data[i + 2]) / 2;
+        };
+        let total = 0;
+        let n = 0;
+        for (let x = 0; x < strip.width; x++) {
+          const grass = green(x, 0);
+          const cow = green(x, strip.height - 1);
+          if (grass - cow < 25) continue; // no edge in this column
+          const mid = (grass + cow) / 2;
+          for (let y = 1; y < strip.height; y++) {
+            const above = green(x, y - 1);
+            const below = green(x, y);
+            if (above > mid && below <= mid) {
+              total += y - 1 + (above - mid) / (above - below);
+              n++;
+              break;
+            }
+          }
+        }
+        return n ? total / n : -1;
+      },
+    },
+  },
+
   frog: {
     describe: 'a frog taking fright and going under, which lasts a third of a second',
 
@@ -275,7 +388,14 @@ export const SCENES = {
       /** A band of pixels across the walker's chest. */
       begin: (pencil) => {
         const { game, renderOnce } = pencil;
-        game.running = false;
+        /*
+         * Running, which this used to turn off — and `advance` counts elapsed
+         * and then returns, so every step of the probe was a walker standing
+         * perfectly still. It reported a biggest step of half a pixel and read
+         * as a clean pass; what it was measuring was the noise on a screenshot
+         * of somebody who had not moved.
+         */
+        game.running = true;
         const west = { direction: () => ({ x: -1, y: 0 }) };
         for (let i = 0; i < 30; i++) game.advance(1 / 60, west);
         renderOnce();
