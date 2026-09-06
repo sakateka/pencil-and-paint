@@ -619,6 +619,76 @@ export class Stage {
   private readonly lookImages: Phaser.GameObjects.Image[] = [];
   private looksUsed = 0;
 
+  /**
+   * Show a baked picture bent along a curve.
+   *
+   * For the things that are one drawing being deformed rather than a set of
+   * different drawings. A hammock sagging under somebody is the case that
+   * taught this: baked as pictures it took six of them to cover the second it
+   * takes to lie down, it stepped visibly between them, and it cost six times
+   * the memory of one. As a rope it is a single picture baked flat and a couple
+   * of dozen vertex positions written per frame — perfectly smooth, because
+   * nothing is quantised, and perfectly cheap, because moving a vertex is not
+   * an upload.
+   *
+   * `points` are in world units relative to `x`/`y`, running along the picture.
+   */
+  showRope(request: {
+    library: LookLibrary;
+    id: string;
+    poseKey: string;
+    medium: Medium;
+    layer: Layer;
+    x: number;
+    y: number;
+    depth: number;
+    alpha?: number;
+    points: readonly { x: number; y: number }[];
+  }): boolean {
+    const scene = this.scene;
+    if (!scene) return false;
+    const slot = LookLibrary.slot(request.id, request.poseKey, request.medium);
+    const key = this.lookTextures.get(slot);
+    if (!key || request.points.length < 2) return false;
+
+    let rope = this.ropes[this.ropesUsed];
+    if (!rope) {
+      rope = scene.add.rope(
+        0,
+        0,
+        key,
+        undefined,
+        request.points.map((p) => ({ x: p.x, y: p.y })),
+      );
+      this.ropes.push(rope);
+    }
+    this.ropesUsed++;
+    rope.cameraFilter = this.maskExcept(request.layer);
+    rope.setTexture(key);
+    rope.setVisible(true);
+    rope.setDepth(request.depth);
+    rope.setAlpha(request.alpha ?? 1);
+    rope.setPosition(request.x, request.y);
+    /*
+     * The points array is reused rather than replaced. `setPoints` rebuilds the
+     * vertex, colour and alpha buffers and resets the rope; writing into the
+     * points it already has and marking it dirty is the whole difference
+     * between handing the GPU new geometry and handing it new everything.
+     */
+    if (rope.points.length !== request.points.length) {
+      rope.setPoints(request.points.map((p) => ({ x: p.x, y: p.y })));
+    }
+    for (let i = 0; i < request.points.length; i++) {
+      rope.points[i].x = request.points[i].x;
+      rope.points[i].y = request.points[i].y;
+    }
+    rope.setDirty();
+    return true;
+  }
+
+  private readonly ropes: Phaser.GameObjects.Rope[] = [];
+  private ropesUsed = 0;
+
   /** The bitmask of every camera that must *not* draw this object. */
   private maskExcept(layer: Layer): number {
     const cameras = this.cameras;
@@ -636,6 +706,8 @@ export class Stage {
       this.lookImages[i].setVisible(false);
     }
     this.looksUsed = 0;
+    for (let i = this.ropesUsed; i < this.ropes.length; i++) this.ropes[i].setVisible(false);
+    this.ropesUsed = 0;
   }
 
   /** Hide the stamps nobody asked for, and start counting again. */
@@ -810,6 +882,8 @@ export class Stage {
     this.sprites.clear();
     for (const image of this.lookImages) image.destroy();
     this.lookImages.length = 0;
+    for (const rope of this.ropes) rope.destroy();
+    this.ropes.length = 0;
     this.lookTextures.clear();
     this.game.destroy(true, false);
   }

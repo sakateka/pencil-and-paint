@@ -21,7 +21,14 @@ import { HAZE_RADIUS, hazeMask } from './colorField';
 import type { ColorField } from './colorField';
 import { poseOf, Stage } from './stage';
 import { LookLibrary } from './looks';
-import { hammockLook, hammockPose } from './looks/hammock';
+import {
+  clothPoints,
+  hammockBoil,
+  hammockClothLook,
+  hammockEdgeLook,
+  hammockEndsLook,
+  hammockSleeperLook,
+} from './looks/hammock';
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
 
 /** Everything the renderer needs to draw a frame. */
@@ -158,7 +165,9 @@ export class Renderer {
     this.width = Math.max(1, host.clientWidth || globalThis.innerWidth || 1);
     this.height = Math.max(1, host.clientHeight || globalThis.innerHeight || 1);
     // One look at a time moves off the repaint-as-you-go path. See PLAN.md.
-    this.looks.register(hammockLook);
+    for (const look of [hammockEndsLook, hammockClothLook, hammockEdgeLook, hammockSleeperLook]) {
+      this.looks.register(look);
+    }
     this.looks.register(birdLook);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
@@ -536,27 +545,60 @@ export class Renderer {
     }
 
     /*
-     * The hammock, off the repaint path and onto baked pictures.
+     * The hammock: flat pictures, bent by geometry.
      *
-     * Its cloth bends, so the bend is a set of pictures; its swing is a slide
-     * sideways, so the swing is the sprite's own position and costs nothing.
-     * The old cel was 420 square around ink measuring 170 by 71, repainted
-     * whenever any field of `Rest` moved — including a private counter that
-     * ticks for ever after the valley is finished.
+     * The cloth and the person in it are one drawing each, baked straight, and
+     * hung on ropes whose points follow the same curve the drawing does. So the
+     * sag is exactly as smooth as the easing behind it — nothing is quantised —
+     * and a frame of it costs a couple of hundred bytes of vertex positions
+     * rather than a 48KB repaint. The ties do not move at all: the curve is
+     * zero at both ends however far the middle drops.
      */
     const { rest } = scene;
     if (camera.canSee(rest.x, rest.y, 130) && !hidden(rest.x, rest.y, 90)) {
-      const pose = hammockPose(rest.settled, rest.resting, medium === 'color' ? boilTick() : 0);
+      const boil = hammockBoil(medium === 'color' ? boilTick() : 0);
+      const x = rest.x + rest.swing;
+      const { y, sag } = rest;
+
       this.stage.showLook({
         library: this.looks,
-        id: hammockLook.id,
-        poseKey: hammockLook.key(pose, medium),
+        id: hammockEndsLook.id,
+        poseKey: hammockEndsLook.key(boil, medium),
         medium,
         layer,
-        x: rest.x + rest.swing,
-        y: rest.y,
+        x,
+        y,
         depth: DEPTH.hammock,
       });
+
+      const bend = (look: typeof hammockClothLook, depth: number, alpha?: number) => {
+        const baked = this.looks.get(look.id, look.key(boil, medium), medium);
+        if (!baked) return;
+        this.stage.showRope({
+          library: this.looks,
+          id: look.id,
+          poseKey: look.key(boil, medium),
+          medium,
+          layer,
+          x,
+          y,
+          depth,
+          alpha,
+          points: clothPoints(baked.dx, baked.width, baked.dy + baked.height / 2, sag),
+        });
+      };
+
+      bend(hammockClothLook, DEPTH.hammock + 0.0001);
+      /*
+       * The sleeper only while somebody is actually in it — the cloth lifts
+       * gently once they get out, but a person fading away in mid-air is a
+       * ghost rather than a movement — and only in colour, where the walker
+       * always is.
+       */
+      if (medium === 'color' && rest.resting) {
+        bend(hammockSleeperLook, DEPTH.hammock + 0.0002);
+      }
+      if (medium === 'color') bend(hammockEdgeLook, DEPTH.hammock + 0.0003);
     }
 
     const { vigil } = scene;

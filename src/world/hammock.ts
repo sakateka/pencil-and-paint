@@ -102,8 +102,15 @@ function ropes(
   }
 }
 
-/** The cloth, its ropes and the stripes across it. Shared with the live draw. */
-export function drawHammockCloth(
+/**
+ * The ties: the ropes gathered to each tree, and their knots.
+ *
+ * Split from the cloth because the two behave completely differently as the
+ * hammock loads. `hammockCurve` is zero at both ends whatever the sag, so this
+ * end of the drawing does not move at all — it is one picture, for ever. The
+ * cloth between them is what bends.
+ */
+export function drawHammockEnds(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -123,7 +130,36 @@ export function drawHammockCloth(
       ctx.arc(x + side * (HAMMOCK_SPAN / 2 + 12), y - TIE_HEIGHT - 8, 2.6, 0, TAU);
       ctx.fill();
     }
+    return;
+  }
 
+  isolate(ctx, () => {
+    ctx.strokeStyle = PENCIL;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.42;
+    ctx.lineWidth = 0.9;
+    ropes(ctx, x, y, sag, 0.6);
+  });
+}
+
+/**
+ * The cloth itself: the band, its stripes and its edge.
+ *
+ * Drawn flat — with `sag` at zero — this is a straight strip, which is what it
+ * is baked as. The bend is then geometry rather than a repaint: the strip is
+ * shown on a rope whose points follow `hammockCurve`, so the sag is continuous
+ * and costs a couple of dozen vertex positions a frame. It used to be baked at
+ * six discrete sags and stepped between them, which was both visibly jerky and
+ * six times the memory of one picture.
+ */
+export function drawHammockBand(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  sag: number,
+  medium: Medium,
+): void {
+  if (medium === 'color') {
     // The cloth: the curve, and the same curve dropped by its depth, closed.
     ctx.beginPath();
     for (let i = 0; i <= 22; i++) {
@@ -163,10 +199,6 @@ export function drawHammockCloth(
   isolate(ctx, () => {
     ctx.strokeStyle = PENCIL;
     ctx.lineCap = 'round';
-    ctx.globalAlpha = 0.42;
-    ctx.lineWidth = 0.9;
-    ropes(ctx, x, y, sag, 0.6);
-
     ctx.globalAlpha = 0.55;
     ctx.lineWidth = 1.15;
     traceHammock(ctx, x, y, sag, 0.7, 10);
@@ -186,6 +218,18 @@ export function drawHammockCloth(
       ctx.stroke();
     }
   });
+}
+
+/** The cloth, its ropes and the stripes across it. Shared with the live draw. */
+export function drawHammockCloth(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  sag: number,
+  medium: Medium,
+): void {
+  drawHammockEnds(ctx, x, y, sag, medium);
+  drawHammockBand(ctx, x, y, sag, medium);
 }
 
 export function makeHammock(x: number, y: number): Scenery {

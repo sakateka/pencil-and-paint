@@ -160,21 +160,32 @@ export function drawHammock(ctx: CanvasRenderingContext2D, rest: Rest, medium: M
   drawHammockCloth(ctx, x, y, sag, medium);
   // Only while somebody is actually in it: the cloth lifts gently once they
   // get out, but a person fading away in mid-air is a ghost, not a movement.
-  if (medium === 'color' && rest.resting) drawSleeper(ctx, x, y, sag, rest);
-
-  // The cloth's near edge again, over the legs, so they are *in* it.
-  if (medium === 'color') {
-    ctx.strokeStyle = '#cbbb98';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    for (let i = 0; i <= 20; i++) {
-      const p = hammockPoint(x, y, i / 20, sag);
-      if (i === 0) ctx.moveTo(p.x, p.y + 12);
-      else ctx.lineTo(p.x, p.y + 12);
-    }
-    ctx.stroke();
-  }
+  if (medium === 'color' && rest.resting) drawSleeper(ctx, x, y, sag, rest.settled, rest.clock);
+  if (medium === 'color') drawHammockNearEdge(ctx, x, y, sag);
   ctx.restore();
+}
+
+/**
+ * The cloth's near edge again, over the legs, so they are *in* it.
+ *
+ * Its own function so it can be baked flat and bent on a rope like the cloth —
+ * it is the same curve, thirteen pixels lower.
+ */
+export function drawHammockNearEdge(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  sag: number,
+): void {
+  ctx.strokeStyle = '#cbbb98';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let i = 0; i <= 20; i++) {
+    const p = hammockPoint(x, y, i / 20, sag);
+    if (i === 0) ctx.moveTo(p.x, p.y + 12);
+    else ctx.lineTo(p.x, p.y + 12);
+  }
+  ctx.stroke();
 }
 
 /**
@@ -190,14 +201,15 @@ export function drawBirds(ctx: CanvasRenderingContext2D, rest: Rest): void {
 }
 
 /** The walker, lying along the curve with their hands behind their head. */
-function drawSleeper(
+export function drawSleeper(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   sag: number,
-  rest: Rest,
+  settled: number,
+  clock: number,
 ): void {
-  const fade = clamp((rest.settled - 0.05) / 0.4, 0, 1);
+  const fade = clamp((settled - 0.05) / 0.4, 0, 1);
   /*
    * Where the body lies along the cloth, as fractions across it.
    *
@@ -210,7 +222,7 @@ function drawSleeper(
   const hips = hammockPoint(x, y, 0.5, sag);
   const feet = hammockPoint(x, y, 0.63, sag);
   // Breathing, slow and shallow. Anything more and they look uncomfortable.
-  const breath = Math.sin(rest.clock * 0.9) * 0.7;
+  const breath = Math.sin(clock * 0.9) * 0.7;
 
   ctx.save();
   ctx.globalAlpha = fade;

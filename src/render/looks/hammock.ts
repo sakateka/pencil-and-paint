@@ -1,95 +1,144 @@
-import { drawHammock, Rest } from '../../entities/rest';
+import { drawHammockNearEdge, drawSleeper } from '../../entities/rest';
+import { drawHammockBand, drawHammockEnds, hammockCurve, HAMMOCK_SPAN } from '../../world/hammock';
 import { withBoilAt } from '../../media/ink';
 import type { Medium } from '../../media/medium';
 import type { Look } from '../looks';
 
 /**
- * The hammock, as a finite set of pictures.
+ * The hammock, as four flat pictures that are bent by geometry.
  *
- * The worst offender in the old frame and the reason it goes first: a cloth
- * whose ink measures 170 by 71 lived in a canvas of 420 by 420 — ninety-three
- * per cent of every upload was transparent padding — and it was re-uploaded
- * whenever any field of `Rest` moved, including a private counter that ticks
- * for ever once the valley is finished. Measured, the hammock and the bird
- * between them ran at eighty megabytes a second in that state.
+ * The first attempt at this baked the sag itself: six pictures across the
+ * second it takes to lie down, and the renderer picked the nearest. It was
+ * wrong twice over and the second way is the one that matters.
  *
- * What is a picture here, and what is not:
+ *   - It looked like it was lagging. The cloth dropped four pixels at a time,
+ *     six times, which reads exactly like a frame being dropped even though the
+ *     frame rate never moved. A smooth motion cut into steps is not cheaper
+ *     smoothness, it is a stutter you built on purpose.
+ *   - It cost six times what it should. 2.1MB for one hammock, because every
+ *     sag multiplied by every other dimension.
  *
- *   sag       the cloth genuinely bends, so it is a picture: `settled` in six
- *             steps across the second and a bit it takes to lie down
- *   sleeper   drawn only while somebody is in it, so `resting` is a picture too
- *   swing     the whole drawing slides sideways — a transform, and free
- *   boil      the hand re-inks the drawing seven times a second; three baked
- *             ticks cycle in its place, which is how boil has been done by hand
- *             since long before there were computers
+ * The rule this broke is the one this whole design is built on, and it is worth
+ * stating properly: **a picture is a drawing that is genuinely different. A
+ * deformation is not.** A walk cycle is pictures. A head coming up from the
+ * grass is pictures. Cloth sagging under somebody is one picture being bent,
+ * and bending is what geometry is for.
  *
- * The graphite copy holds perfectly still — pencil on paper, and paper does not
- * move — so it ignores the boil and bakes one tick instead of three. That is
- * what `key` taking a medium is for.
+ * So: the cloth is baked flat, once, and shown on a rope whose points follow
+ * `hammockCurve` every frame. The sag is continuous — as smooth as the easing
+ * behind it — and it costs twenty-three vertex positions a frame, which is
+ * about two hundred bytes against the 48KB a repaint used to be.
+ *
+ * The ends do not move at all: `hammockCurve` is zero at both ties whatever the
+ * sag, so the ropes and knots are one picture, placed and never touched.
  */
 
-/** How finely the cloth's bend is cut. Six across a 1.1s settle. */
-const SETTLE_STEPS = 6;
+/** How many points the cloth is bent through. The drawing itself uses 22. */
+export const CLOTH_POINTS = 23;
 
-/** Baked hands, cycled at the ink's own rate. */
+/** Baked hands, cycled at the ink's own rate. Graphite bakes one and holds. */
 export const HAMMOCK_BOILS = 3;
 
+/** A pose here is only which hand drew it. The shape is geometry. */
 export interface HammockPose {
-  /** `settled`, quantised: 0 is empty cloth, SETTLE_STEPS is fully loaded. */
-  readonly step: number;
-  readonly resting: boolean;
   readonly boil: number;
 }
 
-/** The pose a live hammock is currently in. The only place quantising happens. */
-export function hammockPose(
-  settled: number,
-  resting: boolean,
-  boilTick: number,
-): HammockPose {
-  return {
-    step: Math.round(Math.min(1, Math.max(0, settled)) * SETTLE_STEPS),
-    resting,
-    boil: ((boilTick % HAMMOCK_BOILS) + HAMMOCK_BOILS) % HAMMOCK_BOILS,
-  };
+export function hammockBoil(boilTick: number): HammockPose {
+  return { boil: ((boilTick % HAMMOCK_BOILS) + HAMMOCK_BOILS) % HAMMOCK_BOILS };
 }
 
-export const hammockLook: Look<HammockPose> = {
-  id: 'hammock',
+function boilPoses(): HammockPose[] {
+  return Array.from({ length: HAMMOCK_BOILS }, (_, boil) => ({ boil }));
+}
+
+/** Graphite holds still, so its three hands are one picture. */
+function boilKey(pose: HammockPose, medium: Medium): string {
+  return `b${medium === 'color' ? pose.boil : 0}`;
+}
+
+/**
+ * A stand-in at the origin with the cloth hanging flat.
+ *
+ * `sag` zero is the straight strip the rope bends. Nothing else about the
+ * drawing changes: these are the same functions the frame has always called.
+ */
+const FLAT = 0;
+
+export const hammockEndsLook: Look<HammockPose> = {
+  id: 'hammock:ends',
   media: ['sketch', 'color'],
-  /* The old cel was 420 square and the ink came nowhere near its edge. */
-  reach: 240,
-
-  *poses(): Generator<HammockPose> {
-    for (let step = 0; step <= SETTLE_STEPS; step++) {
-      for (const resting of [false, true]) {
-        for (let boil = 0; boil < HAMMOCK_BOILS; boil++) {
-          yield { step, resting, boil };
-        }
-      }
-    }
-  },
-
-  key(pose: HammockPose, medium: Medium): string {
-    // Graphite does not boil, so its pictures do not carry a boil in their name
-    // and the three variants collapse into one.
-    const boil = medium === 'color' ? pose.boil : 0;
-    return `${pose.step}${pose.resting ? 'r' : ''}b${boil}`;
-  },
-
-  draw(ctx: CanvasRenderingContext2D, pose: HammockPose, medium: Medium): void {
-    /*
-     * A stand-in `Rest` at the origin, holding still.
-     *
-     * `drawHammock` paints around the hammock's own world position and reads
-     * `swing` off the clock; both are what the transform does now, so the
-     * stand-in sits at (0, 0) with its clock at zero and the drawing comes out
-     * in the look's own coordinates. Nothing about the drawing itself changes —
-     * this is the same function the frame has always called.
-     */
-    const rest = new Rest(0, 0);
-    rest.resting = pose.resting;
-    rest.settled = pose.step / SETTLE_STEPS;
-    withBoilAt(medium === 'color' ? pose.boil : 0, () => drawHammock(ctx, rest, medium));
+  reach: 120,
+  poses: boilPoses,
+  key: boilKey,
+  draw(ctx, pose, medium) {
+    withBoilAt(medium === 'color' ? pose.boil : 0, () =>
+      drawHammockEnds(ctx, 0, 0, FLAT, medium),
+    );
   },
 };
+
+export const hammockClothLook: Look<HammockPose> = {
+  id: 'hammock:cloth',
+  media: ['sketch', 'color'],
+  reach: 120,
+  poses: boilPoses,
+  key: boilKey,
+  draw(ctx, pose, medium) {
+    withBoilAt(medium === 'color' ? pose.boil : 0, () => drawHammockBand(ctx, 0, 0, FLAT, medium));
+  },
+};
+
+/** The near edge, over the legs, so whoever is lying there is *in* the cloth. */
+export const hammockEdgeLook: Look<HammockPose> = {
+  id: 'hammock:edge',
+  media: ['color'],
+  reach: 120,
+  poses: () => [{ boil: 0 }],
+  key: () => 'flat',
+  draw(ctx) {
+    drawHammockNearEdge(ctx, 0, 0, FLAT);
+  },
+};
+
+/**
+ * Whoever is lying in it, also flat and also bent.
+ *
+ * A person is not cloth, but they lie along the cloth, and the part of the
+ * curve they occupy — a bit either side of the middle — is its flattest. Baked
+ * fully settled; how far they have sunk in is the sag, which is the rope, and
+ * how far they have faded in is alpha.
+ */
+export const hammockSleeperLook: Look<HammockPose> = {
+  id: 'hammock:sleeper',
+  media: ['color'],
+  reach: 120,
+  poses: () => [{ boil: 0 }],
+  key: () => 'flat',
+  draw(ctx) {
+    drawSleeper(ctx, 0, 0, FLAT, 1, 0);
+  },
+};
+
+/**
+ * Where the cloth's points go, given how far it is hanging.
+ *
+ * The picture was baked flat and its box measured from the ink, so the points
+ * run across that box rather than across the span — a stripe that overhangs the
+ * cloth by three pixels is part of the picture and has to be carried by it. The
+ * curve is sampled at the `u` each point stands at.
+ */
+export function clothPoints(
+  dx: number,
+  width: number,
+  centreY: number,
+  sag: number,
+): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = [];
+  for (let i = 0; i < CLOTH_POINTS; i++) {
+    const x = dx + (width * i) / (CLOTH_POINTS - 1);
+    const u = Math.min(1, Math.max(0, (x + HAMMOCK_SPAN / 2) / HAMMOCK_SPAN));
+    points.push({ x, y: centreY + hammockCurve(u, sag) });
+  }
+  return points;
+}
