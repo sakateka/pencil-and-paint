@@ -43,6 +43,22 @@ function isMuzzle(r, g, b) {
   return r > 190 && g > 110 && r - g > 45 && r - b > 45;
 }
 
+/** The owl's beak: yellow, where the branch under it is orange. */
+function isBeak(r, g, b) {
+  return r > 200 && g > 140 && g < 195 && b < 100;
+}
+
+/**
+ * The near-black the owl's outline and wings are drawn in.
+ *
+ * Warm and almost neutral — 47,42,38 — where the dark in the tree behind it is
+ * green, and there is a great deal more of that than there is of owl. Ordering
+ * the channels is what separates them; a plain "is it dark" reads the leaves.
+ */
+function isOwlInk(r, g, b) {
+  return r < 80 && g < 75 && b < 75 && r >= g && g >= b && r - b < 20;
+}
+
 /**
  * The hedgehog's quill coat: a dull warm brown on a green bank.
  *
@@ -468,6 +484,141 @@ export const SCENES = {
         width: 140,
         height: 110,
       };
+    },
+  },
+
+  owl: {
+    describe: 'the owl turning its face to follow you across its tree',
+
+    motion: {
+      /**
+       * The eyes, which ride the face and are the darkest thing on the bird.
+       *
+       * The face slides across the head rather than changing shape, so the
+       * question about it is entirely one of smoothness, and four screen pixels
+       * of travel need a centroid to be seen at all. The box is held inside the
+       * body outline — which is the same ink and does not move — so what is in
+       * it is two pupils, a brow and a beak, and all four come round together.
+       */
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        const { owl } = game;
+        // Close enough for the colour to reach it, and over to its right, so
+        // it has already turned that way and settled before the probe starts.
+        game.teleport(owl.x + 60, owl.y + 60);
+        for (let i = 0; i < 90; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.camera.snapTo(owl.x, owl.y - 16);
+        game.running = false;
+        renderOnce();
+        return {
+          x: Math.round(game.camera.toScreenX(owl.x - 8 * owl.scale)),
+          y: Math.round(game.camera.toScreenY(owl.y - 27 * owl.scale)),
+          width: Math.round(16 * owl.scale),
+          height: Math.round(11 * owl.scale),
+        };
+      },
+      /** Somebody has walked round to its left; it brings its face over. */
+      step: (pencil) => {
+        const { owl } = pencil.game;
+        owl.update(1 / 60, owl.x - 60, owl.y + 60, true);
+        pencil.renderOnce();
+      },
+      /**
+       * Weighted by how dark each pixel is, not by a threshold it passes.
+       *
+       * A count of dark pixels moves in whole pixels however smoothly the thing
+       * under it slides; a weight follows the edge into the fractions, which is
+       * the resolution the question needs.
+       */
+      find: (strip) => {
+        let sum = 0;
+        let mass = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            const weight = Math.max(
+              0,
+              200 - (strip.data[i] + strip.data[i + 1] + strip.data[i + 2]) / 3,
+            );
+            sum += x * weight;
+            mass += weight;
+          }
+        }
+        return mass ? sum / mass : -1;
+      },
+    },
+
+    /** Awake, watching you, mid-breath, with neither a blink nor a beat. */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      const { owl } = game;
+      game.teleport(owl.x + 60, owl.y + 60);
+      for (let i = 0; i < 90; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.camera.snapTo(owl.x, owl.y - 16);
+      game.running = false;
+      owl.clock = 0;
+      owl.flap = 0;
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(owl.x) - 45),
+        y: Math.round(game.camera.toScreenY(owl.y) - 55),
+        width: 90,
+        height: 70,
+      };
+    },
+  },
+
+  owlflap: {
+    describe: 'the owl beating its wings once, which lasts eight tenths of a second',
+
+    motion: {
+      /**
+       * The far edge of the near wing, which is the only thing out there.
+       *
+       * The beat is the one part of this bird that had to become a row of
+       * drawings, so it is the one worth watching. A centroid will not do: the
+       * body's own outline is the same dark and sits in the same box, and it
+       * does not move. The wing is the only thing that reaches past it, so the
+       * rightmost dark pixel is the wing tip and nothing else.
+       */
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        const { owl } = game;
+        game.teleport(owl.x + 60, owl.y + 60);
+        for (let i = 0; i < 90; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.camera.snapTo(owl.x, owl.y - 16);
+        game.running = false;
+        owl.clock = 0;
+        owl.hoot();
+        renderOnce();
+        /*
+         * Stopping short of the branch, which is the same dark and does not
+         * move: it runs out further than the wing ever reaches, so a box that
+         * includes it reports the branch's end every frame and calls it still.
+         */
+        return {
+          x: Math.round(game.camera.toScreenX(owl.x + 6 * owl.scale)),
+          y: Math.round(game.camera.toScreenY(owl.y - 24 * owl.scale)),
+          width: 16,
+          height: 18,
+        };
+      },
+      step: (pencil) => {
+        const { owl } = pencil.game;
+        owl.update(1 / 60, owl.x + 60, owl.y + 60, true);
+        pencil.renderOnce();
+      },
+      /** How far out the wing reaches, in pixels across the box. */
+      find: (strip) => {
+        let far = -1;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isOwlInk(strip.data[i], strip.data[i + 1], strip.data[i + 2]) && x > far) far = x;
+          }
+        }
+        return far;
+      },
     },
   },
 

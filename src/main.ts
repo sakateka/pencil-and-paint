@@ -242,7 +242,7 @@ async function boot(): Promise<void> {
    * baking is that nothing is painted later: a picture made during a walk is a
    * stall in that walk.
    */
-  for (const { done, total } of renderer.warmUpLooks()) {
+  for (const { done, total } of renderer.warmUpLooks(world)) {
     if (done % 8 === 0) await yieldToBrowser();
     if (total) progress(0.8 + (done / total) * 0.2);
   }

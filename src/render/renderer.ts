@@ -1,13 +1,13 @@
 import { context2d, createSurface, isolate, type Surface } from '../core/canvas';
 import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawEaselPicture, type Rest } from '../entities/rest';
-import { drawOwl, type Owl } from '../entities/owl';
+import { type Owl } from '../entities/owl';
 import type { Vigil } from '../entities/vigil';
 import { type Hedgehog } from '../entities/hedgehog';
 import type { Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
 import { bakeSkyStrip } from '../world/sky';
-import { boilTick, withBoil } from '../media/ink';
+import { boilTick } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
 import type { Walker } from '../entities/player';
@@ -31,6 +31,7 @@ import {
 } from './looks/hammock';
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
 import { registerHedgehogLooks, showHedgehog } from './looks/hedgehog';
+import { registerOwlLooks, showOwl } from './looks/owl';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
 import { registerLionLooks, showLion } from './looks/lion';
 import { registerMirageLooks, showMirageCloud, showMirageElephant } from './looks/mirage';
@@ -219,7 +220,14 @@ export class Renderer {
    * upload halfway through a walk is precisely the stall the sky strips once
    * caused.
    */
-  *warmUpLooks(): Generator<{ done: number; total: number }> {
+  *warmUpLooks(world: World): Generator<{ done: number; total: number }> {
+    /*
+     * The owl waits until here because it is the one thing whose size the code
+     * does not know: it is drawn at the scale of the tree the valley gave it.
+     * A picture baked at one size and drawn at another is a resample of the
+     * whole drawing — see `looks/owl.ts`.
+     */
+    registerOwlLooks(this.looks, world.owlPerch.scale);
     yield* this.looks.bake();
     this.stage.adoptLooks(this.looks);
     this.warmStamps();
@@ -871,32 +879,15 @@ export class Renderer {
     }
 
     /*
-     * The owl's medium is its own: this is past the colour mask, so nothing
-     * here is cut, and an owl out in the graphite has to be drawn as a drawing
-     * rather than simply appearing in colour on a grey hillside.
+     * The owl: a branch, two wings, a body and a face that slides across it.
      *
-     * And under `withBoil`, which everything drawn in pencil needs and which
-     * this went without at first: outside it the hand keeps moving at seven
-     * ticks a second, so a frozen owl sat there with its eyes darting about.
-     * Asleep is asleep — pencil on paper, and paper does not move.
+     * The most expensive cel in the game, because it was marked `animated` and
+     * so repainted its whole 220px square sixty times a second while it was on
+     * screen. See `looks/owl.ts`.
      */
     const { owl } = scene;
     if (camera.canSee(owl.x, owl.y, 120)) {
-      this.stage.cel({
-        id: 'owl',
-        layer: 'over',
-        medium: 'color',
-        left: owl.x - 110,
-        top: owl.y - 110,
-        width: 220,
-        height: 220,
-        depth: DEPTH.owl,
-        pose: poseOf(owl),
-        // Asleep is asleep: pencil on paper, and paper does not move.
-        animated: owl.awake,
-        draw: (ctx) =>
-          withBoil(owl.awake, () => drawOwl(ctx, owl, owl.awake ? 'color' : 'sketch')),
-      });
+      showOwl(this.stage, this.looks, owl, 'over', DEPTH.owl);
     }
 
     /*
