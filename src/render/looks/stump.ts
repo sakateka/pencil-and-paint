@@ -40,7 +40,13 @@ export const stumpLook: Look<Only> = {
 export const sitterLook: Look<Only> = {
   id: 'stump:sitter',
   media: ['sketch', 'color'],
-  reach: 35,
+  /*
+   * The drawing leans on a translate of (-face, -10) inside: the ink rides ten
+   * units HIGHER than the bake's origin, and the head with its hair tops out at
+   * -41.9. A reach read off the bare stroke list (35) shears the crown off.
+   * Measured after the translate, rounded up.
+   */
+  reach: 55,
   poses: () => ONE,
   key: () => 'one',
   draw(ctx, _pose, medium) {
