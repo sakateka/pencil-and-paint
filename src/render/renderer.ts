@@ -6,7 +6,7 @@ import type { Vigil } from '../entities/vigil';
 import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
 import type { Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
-import { bakeSkyStrip, drawSun, SUN_BOUNDS, sunVisible } from '../world/sky';
+import { bakeSkyStrip } from '../world/sky';
 import { boilTick, withBoil } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
@@ -35,6 +35,7 @@ import { registerLionLooks, showLion } from './looks/lion';
 import { registerMirageLooks, showMirageCloud, showMirageElephant } from './looks/mirage';
 import { registerPotLooks, showPot } from './looks/pots';
 import { registerStumpLooks, showStump } from './looks/stump';
+import { registerSunLooks, showSun } from './looks/sun';
 import { registerWalkerLooks, showWalker } from './looks/walker';
 
 /**
@@ -196,6 +197,7 @@ export class Renderer {
     registerMirageLooks(this.looks);
     registerPotLooks(this.looks);
     registerStumpLooks(this.looks);
+    registerSunLooks(this.looks);
     registerWalkerLooks(this.looks);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
@@ -505,23 +507,21 @@ export class Renderer {
     /*
      * The sky is a strip baked once and handed to the GPU at warm-up — see
      * `render` — so the camera simply scrolls it. Only the sun is asked for
-     * here: its own small cel above the strip, turning at a gentle 6 Hz in
-     * colour and painted once in graphite.
+     * here: one picture above the strip, its slow turn a rotation about its
+     * own centre. The cel it replaces repainted the whole sun six times a
+     * second whether or not the sky it hangs in was on screen.
      */
-    if (camera.viewY < 40 && sunVisible(camera.viewX, camera.viewWidth)) {
-      this.stage.cel({
-        id: 'sun',
-        layer,
+    if (camera.viewY < 40) {
+      showSun(
+        this.stage,
+        this.looks,
         medium,
-        left: SUN_BOUNDS.x,
-        top: SUN_BOUNDS.y,
-        width: SUN_BOUNDS.size,
-        height: SUN_BOUNDS.size,
-        depth: DEPTH.sky + 0.001,
-        animated: false,
-        pose: medium === 'color' ? Math.floor(scene.elapsed * 6) : 'still',
-        draw: (ctx) => drawSun(ctx, medium, scene.elapsed),
-      });
+        layer,
+        DEPTH.sky + 0.001,
+        scene.elapsed,
+        camera.viewX,
+        camera.viewWidth,
+      );
     }
 
     for (const pot of scene.pots) {

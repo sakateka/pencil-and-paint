@@ -25,8 +25,7 @@ export const SKY_DEPTH = 530;
 /** The sky where it meets the meadow. */
 export const SKY_HORIZON = '#e6f2f6';
 
-/**
- * The sun, over towards the right, with the spiky rays it has in the painting.
+/** The sun, over towards the right, with the spiky rays it has in the painting.
  *
  * Fixed in the world rather than fixed on screen: it is a thing hanging in the
  * sky above one end of the valley, so walking west leaves it behind, which is
@@ -37,7 +36,7 @@ export const SKY_HORIZON = '#e6f2f6';
  * can see all of is a sticker on the page; a quarter of an enormous one coming
  * over the corner is the sky carrying on past the edge of the paper.
  */
-const SUN = { x: 2792, y: -486, r: 150 };
+export const SUN = { x: 2792, y: -486, r: 150 };
 
 /** Clouds, at fixed places along the top of the world. */
 const clouds = (() => {
@@ -91,17 +90,26 @@ export function sunVisible(left: number, width: number): boolean {
 /** How far past the disc the flames can reach, plus a whisker for the hook. */
 const SUN_PAD = SUN.r * 1.4;
 
-export function drawSun(ctx: CanvasRenderingContext2D, medium: Medium, t: number): void {
-  const { r } = SUN;
-  ctx.save();
-  ctx.translate(SUN_PAD, SUN_PAD);
+/**
+ * The sun, at its own centre, frozen at spin zero.
+ *
+ * The flames turn as one rigid drawing, so the turning is the sprite's
+ * rotation (`looks/sun.ts`); what is baked here is the drawing that turns, and
+ * the disc inside it, which a rotation carries invisibly.
+ */
+export function drawSunBody(
+  ctx: CanvasRenderingContext2D,
+  medium: Medium,
+  /** How far the flame ring has turned. The bake asks for zero. */
+  spin = 0,
+): void {
   if (medium === 'color') {
     ctx.fillStyle = '#f6d64a';
-    sunFlames(ctx, t);
+    sunFlames(ctx, spin);
     ctx.fill();
     ctx.fillStyle = '#f8de5c';
     ctx.beginPath();
-    ctx.arc(0, 0, r, 0, TAU);
+    ctx.arc(0, 0, SUN.r, 0, TAU);
     ctx.fill();
   } else {
     ink(ctx, 0.26, 1);
@@ -109,9 +117,15 @@ export function drawSun(ctx: CanvasRenderingContext2D, medium: Medium, t: number
     ctx.stroke();
     ink(ctx, 0.2, 0.9);
     ctx.beginPath();
-    ctx.arc(0, 0, r, 0, TAU);
+    ctx.arc(0, 0, SUN.r, 0, TAU);
     ctx.stroke();
   }
+}
+
+export function drawSun(ctx: CanvasRenderingContext2D, medium: Medium, t: number): void {
+  ctx.save();
+  ctx.translate(SUN_PAD, SUN_PAD);
+  drawSunBody(ctx, medium, t);
   ctx.restore();
 }
 
