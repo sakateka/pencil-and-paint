@@ -379,49 +379,34 @@ export async function run(url) {
     suite.atLeast(loaded.blueWhileBlue, 8, 'and the next colour after that');
     suite.equal(loaded.tealWhileBlue, 0, 'and only the one it is loaded with');
 
-    // Blitting the world is the biggest thing in the frame, and it is only
-    // cheap when it is one-to-one. Every rung of an earlier scale ladder was
-    // slower than simply staying at 1, so dropping the resolution to save time
-    // cost time, and the machine sank to the bottom of the ladder.
-    const blit = await game.evaluate((pencil) => {
-      const { game, renderer } = pencil;
-      const cost = (scale) => {
-        renderer.resize(innerWidth, innerHeight, scale, game.field);
-        game.camera.frame(renderer.width, renderer.height, scale);
-        const ctx = renderer.context;
-        ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        const blitOnce = () =>
-          game.world.drawRegion(
-            ctx,
-            'sketch',
-            game.camera.viewX,
-            game.camera.viewY,
-            game.camera.viewWidth,
-            game.camera.viewHeight,
-            0,
-            0,
-            renderer.width,
-            renderer.height,
-          );
-        for (let i = 0; i < 5; i++) blitOnce();
-        const started = performance.now();
-        for (let i = 0; i < 30; i++) blitOnce();
-        ctx.getImageData(0, 0, 1, 1); // flush, so the number means something
-        return (performance.now() - started) / 30;
-      };
-      const fractional = cost(0.7);
-      const oneToOne = cost(1);
-      renderer.resize(innerWidth, innerHeight, 1, game.field);
-      return { fractional, oneToOne };
-    });
-
-    suite.atMost(
-      +(blit.oneToOne / blit.fractional).toFixed(2),
-      1,
-      'a one-to-one world blit is no slower than a fractional one',
-    );
+    /*
+     * The render scale is one, and that is now the whole of what there is to
+     * check here.
+     *
+     * There used to be a benchmark above this line: blit the world at 0.7 and
+     * at 1.0 and assert the one-to-one copy was no slower, which is the
+     * reasoning `perf.ts` gives for holding the scale at one and never building
+     * an adaptive ladder again. Two things have happened to it.
+     *
+     * It was the flakiest test in the suite — a limit of exactly 1.0 on a ratio
+     * whose true value sat within a few per cent of it, read from two single
+     * timings taken while three other suites had the machine. Taking medians of
+     * alternating rounds steadied the reading, and the steadied reading says
+     * 1.2 to 1.7 on this machine: at 0.7 the destination holds half the pixels,
+     * and on a GPU-backed canvas that saving now beats the resample penalty
+     * that the original measurement (a dpr-2 display, a different browser) was
+     * dominated by.
+     *
+     * And it was measuring something the game no longer does. `drawRegion` is
+     * how the valley used to reach the screen — a full-screen copy every frame;
+     * the valley is handed to the GPU as tiles now and the camera moves instead,
+     * so nothing in `src/` calls it at all. A hardware-dependent number about a
+     * dead path is not a thing to hold the suite to. What is worth asserting is
+     * the decision itself, and the decision is a constant.
+     */
     const snapshot = await game.evaluate((p) => p.perf.snapshot());
     suite.equal(snapshot.scale, 1, 'the render scale is one to one');
+    suite.equal(snapshot.maxScale, 1, 'and there is no ladder to climb off it');
 
     /*
      * A cow standing still is drawn by a hand that has stopped.
