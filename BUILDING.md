@@ -18,7 +18,7 @@ npm run typecheck  # tsc --noEmit
 | `W A S D` / arrow keys | walk |
 | drag | walk (touch) |
 | `R` | new world — the pots are scattered afresh |
-| `F` | performance readout: fps, frame time, render scale, per-stage costs |
+| `F` | performance readout: fps, frame time, draw time, and what the frame uploaded, made and baked — the last three read zero on a warm valley |
 | `` ` `` | development panel — **only when served from localhost** |
 
 The development panel has shortcuts for testing: collect every pot at once (to
@@ -30,16 +30,23 @@ build under a real hostname and asserts its absence.
 
 ## Testing
 
-Playwright drives the real build in a headless browser. The suites assert
-behaviour, not pixels — that the walker cannot end up inside a building, that a
-sheep outside the colour does not move *or age*, that the renderer composites a
-fraction of the screen rather than all of it.
+Playwright drives the real build in a headless browser. Most suites assert
+behaviour rather than pixels — that the walker cannot end up inside a building,
+that a sheep outside the colour does not move *or age* — and those run without a
+display at all, against `?nodraw`, in about four seconds. The ten that do read
+pixels are listed in one place in [`tests/run.js`](tests/run.js) and want a real
+GPU; `npm run test:frame` puts a display under them.
 
 ```sh
-npm run build      # tests run against dist/, so build first
 npx playwright install chromium
-npm test
+npm test           # the quick group: no display, no GPU, about four seconds
+npm run test:frame # the ones that read pixels; brings up its own Xvfb
+npm run test:all   # both
 ```
+
+Each run builds its own tree under `tmp/` and tests that, so what is under test
+is always the current source. `PENCIL_DIST=…` points a run at a build you
+already have, which takes one suite from forty seconds to under one.
 
 Suites live in [`tests/`](tests/) and are plain ES modules over a
 [30-line assertion helper](tests/assert.js) — no framework. They reach into the
@@ -61,13 +68,13 @@ src/
   media/      the two media: baked pencil, live ink, cached sprites
   world/      scenery, buildings, the farm, terrain, layout, baking
   entities/   the walker, the livestock, the pots, particles
-  render/     camera, the colour mask, the frame compositor
-  systems/    collision, input, adaptive resolution
+  render/     camera, the colour mask, the stage, the picture library
+  systems/    collision, input, the performance readout
   game.ts     rules and state for one playthrough
   main.ts     boot and the frame loop
 ```
 
-Three ideas carry most of the weight.
+Four ideas carry most of the weight.
 
 **One shape, two media.** Scenery describes itself once, as polygons and a fill
 colour, and renders as either a colour illustration or a pencil drawing
@@ -75,20 +82,67 @@ depending on which layer is asking. `paint()` in
 [`media/pencil.ts`](src/media/pencil.ts) is that seam; hatch density is derived
 from the fill's luminance, which is how a flat colour becomes tone.
 
-**The colour is a mask, and it is small.** The lit area only ever covers a blob
-around the walker, so compositing the whole screen would be mostly wasted. The
-renderer works inside a dirty rectangle tracking that blob — roughly a tenth of
-the pixels on a large display, and the cost scales with the colour radius
-instead of the size of the window.
-
 **Nothing outside the colour is running.** Distant livestock hold their pose,
-their clocks stopped, and are cached as sprites — a still drawing is the same
-pixels every frame. This is a rule about what the game *is*, and it happens to
-be the largest single saving in the frame.
+their clocks stopped: out in the graphite a thing is a *drawing*, and a drawing
+does not move. This is a rule about what the game is rather than an
+optimisation, and it happens to be the largest single saving in the frame. When
+you add something that animates, the question to ask is what gates it, and
+whether that gate covers the whole drawing rather than just its origin —
+`Game.isWhollyLit` exists for the ones too big to ask about as a point.
+
+**The frame is three cameras over one WebGL canvas.** The valley is baked into
+tiles at load, handed to the GPU once, and thereafter the camera moves instead
+of the picture; the colour layer is cut to the light by one multiply in a
+fragment shader. Nothing composites the screen on the CPU, and there is no
+dirty rectangle any more — both were how this worked on Canvas2D, and both were
+measured costing more than the thing they saved. See
+[`render/stage.ts`](src/render/stage.ts).
+
+**Everything hand-drawn is a picture baked before play starts.** A `Look`
+([`render/looks.ts`](src/render/looks.ts)) must be able to *list* every drawing
+it can ever show; the list is baked under the loading screen, and being on
+screen afterwards costs a transform and nothing else. Two and a bit megabytes
+for the whole game, against the eighty megabytes a second the old
+repaint-as-you-go path spent. The requirement that the list be finite is the
+whole safety property: a field that changes continuously cannot be listed, so it
+cannot get into a picture by accident, which is exactly how the old design lost
+eighty megabytes a second to a private counter nobody remembered.
+
+### Adding something that moves
+
+The rule, learned the hard way on a hammock:
+
+> **A picture is a drawing that is genuinely different. A deformation is not.**
+
+A walk cycle is pictures. A head coming up out of the grass is a picture — no,
+it is a *translate*, because the head does not change shape as it rises. Cloth
+sagging under somebody is one picture being bent by geometry. Baking the
+in-between states of a smooth movement is not cheaper smoothness; it is a
+stutter you built on purpose, and it costs more memory than the thing it
+replaced.
+
+So, in order:
+
+1. **Sort each dimension into picture or transform.** Position, scale, mirror,
+   alpha, tint, rotation about a hinge and a vertical breath are transforms.
+   What genuinely looks like another drawing — a step, a blink, a wingbeat, the
+   pencil's boil — is a picture.
+2. **Write the `Look`**, in `render/looks/`, drawing at its own origin, and
+   register it in `Renderer`'s constructor. `reach` sizes the scratch it is
+   measured in: count it from the actual ink *after* every rotation and scale
+   the bake applies, and leave a dozen units spare. A clipped ear is forever.
+3. **Run [`tests/tools/motion.mjs`](tests/tools/README.md) on it.** A
+   screenshot cannot tell a smooth movement from a stepped one; this can. Every
+   drawing that moves has to hold under a pixel a frame.
+4. **Watch the readout** (`F`): `upload`, `new` and `bakes` are all meant to
+   read zero for ever once the valley is warm. If one of them is not zero,
+   `renderer.uploadReport()` and `createReport()` name the culprit.
 
 The awkward one is depth. The world is baked flat, so the walker is painted over
 it, which is how you end up walking across a roof. Making roofs solid fixed it
 and made the houses feel like bunkers. Instead, tall scenery standing in front
-of you is re-drawn on top of you — and because every object stores the rng seed
-it was baked with, that re-draw reproduces the same strokes exactly and lands
-pixel-for-pixel on the original.
+of you is drawn on top of you from its own transparent copy — and because every
+object stores the rng seed it was baked with, that copy reproduces the same
+strokes exactly and lands pixel-for-pixel on the original. Those copies are made
+under the loading screen too: made during a walk, each one cost a frame of
+twenty milliseconds.
