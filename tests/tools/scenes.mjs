@@ -16,6 +16,16 @@ function isCloth(r, g, b) {
   return r > 190 && g > 175 && b > 140 && r - b > 20;
 }
 
+/**
+ * The walker's face and hands: a warm pale skin against straw and grass.
+ *
+ * The straw of a haystack is the near thing, and it is far yellower — its blue
+ * channel falls away where skin keeps most of it.
+ */
+function isSkin(r, g, b) {
+  return r > 220 && g > 170 && g < 215 && b > 130 && b < 180;
+}
+
 /** The walker's shirt. */
 function isShirt(r, g, b) {
   return r > 150 && r - g > 60 && r - b > 60;
@@ -935,6 +945,113 @@ export const SCENES = {
         y: Math.round(game.camera.toScreenY(v.elephantY - 290)),
         width: 380,
         height: 330,
+      };
+    },
+  },
+
+  hay: {
+    describe: 'somebody lying back in the haystack, breathing',
+
+    /**
+     * Lying down is played into, not posed.
+     *
+     * `interact` is what puts the walker on a perch, and it only answers when
+     * they are standing close enough — so the scene teleports them a little
+     * below the hay and presses the key, exactly as `tmp/hogload.mjs` does. The
+     * colour has to be on it as well: a perch's own clock only runs while it is
+     * lit, so an unlit one never breathes at all.
+     */
+    motion: {
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        game.restart();
+        game.collectAll();
+        const hay = game.perches.find((p) => p.pose === 'hay');
+        game.teleport(hay.x, hay.y + 30);
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.interact();
+        game.running = false;
+        hay.clock = 0;
+        game.camera.snapTo(hay.x, hay.y - 20);
+        renderOnce();
+        /*
+         * A band across the head, which is the far end of the hinge.
+         *
+         * The breath is a rotation about the hips of four thousandths of a
+         * radian either way, so the shoulders travel a tenth of a pixel and the
+         * crown of the head travels half of one. Nothing else on this figure
+         * moves at all, and only a centroid can see a movement this small.
+         */
+        return {
+          x: Math.round(game.camera.toScreenX(hay.x) - 40),
+          y: Math.round(game.camera.toScreenY(hay.y) - 34),
+          width: 80,
+          height: 20,
+        };
+      },
+      step: (pencil) => {
+        const hay = pencil.game.perches.find((p) => p.pose === 'hay');
+        hay.update(1 / 60, true);
+        pencil.renderOnce();
+      },
+      /** Where the face is, across that band. */
+      find: (strip) => {
+        let sum = 0;
+        let n = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isSkin(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+              sum += x;
+              n++;
+            }
+          }
+        }
+        return n ? sum / n : -1;
+      },
+    },
+
+    /** The whole of them, lying still with the breath at nought. */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.restart();
+      game.collectAll();
+      const hay = game.perches.find((p) => p.pose === 'hay');
+      game.teleport(hay.x, hay.y + 30);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.interact();
+      game.running = false;
+      hay.clock = 0;
+      game.camera.snapTo(hay.x, hay.y - 20);
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(hay.x) - 50),
+        y: Math.round(game.camera.toScreenY(hay.y) - 50),
+        width: 100,
+        height: 70,
+      };
+    },
+  },
+
+  bench: {
+    describe: 'somebody sat on the bench, which is the stump’s sitter mirrored',
+
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.restart();
+      game.collectAll();
+      const bench = game.perches.find((p) => p.pose === 'bench');
+      game.teleport(bench.x, bench.y + 30);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.interact();
+      game.running = false;
+      game.camera.snapTo(bench.x, bench.y - 16);
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(bench.x) - 50),
+        y: Math.round(game.camera.toScreenY(bench.y) - 56),
+        width: 100,
+        height: 80,
       };
     },
   },

@@ -1,7 +1,6 @@
 import { TAU } from '../core/math';
 import { ink, inkArc, inkLines, jitter } from '../media/ink';
 import type { Medium } from '../media/medium';
-import { drawSitter } from './vigil';
 
 /**
  * Somewhere to stop that asks nothing of you.
@@ -81,20 +80,27 @@ export class Perch {
   }
 }
 
-/** Whoever is on it, if anyone. The seat itself is baked into the world. */
-export function drawPerch(ctx: CanvasRenderingContext2D, perch: Perch, medium: Medium): void {
-  if (!perch.resting) return;
-  if (perch.pose === 'bench') {
-    // The bench's seat is twenty above its origin; the sitter's own drawing
-    // puts the hips a little below wherever it is told, so this lands on it.
-    ctx.save();
-    ctx.translate(perch.x + 2, perch.y - 11);
-    drawSitter(ctx, perch.face, medium);
-    ctx.restore();
-    return;
-  }
-  drawLounger(ctx, perch, medium);
+/**
+ * How far back they are leaning at this moment, in radians.
+ *
+ * Breathing, slow and shallow — anything more and they look uncomfortable.
+ * The lean itself is baked into the drawing (`LOUNGER_LEAN`); this is only the
+ * part of it that moves, and it moves as a rotation about the hips, which is
+ * a hinge and therefore a transform rather than another drawing.
+ */
+export function loungerBreath(clock: number): number {
+  return Math.sin(clock * 0.9) * 0.6 * 0.012;
 }
+
+/**
+ * How far back somebody lying in the hay is tipped.
+ *
+ * Inside the drawing rather than applied to the sprite: a picture baked
+ * upright and then turned thirty-five degrees is the whole figure resampled,
+ * where a picture baked leaning is turned only by the breath, which is four
+ * thousandths of a radian and lands on the same pixels.
+ */
+const LOUNGER_LEAN = -0.62;
 
 /**
  * Flopped back into the hay, legs out, hands behind the head.
@@ -102,15 +108,14 @@ export function drawPerch(ctx: CanvasRenderingContext2D, perch: Perch, medium: M
  * Not the sitting figure moved up the slope: somebody on a haystack is lying
  * against it rather than perched on it, and the give-away is the angle of the
  * back. This leans a long way over and lets the legs run out in front.
+ *
+ * Two halves, because only one of them moves: the legs lie still on the slope
+ * and the body breathes. Both draw about the foot of the haystack — the
+ * perch's own origin — and about the way they face, the mirror being the
+ * caller's (see `looks/perch.ts`).
  */
-function drawLounger(ctx: CanvasRenderingContext2D, perch: Perch, medium: Medium): void {
-  const t = perch.clock;
-  // Breathing, slow and shallow. Anything more and they look uncomfortable.
-  const breath = Math.sin(t * 0.9) * 0.6;
-
+export function drawLoungerLegs(ctx: CanvasRenderingContext2D, medium: Medium): void {
   ctx.save();
-  ctx.translate(perch.x, perch.y);
-  ctx.scale(perch.face, 1);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -135,10 +140,31 @@ function drawLounger(ctx: CanvasRenderingContext2D, perch: Perch, medium: Medium
     ctx.moveTo(17.5, 4.5);
     ctx.lineTo(21.5, 5.5);
     ctx.stroke();
+    ctx.restore();
+    return;
+  }
 
+  const k = 8200;
+  ink(ctx, 0.5, 1.25);
+  ctx.beginPath();
+  ctx.moveTo(-3, -3.5);
+  ctx.quadraticCurveTo(9, -0.5, 17.5 + jitter(k, 0.5), 4.5);
+  ctx.moveTo(-2, -6);
+  ctx.quadraticCurveTo(10, -3, 19 + jitter(k + 1, 0.5), 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Everything above the hips, leaning back into the hay with its eyes shut. */
+export function drawLoungerBody(ctx: CanvasRenderingContext2D, medium: Medium): void {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (medium === 'color') {
     // Body, leaning right back into it.
     ctx.save();
-    ctx.rotate(-0.62 + breath * 0.012);
+    ctx.rotate(LOUNGER_LEAN);
     ctx.fillStyle = SHIRT;
     ctx.beginPath();
     ctx.moveTo(-5.4, 0.5);
@@ -185,15 +211,8 @@ function drawLounger(ctx: CanvasRenderingContext2D, perch: Perch, medium: Medium
   }
 
   const k = 8200;
-  ink(ctx, 0.5, 1.25);
-  ctx.beginPath();
-  ctx.moveTo(-3, -3.5);
-  ctx.quadraticCurveTo(9, -0.5, 17.5 + jitter(k, 0.5), 4.5);
-  ctx.moveTo(-2, -6);
-  ctx.quadraticCurveTo(10, -3, 19 + jitter(k + 1, 0.5), 2);
-  ctx.stroke();
   ctx.save();
-  ctx.rotate(-0.62);
+  ctx.rotate(LOUNGER_LEAN);
   ink(ctx, 0.55, 1.3);
   ctx.beginPath();
   ctx.moveTo(-5.4 + jitter(k + 2, 0.5), 0.5);

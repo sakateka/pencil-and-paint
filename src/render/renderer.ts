@@ -5,7 +5,7 @@ import { type Owl } from '../entities/owl';
 import type { Vigil } from '../entities/vigil';
 import { type Hedgehog } from '../entities/hedgehog';
 import type { Lion } from '../entities/lion';
-import { drawPerch, type Perch } from '../entities/perch';
+import { type Perch } from '../entities/perch';
 import { bakeSkyStrip } from '../world/sky';
 import { boilTick } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
@@ -35,6 +35,7 @@ import { registerOwlLooks, showOwl } from './looks/owl';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
 import { registerLionLooks, showLion } from './looks/lion';
 import { registerMirageLooks, showMirageCloud, showMirageElephant } from './looks/mirage';
+import { registerPerchLooks, showPerch } from './looks/perch';
 import { registerPotLooks, showPot } from './looks/pots';
 import { registerStumpLooks, showStump } from './looks/stump';
 import { registerSunLooks, showSun } from './looks/sun';
@@ -198,6 +199,7 @@ export class Renderer {
     registerHerdLooks(this.looks);
     registerLionLooks(this.looks);
     registerMirageLooks(this.looks);
+    registerPerchLooks(this.looks);
     registerPotLooks(this.looks);
     registerStumpLooks(this.looks);
     registerSunLooks(this.looks);
@@ -901,10 +903,7 @@ export class Renderer {
      * while they are down — and the walker is never in graphite.
      */
     for (const perch of scene.perches) {
-      if (!perch.resting) continue;
-      at(`perch:${perch.x},${perch.y}`, perch.x, perch.y, 260, DEPTH.perch, poseOf(perch), (ctx) =>
-        drawPerch(ctx, perch, 'color'),
-      );
+      showPerch(this.stage, this.looks, perch, 'over', DEPTH.perch);
     }
 
     const house = scene.treehouse;
