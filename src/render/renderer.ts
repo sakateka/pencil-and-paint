@@ -13,7 +13,7 @@ import { drawThroughWindow } from '../world/treehouse';
 import type { Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import type { Particles } from '../entities/particles';
-import { drawPot, type Pot } from '../entities/pots';
+import type { Pot } from '../entities/pots';
 import type { World } from '../world/world';
 import type { Camera } from './camera';
 import { disc, GRAIN } from '../media/sprites';
@@ -32,6 +32,7 @@ import {
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
 import { registerLionLooks, showLion } from './looks/lion';
+import { registerPotLooks, showPot } from './looks/pots';
 import { registerWalkerLooks, showWalker } from './looks/walker';
 
 /** Everything the renderer needs to draw a frame. */
@@ -174,6 +175,7 @@ export class Renderer {
     this.looks.register(birdLook);
     registerHerdLooks(this.looks);
     registerLionLooks(this.looks);
+    registerPotLooks(this.looks);
     registerWalkerLooks(this.looks);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
@@ -491,19 +493,9 @@ export class Renderer {
     for (const pot of scene.pots) {
       if (pot.found || !camera.canSee(pot.x, pot.y, 60)) continue;
       if (hidden(pot.x, pot.y, 40)) continue;
-      this.stage.cel({
-        id: `pot:${pot.x},${pot.y}`,
-        layer,
-        medium,
-        left: pot.x - 64,
-        top: pot.y - 64,
-        width: 128,
-        height: 128,
-        depth: DEPTH.pots,
-        pose: `${pot.found}|${pot.awake}`,
-        animated: pot.awake,
-        draw: (ctx) => drawPot(ctx, pot, medium),
-      });
+      /* Out of the colour there is no paint on it and no glow off it. */
+      if (medium === 'color' && !pot.awake) continue;
+      showPot(this.stage, this.looks, pot, medium, layer, DEPTH.pots);
     }
 
     for (const animal of scene.herd.animals) {

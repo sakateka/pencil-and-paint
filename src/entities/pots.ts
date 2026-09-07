@@ -1,10 +1,9 @@
 import { roundRectPath } from '../core/geom';
 import type { Hex } from '../core/color';
 import { TAU } from '../core/math';
-import { jitter, withBoil } from '../media/ink';
+import { jitter } from '../media/ink';
 import { PENCIL, type Medium } from '../media/medium';
 import { drawGlow } from '../media/sprites';
-import { createSurface } from '../core/canvas';
 
 /**
  * The paint pots: fourteen of them, scattered somewhere new each game.
@@ -24,104 +23,88 @@ export interface Pot {
   awake: boolean;
   /** Its own clock: an unfound pot in the pencil does not bob. */
   clock: number;
-  frozenSprite: HTMLCanvasElement | null;
 }
 
-const SPRITE_WIDTH = 70;
-const SPRITE_HEIGHT = 80;
-const SPRITE_ORIGIN_X = 35;
-const SPRITE_ORIGIN_Y = 60;
+/**
+ * A pot rising and settling on the spot. Its whole animation, and a translate.
+ *
+ * The phase is what keeps fourteen of them from pulsing in unison. It used to
+ * be baked into the drawing, which is why an unfound pot kept a private frozen
+ * canvas that had to be thrown away and remade whenever the colour crossed it —
+ * and `awake` is recomputed from the lit radius every tick with no hysteresis,
+ * so a pot sitting on the edge of the circle allocated a fresh canvas every
+ * frame. That churn is what drives an accelerated canvas past its cache-miss
+ * ratio and drops a whole session onto the software path. Nothing is baked from
+ * a pot's own numbers now, so there is nothing left to throw away.
+ */
+export function potBob(clock: number, phase: number): number {
+  return Math.sin(clock * 2.2 + phase) * 3.5;
+}
 
-function drawPotAt(ctx: CanvasRenderingContext2D, p: Pot, t: number, medium: Medium, alpha: number): void {
-  const bob = Math.sin(t * 2.2 + p.phase) * 3.5;
-  const x = p.x, y = p.y + bob;
-  ctx.save();
-  ctx.globalAlpha = alpha;
+/** The soft light a pot gives off, in white, so one picture serves all of them. */
+export function drawPotGlow(ctx: CanvasRenderingContext2D): void {
+  drawGlow(ctx, '#ffffff', 0, -8, 36);
+}
 
+/**
+ * One jar, at its own origin.
+ *
+ * `seed` is where the pencil's wobble comes from. It used to come from the
+ * pot's phase, which made every one of the fourteen a slightly different
+ * drawing — fine when each carried its own canvas, and impossible to enumerate,
+ * so the baked version picks between a few inked variants instead. Three is
+ * what a hand-drawn cartoon uses and it is what the field already does.
+ */
+export function drawPotJar(
+  ctx: CanvasRenderingContext2D,
+  hue: Hex,
+  medium: Medium,
+  seed: number,
+): void {
   if (medium === 'color') {
-    drawGlow(ctx, p.hue, x, y - 8, 36);
-
     // jar
     ctx.fillStyle = '#e9e2d2';
-    roundRectPath(ctx, x - 9, y - 16, 18, 18, 3.5); ctx.fill();
-    ctx.fillStyle = p.hue;
-    roundRectPath(ctx, x - 9, y - 11, 18, 13, 3.5); ctx.fill();
+    roundRectPath(ctx, -9, -16, 18, 18, 3.5); ctx.fill();
+    ctx.fillStyle = hue;
+    roundRectPath(ctx, -9, -11, 18, 13, 3.5); ctx.fill();
     // spill on the rim
-    ctx.fillStyle = p.hue;
+    ctx.fillStyle = hue;
     ctx.beginPath();
-    ctx.moveTo(x - 9, y - 12);
-    ctx.quadraticCurveTo(x - 12, y - 6, x - 10, y + 1);
-    ctx.lineTo(x - 6, y + 1);
-    ctx.quadraticCurveTo(x - 7, y - 6, x - 5, y - 12);
+    ctx.moveTo(-9, -12);
+    ctx.quadraticCurveTo(-12, -6, -10, 1);
+    ctx.lineTo(-6, 1);
+    ctx.quadraticCurveTo(-7, -6, -5, -12);
     ctx.closePath(); ctx.fill();
     ctx.strokeStyle = 'rgba(60,50,40,.55)'; ctx.lineWidth = 1.4;
-    roundRectPath(ctx, x - 9, y - 16, 18, 18, 3.5); ctx.stroke();
+    roundRectPath(ctx, -9, -16, 18, 18, 3.5); ctx.stroke();
     // brush sticking out
     ctx.strokeStyle = '#a9793f'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(x + 2, y - 14); ctx.lineTo(x + 8, y - 26); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2, -14); ctx.lineTo(8, -26); ctx.stroke();
     ctx.fillStyle = 'rgba(255,255,255,.5)';
-    roundRectPath(ctx, x - 6.5, y - 14, 3, 6, 1.5); ctx.fill();
-  } else {
-    let kk = p.phase * 170;
-    ctx.strokeStyle = PENCIL; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.globalAlpha = alpha * 0.55; ctx.lineWidth = 1.2;
-    for (let pass = 0; pass < 2; pass++) {
-      roundRectPath(ctx, x - 9 + jitter(kk++, 0.8), y - 16 + jitter(kk++, 0.8), 18, 18, 3.5);
-      ctx.globalAlpha = alpha * (pass ? 0.28 : 0.55);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = alpha * 0.4;
-    for (let i = 0; i < 5; i++) {
-      const yy = y - 10 + i * 2.4;
-      ctx.lineWidth = 0.8;
-      ctx.beginPath(); ctx.moveTo(x - 7.5, yy + jitter(kk++, 0.5)); ctx.lineTo(x + 7.5, yy + jitter(kk++, 0.5)); ctx.stroke();
-    }
-    ctx.lineWidth = 1.1; ctx.globalAlpha = alpha * 0.5;
-    ctx.beginPath(); ctx.moveTo(x + 2, y - 14); ctx.lineTo(x + 8 + jitter(kk++, 1), y - 26); ctx.stroke();
-  }
-  ctx.restore();
-}
-
-/**
- * Draw a pot in the given medium. Frozen ones come from a cached sprite, since
- * an unfound pot in the pencil is a still life.
- */
-export function drawPot(ctx: CanvasRenderingContext2D, p: Pot, medium: Medium): void {
-  if (p.awake) {
-    withBoil(true, () => drawPotAt(ctx, p, p.clock, medium, 1));
+    roundRectPath(ctx, -6.5, -14, 3, 6, 1.5); ctx.fill();
     return;
   }
-  if (medium === 'color') return; // masked out anyway
-  // The bob is left out of the sprite, so it is applied on the way out.
-  const bob = Math.sin(p.clock * 2.2 + p.phase) * 3.5;
-  ctx.drawImage(frozenPotSprite(p), p.x - SPRITE_ORIGIN_X, p.y + bob - SPRITE_ORIGIN_Y);
-}
 
-/**
- * The still life, baked once and kept.
- *
- * It used to be thrown away the moment the colour reached the pot and baked
- * again when the colour left, because the bob was baked into it and the pot's
- * clock had moved on in between. `awake` is recomputed from the lit radius
- * every tick with no hysteresis, so a pot sitting on the edge of the circle
- * allocated a fresh canvas on every step in and out — which at the edge is
- * every frame. Each new canvas is a new texture for the browser to upload, and
- * that churn is what drives an accelerated canvas past its cache-miss ratio and
- * drops the whole session onto the software path.
- *
- * So the bob is left out of the bake — `-phase / 2.2` is the moment it passes
- * through zero — and applied when the sprite is drawn. Nothing else in the
- * still life moves, and the jitter is seeded from the phase rather than the
- * clock, so what is left never needs baking twice.
- */
-function frozenPotSprite(p: Pot): HTMLCanvasElement {
-  if (p.frozenSprite) return p.frozenSprite;
-  const { canvas, ctx } = createSurface(SPRITE_WIDTH, SPRITE_HEIGHT);
-  ctx.translate(SPRITE_ORIGIN_X, SPRITE_ORIGIN_Y);
-  const local = { ...p, x: 0, y: 0 };
-  withBoil(false, () => drawPotAt(ctx, local, -p.phase / 2.2, 'sketch', 1));
-  p.frozenSprite = canvas;
-  return canvas;
+  let kk = seed;
+  ctx.strokeStyle = PENCIL; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.globalAlpha = 0.55; ctx.lineWidth = 1.2;
+  for (let pass = 0; pass < 2; pass++) {
+    roundRectPath(ctx, -9 + jitter(kk++, 0.8), -16 + jitter(kk++, 0.8), 18, 18, 3.5);
+    ctx.globalAlpha = pass ? 0.28 : 0.55;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.4;
+  for (let i = 0; i < 5; i++) {
+    const yy = -10 + i * 2.4;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-7.5, yy + jitter(kk++, 0.5));
+    ctx.lineTo(7.5, yy + jitter(kk++, 0.5));
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1.1; ctx.globalAlpha = 0.5;
+  ctx.beginPath(); ctx.moveTo(2, -14); ctx.lineTo(8 + jitter(kk++, 1), -26); ctx.stroke();
+  ctx.globalAlpha = 1;
 }
 
 /**
@@ -191,7 +174,6 @@ export function scatterPots(
       found: false,
       awake: false,
       clock: Math.random() * 20,
-      frozenSprite: null,
     });
   }
   return pots;
