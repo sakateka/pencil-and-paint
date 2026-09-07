@@ -139,7 +139,7 @@ export function poseOf(value: unknown, depth = 1): string {
  * The draw functions in `entities/` and `world/` are not changed by any of
  * this: they still take a 2D context and draw at world coordinates. The trick
  * is the translate — the cel puts the entity's own position at the centre of a
- * small canvas, so `drawLion(ctx, lion, medium)` paints into a 220px square
+ * small canvas, so `drawOwl(ctx, owl, medium)` paints into a 220px square
  * instead of into the window, and the square is then placed in the world.
  */
 class Cel {

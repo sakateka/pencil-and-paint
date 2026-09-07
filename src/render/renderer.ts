@@ -4,7 +4,7 @@ import { drawEaselPicture, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
 import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
 import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
-import { drawLion, type Lion } from '../entities/lion';
+import type { Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
 import { bakeSkyStrip, drawSun, SUN_BOUNDS, sunVisible } from '../world/sky';
 import { boilTick, withBoil } from '../media/ink';
@@ -31,6 +31,7 @@ import {
 } from './looks/hammock';
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
+import { registerLionLooks, showLion } from './looks/lion';
 import { registerWalkerLooks, showWalker } from './looks/walker';
 
 /** Everything the renderer needs to draw a frame. */
@@ -172,6 +173,7 @@ export class Renderer {
     }
     this.looks.register(birdLook);
     registerHerdLooks(this.looks);
+    registerLionLooks(this.looks);
     registerWalkerLooks(this.looks);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
@@ -640,16 +642,7 @@ export class Renderer {
 
     const { lion } = scene;
     if (camera.canSee(lion.x, lion.y, 90) && !hidden(lion.x, lion.y, 60)) {
-      at(
-        'lion',
-        lion.x,
-        lion.y,
-        300,
-        DEPTH.lion,
-        poseOf(lion),
-        (ctx) => still(() => drawLion(ctx, lion, medium)),
-        medium === 'color',
-      );
+      showLion(this.stage, this.looks, lion, medium, layer, DEPTH.lion);
     }
 
     // Yours, over the abandoned one baked into the board. Colour only: in

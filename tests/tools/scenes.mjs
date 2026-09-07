@@ -26,6 +26,17 @@ function isFrogBelly(r, g, b) {
   return r > 215 && g > 165 && b < 130 && r - b > 90;
 }
 
+/**
+ * The red strokes of the lion's mane, and only the red ones.
+ *
+ * The mane is painted in four colours and the head under it is gold; keeping
+ * one of the four is what separates the mane from the face it rings. Gold and
+ * orange are both far too green to pass this.
+ */
+function isManeRed(r, g, b) {
+  return r > 180 && g < 95 && b < 90;
+}
+
 /** A cow's muzzle: the one pink thing in a green field, and it rides the head. */
 function isMuzzle(r, g, b) {
   return r > 190 && g > 110 && r - g > 45 && r - b > 45;
@@ -297,6 +308,84 @@ export const SCENES = {
         }
         return n ? total / n : -1;
       },
+    },
+  },
+
+  lion: {
+    describe: 'the lion lifting its head to look at you, over about a second',
+
+    motion: {
+      /**
+       * The centre of the mane, as the centroid of its red strokes.
+       *
+       * The head does not change shape when it comes up — it travels — so the
+       * whole question about it is whether it travels smoothly, and a centroid
+       * answers that to a fraction of a pixel where a silhouette cannot.
+       *
+       * A column will not do, which cost an evening: the mane is twenty-two
+       * separate strokes thrown outward, not a solid ring, and the head slides
+       * six pixels sideways as it lifts — so a fixed column threads between two
+       * strokes halfway through and starts reporting the top of the face
+       * instead, which reads as an eleven-pixel jump that never happened. The
+       * box has to hold the whole ring at both ends of the movement.
+       */
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        const { lion } = game;
+        game.teleport(lion.x, lion.y + 70);
+        // Let the colour reach it: the graphite lion has no mane worth finding.
+        for (let i = 0; i < 40; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.camera.snapTo(lion.x, lion.y);
+        game.running = false;
+        lion.clock = 0;
+        lion.alert = 0;
+        renderOnce();
+        return {
+          x: Math.round(game.camera.toScreenX(lion.x - 35)),
+          y: Math.round(game.camera.toScreenY(lion.y - 50)),
+          width: 60,
+          height: 62,
+        };
+      },
+      /** It wakes on its own easing, with the walker standing where it is. */
+      step: (pencil) => {
+        const { lion } = pencil.game;
+        lion.update(1 / 60, lion.x, lion.y + 70, true);
+        pencil.renderOnce();
+      },
+      find: (strip) => {
+        let sum = 0;
+        let n = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isManeRed(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+              sum += y;
+              n++;
+            }
+          }
+        }
+        return n ? sum / n : -1;
+      },
+    },
+
+    /** The lion awake and looking at you, held still. */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      const { lion } = game;
+      game.teleport(lion.x, lion.y + 70);
+      for (let i = 0; i < 40; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.camera.snapTo(lion.x, lion.y);
+      game.running = false;
+      lion.clock = 0;
+      lion.alert = 1;
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(lion.x) - 70),
+        y: Math.round(game.camera.toScreenY(lion.y) - 70),
+        width: 140,
+        height: 110,
+      };
     },
   },
 
