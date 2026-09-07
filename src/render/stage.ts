@@ -702,8 +702,13 @@ export class Stage {
      */
     image.cameraFilter = this.maskExcept(request.layer);
 
-    const scale = request.scale ?? 1;
-    const scaleY = request.scaleY ?? scale;
+    /*
+     * A picture baked coarse is drawn at its grain, and the offsets the bake
+     * measured are in its own pixels, so they ride the same multiplier. Every
+     * number below is then in world units again and nothing else knows.
+     */
+    const scale = (request.scale ?? 1) * baked.grain;
+    const scaleY = (request.scaleY ?? request.scale ?? 1) * baked.grain;
     const flip = request.flipX ? -1 : 1;
     image.setTexture(key);
     image.setVisible(true);
@@ -778,7 +783,8 @@ export class Stage {
     if (!scene) return false;
     const slot = LookLibrary.slot(request.id, request.poseKey, request.medium);
     const key = this.lookTextures.get(slot);
-    if (!key || request.points.length < 2) return false;
+    const baked = request.library.get(request.id, request.poseKey, request.medium);
+    if (!key || !baked || request.points.length < 2) return false;
 
     let rope = this.ropes[this.ropesUsed];
     if (!rope) {
@@ -797,7 +803,9 @@ export class Stage {
     rope.setVisible(true);
     rope.setDepth(request.depth);
     rope.setAlpha(request.alpha ?? 1);
-    rope.setScale(request.scale ?? 1);
+    // The points are the picture's own pixels, so a coarse bake is stretched
+    // back out by the same scale that its own grain asks for.
+    rope.setScale((request.scale ?? 1) * baked.grain);
     rope.setPosition(request.x, request.y);
     /*
      * The points array is reused rather than replaced. `setPoints` rebuilds the

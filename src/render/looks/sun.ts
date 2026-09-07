@@ -33,6 +33,19 @@ export const sunLook: Look<Only> = {
    * some, because the hooks lean past their radius.
    */
   reach: 215,
+  /*
+   * The painted sun is the biggest flat fill in the game — a disc four hundred
+   * units across and a ring of licks round it, and not one detail in either
+   * smaller than a flame. Life size it was 597KB, on its own a fifth of the
+   * whole library, for a picture with two colours in it. At half resolution it
+   * is 150KB and the only difference is a ramp two units wide on the rim,
+   * which on a sun that turns reads as sunlight rather than as blur.
+   *
+   * The graphite sun does not get the same treatment: it is one hairline
+   * around the same circle, and halving it turns a pencil stroke into a grey
+   * smear — looked at side by side, that one is obvious.
+   */
+  grain: (medium) => (medium === 'color' ? 2 : 1),
   poses: () => ONE,
   key: () => 'one',
   draw(ctx, _pose, medium) {

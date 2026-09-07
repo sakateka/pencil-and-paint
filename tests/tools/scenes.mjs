@@ -618,6 +618,31 @@ export const SCENES = {
     },
   },
 
+  sun: {
+    describe: 'the sun coming over the top-right corner of the paper, flames and all',
+
+    /**
+     * The north-east corner, camera as high as it is allowed to go.
+     *
+     * The sun's centre is off the map by design and only its near quarter is
+     * ever on screen, so there is exactly one place to stand to see it at all:
+     * over at its own longitude with the view lifted to the ceiling of the sky.
+     * The whole valley is collected first, because the flames are two flat
+     * fills in paint and a thin pencil ring outside the colour — and it is the
+     * paint that carries the size.
+     */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.collectAll();
+      game.teleport(2792, 100);
+      for (let i = 0; i < 30; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.camera.snapTo(2792, game.camera.viewHeight / 2 - 530);
+      game.running = false;
+      renderOnce();
+      return { x: Math.round(game.camera.toScreenX(2540)), y: 0, width: 520, height: 260 };
+    },
+  },
+
   elephant: {
     describe: 'the elephant after its arrival, standing in the sky over the north',
 

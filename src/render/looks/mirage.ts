@@ -72,6 +72,15 @@ export const mirageCloudLook: Look<Only> = {
    * lobes and rounded up, the same way `MIRAGE_REACH` is.
    */
   reach: 210,
+  /*
+   * Half resolution in both media, and of everything in the library this is
+   * the picture that minds least: a union of overlapping ellipses filled flat,
+   * three hundred units wide, with no edge in it that is meant to be sharp —
+   * and it is then stretched over a rope whose vertices move, so its edge is
+   * being resampled every frame in any case. 215KB a medium became 54KB, and
+   * the lobe seams are still there where a quarter resolution washed them out.
+   */
+  grain: () => 2,
   poses: () => ONE,
   key: () => 'one',
   draw(ctx, _pose, medium) {
@@ -144,6 +153,15 @@ export const mirageBodyLook: Look<Only> = {
    * visibly on the animal. Measured, then rounded up.
    */
   reach: 220,
+  /*
+   * Life size, and it was worth checking why. Halving it looked safe on paper
+   * — the animal is drawn in its own small units and magnified four times, so
+   * its finest line is four world units wide before anything is baked — but
+   * put side by side against the full-resolution build the whole silhouette
+   * had gone soft: the outline, the ear seam and the toenails all at once, on
+   * the one animal the whole game is building up to. 234KB a medium is a
+   * cheaper thing to spend than that. `grain` is left at one deliberately.
+   */
   poses: () => ONE,
   key: () => 'one',
   draw(ctx, _pose, medium) {
@@ -265,13 +283,20 @@ export function showMirageCloud(
   const grow = 0.72 + amount * 0.28;
   const alpha = medium === 'color' ? Math.min(1, amount) : 0.08 + Math.min(1, amount) * 0.14;
 
-  const bob = (ELEPHANT_MIRAGE_SCALE * mirageBobAt(clock)) / grow;
+  /*
+   * World units to one of this rope's own units, which is what the vertices
+   * are given in. The rope is scaled by the swell and by the picture's grain
+   * together, so every distance that arrives here in world units — the bob,
+   * the drift — is divided by both before it becomes a vertex.
+   */
+  const stretch = grow * baked.grain;
+  const bob = (ELEPHANT_MIRAGE_SCALE * mirageBobAt(clock)) / stretch;
   const points: { x: number; y: number }[] = [];
   const centreY = baked.dy + baked.height / 2 - bob;
   for (let i = 0; i < MIRAGE_SLICES; i++) {
     const px = baked.dx + (baked.width * i) / (MIRAGE_SLICES - 1);
-    const lx = px / ELEPHANT_MIRAGE_SCALE;
-    const drift = (Math.sin(clock * 1.3 + lx * 0.22) * 1.8 * ELEPHANT_MIRAGE_SCALE) / grow;
+    const lx = (px * baked.grain) / ELEPHANT_MIRAGE_SCALE;
+    const drift = (Math.sin(clock * 1.3 + lx * 0.22) * 1.8 * ELEPHANT_MIRAGE_SCALE) / stretch;
     points.push({ x: px + drift, y: centreY });
   }
 

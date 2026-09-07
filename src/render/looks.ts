@@ -46,6 +46,24 @@ export interface Look<Pose> {
    */
   readonly reach: number;
 
+  /**
+   * World units to one baked pixel, per medium. One by default: life size.
+   *
+   * Memory goes with the square of this, and so does the width of the soft
+   * ramp every edge gets, so it is only worth raising on a drawing that has
+   * nothing small in it. Three pictures — the sun and the two halves of the
+   * mirage — were two thirds of the whole library, and what they were spending
+   * it on is flat fill: the sun is a disc and a ring of licks, the mirage is a
+   * white smudge and an animal seen through heat haze.
+   *
+   * Per medium, because the same drawing is not the same kind of drawing in
+   * both. The painted sun is two flat fills four hundred units across and does
+   * not care; the graphite one is a single hairline round the same circle, and
+   * at half resolution it stops being a pencil stroke and becomes a grey
+   * smear. **A medium whose drawing is strokes stays at one.**
+   */
+  grain?(medium: Medium): number;
+
   /** Every picture this look can ever show. Finite, and that is the point. */
   poses(): Iterable<Pose>;
 
@@ -67,7 +85,14 @@ export interface Look<Pose> {
   draw(ctx: CanvasRenderingContext2D, pose: Pose, medium: Medium): void;
 }
 
-/** One baked picture: the ink, and where it sits relative to the origin. */
+/**
+ * One baked picture: the ink, and where it sits relative to the origin.
+ *
+ * Every measurement here is in the picture's own pixels, not world units — so
+ * a picture baked coarse reads the same as any other, and whoever shows it
+ * multiplies by `grain` once, along with the scale it was going to apply
+ * anyway.
+ */
 export interface BakedPose {
   readonly canvas: HTMLCanvasElement;
   /** Offset of the canvas' top-left corner from the look's origin. */
@@ -75,6 +100,8 @@ export interface BakedPose {
   readonly dy: number;
   readonly width: number;
   readonly height: number;
+  /** World units to one of this picture's pixels. */
+  readonly grain: number;
 }
 
 /**
@@ -109,6 +136,7 @@ const EMPTY: BakedPose = {
   dy: 0,
   width: 0,
   height: 0,
+  grain: 1,
 };
 
 /**
@@ -152,30 +180,37 @@ export class LookLibrary {
    * Each is drawn into a scratch big enough for the look's reach, measured for
    * the box its ink actually occupies, and copied into a canvas of exactly that
    * size. The measuring is a readback and is the expensive half; the scratch is
-   * kept per size so it is allocated a handful of times rather than per picture.
+   * kept per grain — one or two per look, rather than one per picture.
    */
   *bake(): Generator<{ done: number; total: number }> {
     const started = performance.now();
     let done = 0;
     const total = this.total();
     for (const look of this.looks) {
-      const size = Math.max(2, Math.ceil(look.reach * 2));
-      const scratch = createSurface(size, size, { willReadFrequently: true });
-      const centre = size / 2;
+      const scratches = new Map<number, ReturnType<typeof createSurface>>();
       for (const pose of look.poses()) {
         for (const medium of look.media) {
+          const grain = look.grain?.(medium) ?? 1;
+          const size = Math.max(2, Math.ceil((look.reach * 2) / grain));
+          let scratch = scratches.get(grain);
+          if (!scratch) {
+            scratch = createSurface(size, size, { willReadFrequently: true });
+            scratches.set(grain, scratch);
+          }
           const poseKey = look.key(pose, medium);
           const slot = LookLibrary.slot(look.id, poseKey, medium);
           if (!this.baked.has(slot)) {
-            this.baked.set(slot, this.paint(look, pose, medium, scratch, centre, size));
+            this.baked.set(slot, this.paint(look, pose, medium, scratch, size / 2, size, grain));
           }
           done++;
           yield { done, total };
         }
       }
-      // The scratch was working space, not a picture.
-      scratch.canvas.width = 1;
-      scratch.canvas.height = 1;
+      // The scratches were working space, not pictures.
+      for (const scratch of scratches.values()) {
+        scratch.canvas.width = 1;
+        scratch.canvas.height = 1;
+      }
     }
     this.bakeMs = performance.now() - started;
   }
@@ -198,6 +233,7 @@ export class LookLibrary {
     scratch: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D },
     centre: number,
     size: number,
+    grain: number,
   ): BakedPose {
     const { ctx } = scratch;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -214,6 +250,9 @@ export class LookLibrary {
      */
     ctx.save();
     ctx.translate(centre, centre);
+    // The look draws in world units and knows nothing about how finely it is
+    // being recorded; this is the whole of what `grain` does to a drawing.
+    if (grain !== 1) ctx.scale(1 / grain, 1 / grain);
     look.draw(ctx, pose, medium);
     ctx.restore();
 
@@ -237,6 +276,7 @@ export class LookLibrary {
       dy: box.y - centre - BLEED,
       width,
       height,
+      grain,
     };
   }
 
