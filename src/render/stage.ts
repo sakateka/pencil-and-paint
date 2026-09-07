@@ -271,6 +271,21 @@ export class Stage {
     return { uploadedPx: this.lastFramePx, created: this.lastCreated };
   }
 
+  /*
+   * The same two numbers, one at a time.
+   *
+   * `frameCost` builds a fresh object to answer, which is fine for a tool that
+   * asks once and unacceptable for the perf meters, which ask every frame — a
+   * counter of objects created per frame must not be one of them.
+   */
+  get lastFrameUploadedPx(): number {
+    return this.lastFramePx;
+  }
+
+  get lastFrameCreated(): number {
+    return this.lastCreated;
+  }
+
   constructor(parent: HTMLElement, private readonly onReady: () => void) {
     if (!DRAW) return;
     const stage = this;

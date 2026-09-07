@@ -30,7 +30,7 @@ import { buzzPurr } from './systems/haptics';
 import { Sample } from './systems/sample';
 import { CuckooAmbience } from './systems/cuckoo';
 import { Input } from './systems/input';
-import { drawPerfOverlay, Performance } from './systems/perf';
+import { drawPerfOverlay, Meters, Performance } from './systems/perf';
 import { PAINTINGS } from './assets/paintings/index';
 import { Closer } from './closer';
 import { latestDrawing, Studio } from './studio';
@@ -305,6 +305,7 @@ async function boot(): Promise<void> {
   await gesture;
 
   const perf = new Performance();
+  const meters = new Meters();
   let showPerf = false;
   const statsButton = document.querySelector<HTMLButtonElement>('#stats');
   const hintPanel = document.querySelector<HTMLElement>('#hint');
@@ -534,6 +535,12 @@ async function boot(): Promise<void> {
     // Building the world and baking the first sprites is a one-off cost and
     // must not be mistaken for a slow machine.
     perf.pardonWarmUp();
+    /*
+     * And the graphs with them. A ten-second window that opens on the intro
+     * card is a window on a page that is not playing yet, and one loading frame
+     * is tall enough to press every later frame flat against the baseline.
+     */
+    meters.clear();
     void fetchSounds();
   }
 
@@ -868,7 +875,7 @@ async function boot(): Promise<void> {
     renderer.clearOverlay();
     if (showPerf) {
       /*
-       * Three lines, and every one of them earns its place.
+       * Six numbers, and every one of them earns its place.
        *
        * This readout used to carry eleven: fps, the frame split three ways, the
        * render scale, the device pixel ratio, how many animals were awake, the
@@ -880,22 +887,54 @@ async function boot(): Promise<void> {
        * `upload` and `new` are the invariant the render redesign is for: once
        * the valley is warm they are meant to be zero, every frame, for ever. A
        * number other than zero here is the bug, before anyone feels it.
+       *
+       * The meters are filled in below, after the frame has finished and its
+       * real cost is known; here they are only handed over to be drawn. That
+       * makes the digits one frame old, which at five readings a second is not
+       * a frame anybody can see.
        */
-      const cost = renderer.frameCost;
       const worst = perf.worstFrames[0];
-      const p = perf.snapshot();
-      drawPerfOverlay(renderer.context, p, renderer.width, renderer.height, [
+      drawPerfOverlay(renderer.context, perf.snapshot(), renderer.width, renderer.height, [
         `build ${BUILD_ID}`,
-        `fps ${p.fps.toFixed(0)}   frame ${p.frameMs.toFixed(1)}ms   draw ${p.drawMs.toFixed(2)}ms`,
-        // `frameStages`, not `stages`: the latter is a rolling average, and an
-        // average of a count is a long tail of zeroes rather than a number.
-        `upload ${(cost.uploadedPx / 262144).toFixed(2)}MB/f   new ${cost.created}   bakes ${renderer.frameStages.bakes}`,
+        ...meters.list,
         worst ? `worst ${worst.frameMs.toFixed(1)}ms at ${worst.at.toFixed(1)}s` : 'worst none yet',
       ]);
     }
     const drawMs = performance.now() - drawStart;
     perf.recordDraw(drawMs);
     perf.recordFrame(elapsedMs);
+    /*
+     * The meters are fed whether or not anyone is looking, because the ten
+     * seconds worth reading are the ones before the key was pressed. Nothing
+     * here allocates, so a hidden readout costs a few additions a frame.
+     *
+     * The same half-second cap as `considerFrame` below, and for the same
+     * reason turned around: a switched tab is not a hitch, and one point of
+     * several thousand milliseconds would set the scale of every graph and
+     * flatten the next ten seconds of real frames into the baseline.
+     *
+     * On `fps` the useful column is `avg` — it is the honest rate over the
+     * fifth of a second. Its `max` is the *best* frame in that fifth, which is
+     * the flattering end of the reading; the worst frame is not lost, it is the
+     * `max` of `frame ms` directly below, where a spike belongs.
+     */
+    /*
+     * A floor as well as a ceiling, for `fps` alone. Two callbacks half a
+     * millisecond apart are one frame counted twice, not two thousand frames a
+     * second, and that reading would set the scale of the whole graph and press
+     * every honest sixty against the floor for the next ten seconds.
+     */
+    if (elapsedMs >= 1 && elapsedMs < 500) {
+      meters.record('fps', 1000 / elapsedMs);
+      meters.record('frame ms', elapsedMs);
+      meters.record('draw ms', drawMs);
+      meters.record('upload MB', renderer.lastFrameUploadedPx / 262144);
+      meters.record('new', renderer.lastFrameCreated);
+      // `frameStages`, not `stages`: the latter is a rolling average, and an
+      // average of a count is a long tail of zeroes rather than a number.
+      meters.record('bakes', renderer.frameStages.bakes);
+    }
+    meters.update(now);
     /*
      * Keep the bad ones whole. `recordFrame` folds this into an average, which
      * is what every previous investigation had to work from and why none of

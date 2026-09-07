@@ -1001,6 +1001,15 @@ export class Renderer {
     return this.stage.frameCost;
   }
 
+  /** The same two numbers one at a time, for callers that read them every frame. */
+  get lastFrameUploadedPx(): number {
+    return this.stage.lastFrameUploadedPx;
+  }
+
+  get lastFrameCreated(): number {
+    return this.stage.lastFrameCreated;
+  }
+
   /**
    * Frames drawn against frames asked for, and where the picture actually was.
    *
