@@ -1,7 +1,7 @@
 import { Rng } from '../core/rng';
 import { TAU } from '../core/math';
 import { createSurface } from '../core/canvas';
-import { ink, jitter } from '../media/ink';
+import { ink, jitter, withBoilAt } from '../media/ink';
 import { PAPER, PENCIL, type Medium } from '../media/medium';
 import { drawNorthernLandscape } from './hills';
 
@@ -231,8 +231,13 @@ const SKY_STRIP_MARGIN = 32;
  * cel was as wide as the view, and every 512 world pixels of progress re-painted
  * and re-uploaded several megabytes to the GPU, twice, in the middle of a frame.
  *
- * The sun is not in the strip: in colour its flames turn, so it keeps its own
- * small cel above this.
+ * The painted sun is not in the strip: its flames turn, so it keeps its own
+ * picture above this (`render/looks/sun.ts`). The graphite one *is* in the
+ * strip, and belongs there — a ruled-in sun does not turn, which leaves it a
+ * drawing fixed in the world like the clouds and the hills beside it. On its
+ * own it was a 393-square picture that was ninety-six per cent hole, because a
+ * ring of flames is mostly the middle it goes round: 598KB, the largest single
+ * thing in the library, for a hairline the strip already has room for.
  */
 export function bakeSkyStrip(
   medium: Medium,
@@ -248,5 +253,22 @@ export function bakeSkyStrip(
   // and a valley with no sky, hills or house on it.
   surface.ctx.setTransform(1, 0, 0, 1, SKY_STRIP_MARGIN, SKY_DEPTH);
   drawSkyBackdrop(surface.ctx, -SKY_STRIP_MARGIN, -SKY_DEPTH, width, medium, clearAt);
+  if (medium !== 'color') {
+    /*
+     * Over the clouds, where the sprite used to sit a thousandth of a depth
+     * above the strip. At the boil it is held at, like everything else baked
+     * once: the strip is hashed rather than boiled so that it cannot twitch.
+     *
+     * It fits, but only just, and worth writing down: the sun's centre is at
+     * x 2792 with flames reaching 199, so its ink runs to 2991 — past the
+     * strip's right edge at 2832. The camera cannot follow it there. Its
+     * centre is off the corner of the paper by design and the view is clamped
+     * to the world's own width, so nothing east of 2800 is ever on screen.
+     */
+    surface.ctx.save();
+    surface.ctx.translate(SUN.x, SUN.y);
+    withBoilAt(0, () => drawSunBody(surface.ctx, medium));
+    surface.ctx.restore();
+  }
   return { canvas: surface.canvas, x: -SKY_STRIP_MARGIN, y: -SKY_DEPTH };
 }

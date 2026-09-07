@@ -5,7 +5,7 @@ import type { Look, LookLibrary } from '../looks';
 import type { Layer, Stage } from '../stage';
 
 /**
- * The sun, as one picture that turns.
+ * The painted sun, as one picture that turns.
  *
  * The flames rotate as one rigid drawing — the old cel repainted a canvas the
  * size of the whole sun six times a second to carry that, 0.67MB a repaint,
@@ -16,6 +16,11 @@ import type { Layer, Stage } from '../stage';
  *
  * The disc the flames ring is a circle: the rotation carries it invisibly,
  * which is why the whole sun is one picture and not two.
+ *
+ * Only in paint. Out in the graphite the sun does not turn — a ruled-in sun
+ * is a drawing on paper — and a thing that never moves against the sky has no
+ * business being a sprite over it: that one is baked into the sky strip with
+ * the clouds and the hills, in `bakeSkyStrip`.
  */
 
 /** The one pose a part with no pictures has. */
@@ -27,29 +32,25 @@ const ONE: readonly Only[] = [{ only: 0 }];
 
 export const sunLook: Look<Only> = {
   id: 'sun',
-  media: ['sketch', 'color'],
+  media: ['color'],
   /*
    * The flame tips reach SUN.r * 1.325 from the centre; rounded up, and then
    * some, because the hooks lean past their radius.
    */
   reach: 215,
   /*
-   * The painted sun is the biggest flat fill in the game — a disc four hundred
-   * units across and a ring of licks round it, and not one detail in either
-   * smaller than a flame. Life size it was 597KB, on its own a fifth of the
-   * whole library, for a picture with two colours in it. At half resolution it
-   * is 150KB and the only difference is a ramp two units wide on the rim,
-   * which on a sun that turns reads as sunlight rather than as blur.
-   *
-   * The graphite sun does not get the same treatment: it is one hairline
-   * around the same circle, and halving it turns a pencil stroke into a grey
-   * smear — looked at side by side, that one is obvious.
+   * Half resolution: this is the biggest flat fill in the game — a disc four
+   * hundred units across and a ring of licks round it, with no detail in
+   * either smaller than a flame. Life size it was 597KB on its own, a fifth of
+   * the whole library, for a picture with two colours in it. Halved it is
+   * 150KB and the only difference is a ramp two units wide on the rim, which
+   * on a sun that turns reads as sunlight rather than as blur.
    */
-  grain: (medium) => (medium === 'color' ? 2 : 1),
+  grain: () => 2,
   poses: () => ONE,
   key: () => 'one',
   draw(ctx, _pose, medium) {
-    // The graphite sun is drawn once and holds: a ruled-in sun does not turn.
+    // Baked at spin zero; the turn is the sprite's rotation, below.
     withBoilAt(0, () => drawSunBody(ctx, medium));
   },
 };
@@ -72,6 +73,7 @@ export function showSun(
   viewX: number,
   viewWidth: number,
 ): void {
+  if (medium !== 'color') return;
   if (!sunVisible(viewX, viewWidth)) return;
   stage.showLook({
     library,
@@ -82,6 +84,6 @@ export function showSun(
     x: SUN.x,
     y: SUN.y,
     depth,
-    rotation: medium === 'color' ? elapsed * SPIN : 0,
+    rotation: elapsed * SPIN,
   });
 }

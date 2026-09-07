@@ -104,6 +104,78 @@ export async function run(url) {
       `${painted.colour.blue}/${painted.colour.of}`,
     );
 
+    /*
+     * The sun has rays, in both media.
+     *
+     * It went without them for months and nothing noticed: the flame ring was
+     * drawn out at the sun's world position while the disc it rings was drawn
+     * at the origin, so every flame landed two and a half thousand units off
+     * its own picture and was clipped away. What was left was a plain circle,
+     * and a plain circle is a perfectly good-looking thing — which is why no
+     * screenshot ever raised its hand.
+     *
+     * So this asks the one question that separates them: how far west of the
+     * centre does the drawing reach at the sun's own latitude? The disc stops
+     * at 150 units; the flames go out to nearly 200. Anything that finds ink
+     * past the disc's edge has found a ray.
+     *
+     * A band of rows rather than one, because the flames are twenty-two licks
+     * with gaps between them and a single row can fall in a gap. Each column
+     * is compared against the same row of the westmost column, which is well
+     * outside any flame and is therefore whatever the sky happens to be doing
+     * there — a gradient in paint, ruled lines and paper grain in graphite.
+     */
+    const rays = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const scale = pencil.renderer.scale;
+      const west = (flooded) => {
+        game.restart();
+        if (flooded) game.collectAll();
+        // The one place the sun is on screen: its own longitude, camera at the
+        // ceiling of the sky. Its centre is off the corner of the paper.
+        game.teleport(2792, 100);
+        for (let i = 0; i < 180; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.camera.snapTo(2792, game.camera.viewHeight / 2 - 530);
+        pencil.renderOnce();
+        const at = (wx, wy) => [
+          Math.round(game.camera.toScreenX(wx) * scale),
+          Math.round(game.camera.toScreenY(wy) * scale),
+        ];
+        const [x0, y0] = at(2560, -526);
+        const [x1, y1] = at(2700, -446);
+        const w = x1 - x0;
+        const h = y1 - y0;
+        const { data } = pencil.composited(x0, y0, w, h);
+        for (let x = 0; x < w; x++) {
+          for (let y = 0; y < h; y++) {
+            const i = (y * w + x) * 4;
+            const ref = y * w * 4;
+            const d = Math.max(
+              Math.abs(data[i] - data[ref]),
+              Math.abs(data[i + 1] - data[ref + 1]),
+              Math.abs(data[i + 2] - data[ref + 2]),
+            );
+            if (d > 12) return 2560 + (x / w) * 140;
+          }
+        }
+        return Infinity;
+      };
+      return { sketch: west(false), colour: west(true) };
+    });
+
+    // The disc's own edge is at 2792 - 150 = 2642, with a little room for the
+    // shortest flame: past this and it can only be a ray.
+    for (const [medium, reach] of [
+      ['in graphite', rays.sketch],
+      ['in paint', rays.colour],
+    ]) {
+      suite.ok(
+        reach < 2628,
+        `the sun has its rays ${medium}`,
+        `ink reaches west to ${Math.round(reach)}, disc edge 2642`,
+      );
+    }
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();
