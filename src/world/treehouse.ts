@@ -187,47 +187,58 @@ export function makeTreehouse(x: number, y: number): Scenery {
  * now the only way to see in is the way there actually is, and walking about
  * the room means crossing the one part of the wall you can be seen through.
  *
- * Everything here is clipped to the glass, which is what does the work: the
- * figure is drawn at full size in the room's own coordinates and simply is not
- * painted anywhere the window is not.
+ * The clip to the glass is what does the work: the figure is drawn at full size
+ * in the room's own coordinates and simply is not painted anywhere the window
+ * is not. As pictures the clip is the one thing that cannot be a transform —
+ * see `render/looks/window.ts`, where it becomes a crop on the sprite.
+ *
+ * Four parts, drawn in this order: the lit room, whoever is in it, the frame
+ * over the top of them both, and the lamplight spilling onto the platform.
  */
-export function drawThroughWindow(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  offset: number,
-  facing: -1 | 1,
-  walk: number,
-  moving: boolean,
-): void {
+
+/** Where the window is, in world units, given where the tree stands. */
+export function windowPane(x: number, y: number): {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+} {
   const left = x + WINDOW.dx;
   const top = y - FLOOR - HUT_H + WINDOW.dy;
+  return { left, top, right: left + WINDOW.w, bottom: top + WINDOW.h };
+}
+
+/** Where the floor of the room is, which is what the figure stands on. */
+export function roomFloor(y: number): number {
+  return y - FLOOR - 2;
+}
+
+/** How far the walking bob lifts them at this point in the step. */
+export function roomBob(walk: number, moving: boolean): number {
+  return moving ? Math.abs(Math.sin(walk * Math.PI * 2)) * 1.4 : 0;
+}
+
+/** The room behind them: lit, because somebody is in it. Drawn about the pane. */
+export function drawRoomLight(ctx: CanvasRenderingContext2D): void {
   const { w, h } = WINDOW;
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(left, top, w, h);
-  ctx.clip();
-
-  // The room behind them: lit, because somebody is in it.
-  const lamp = ctx.createLinearGradient(0, top, 0, top + h);
+  const lamp = ctx.createLinearGradient(0, 0, 0, h);
   lamp.addColorStop(0, '#f0cf94');
   lamp.addColorStop(1, '#c79a5e');
   ctx.fillStyle = lamp;
-  ctx.fillRect(left, top, w, h);
+  ctx.fillRect(0, 0, w, h);
+}
 
-  /*
-   * Them, in the room's coordinates rather than the window's — which is the
-   * point. They walk past the glass and are only painted while they are behind
-   * it, so most of the room is a wall with somebody moving about behind it.
-   */
-  const fx = x + offset;
-  const floor = y - FLOOR - 2;
-  const bob = moving ? Math.abs(Math.sin(walk * Math.PI * 2)) * 1.4 : 0;
-  const fy = floor - bob;
-
+/**
+ * Them, about their own feet.
+ *
+ * `facing` is baked rather than mirrored on the way out, because this is the
+ * one drawing in the game that is cut to a hole in a wall: a crop is measured
+ * in the picture's own pixels, and a mirrored picture measures them from the
+ * other end. Two pictures of something eleven pixels wide is not a saving worth
+ * that. The difference between them is an eye and the parting of the hair.
+ */
+export function drawRoomFigure(ctx: CanvasRenderingContext2D, facing: -1 | 1): void {
   ctx.save();
-  ctx.translate(fx, fy);
   ctx.scale(facing, 1);
   ctx.fillStyle = '#3a5a86';
   ctx.fillRect(-4.5, -10, 9, 10);
@@ -248,28 +259,31 @@ export function drawThroughWindow(
   ctx.arc(2, -24.6, 0.85, 0, TAU);
   ctx.fill();
   ctx.restore();
+}
 
-  ctx.restore();
-
-  // The frame over the top, so they are behind glass rather than in a hole.
+/** The frame over the top, so they are behind glass rather than in a hole. */
+export function drawWindowFrame(ctx: CanvasRenderingContext2D): void {
+  const { w, h } = WINDOW;
   ctx.save();
   ctx.strokeStyle = WOOD_EDGE;
   ctx.lineWidth = 1.6;
   ctx.beginPath();
-  ctx.moveTo(left + w / 2, top);
-  ctx.lineTo(left + w / 2, top + h);
-  ctx.moveTo(left, top + h / 2);
-  ctx.lineTo(left + w, top + h / 2);
-  ctx.strokeRect(left, top, w, h);
+  ctx.moveTo(w / 2, 0);
+  ctx.lineTo(w / 2, h);
+  ctx.moveTo(0, h / 2);
+  ctx.lineTo(w, h / 2);
+  ctx.strokeRect(0, 0, w, h);
   ctx.stroke();
+  ctx.restore();
+}
 
-  // And a little of the lamp on the platform outside.
-  const spill = ctx.createRadialGradient(left + w / 2, top + h, 2, left + w / 2, top + h, 46);
+/** A little of the lamp on the platform outside, about the sill's middle. */
+export function drawWindowSpill(ctx: CanvasRenderingContext2D): void {
+  const spill = ctx.createRadialGradient(0, 0, 2, 0, 0, 46);
   spill.addColorStop(0, 'rgba(255,214,130,.26)');
   spill.addColorStop(1, 'rgba(255,214,130,0)');
   ctx.fillStyle = spill;
   ctx.beginPath();
-  ctx.arc(left + w / 2, top + h, 46, 0, TAU);
+  ctx.arc(0, 0, 46, 0, TAU);
   ctx.fill();
-  ctx.restore();
 }

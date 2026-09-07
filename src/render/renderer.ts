@@ -9,7 +9,6 @@ import { type Perch } from '../entities/perch';
 import { bakeSkyStrip } from '../world/sky';
 import { boilTick } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
-import { drawThroughWindow } from '../world/treehouse';
 import type { Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import { PARTICLE_COLOURS, type Particles } from '../entities/particles';
@@ -31,6 +30,7 @@ import {
 } from './looks/hammock';
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
 import { registerCampLooks, showCamp } from './looks/camp';
+import { registerWindowLooks, showWindow } from './looks/window';
 import { registerHedgehogLooks, showHedgehog } from './looks/hedgehog';
 import { registerOwlLooks, showOwl } from './looks/owl';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
@@ -206,6 +206,7 @@ export class Renderer {
     registerStumpLooks(this.looks);
     registerSunLooks(this.looks);
     registerWalkerLooks(this.looks);
+    registerWindowLooks(this.looks);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
       this.stage.resize(this.width, this.height);
@@ -912,20 +913,14 @@ export class Renderer {
       showPerch(this.stage, this.looks, perch, 'over', DEPTH.perch);
     }
 
-    const house = scene.treehouse;
-    if (house.inside) {
-      at(
-        'window',
-        house.x,
-        house.y,
-        360,
-        DEPTH.window,
-        poseOf(house),
-        (ctx) =>
-          drawThroughWindow(ctx, house.x, house.y, house.offset, house.facing, house.walk, house.moving),
-        false,
-      );
-    }
+    /*
+     * The lit window, and whoever is pacing about behind it.
+     *
+     * The most expensive cel in the game to the end: a 360-unit square
+     * repainted every frame — the room's clock was in its pose string — to
+     * move a figure eleven units wide. See `looks/window.ts`.
+     */
+    showWindow(this.stage, this.looks, scene.treehouse, 'over', DEPTH.window);
   }
 
   /** Release everything. See `World.dispose`. */

@@ -419,6 +419,101 @@ export const SCENES = {
     },
   },
 
+  window: {
+    describe: 'somebody up in the treehouse, crossing the lit window',
+
+    /**
+     * Walking the room, kept inside the glass for the whole probe.
+     *
+     * The window is twenty-four units across and the figure eleven, so there is
+     * a stretch in the middle where nothing is being cut and the centroid of
+     * their shirt is honestly their position. Pushed at a quarter, or they
+     * cross the whole pane in half a second and the probe spends most of its
+     * frames measuring a crop instead of a walk.
+     */
+    motion: {
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        game.collectAll();
+        const house = game.treehouse;
+        game.teleport(house.x, house.y + 40);
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.interact();
+        game.running = false;
+        house.offset = 12;
+        house.facing = 1;
+        game.camera.snapTo(house.x, house.y - 110);
+        renderOnce();
+        return {
+          x: Math.round(game.camera.toScreenX(house.x)),
+          y: Math.round(game.camera.toScreenY(house.y) - 125),
+          width: 34,
+          height: 26,
+        };
+      },
+      step: (pencil) => {
+        pencil.game.treehouse.move(1 / 60, 0.25);
+        pencil.renderOnce();
+      },
+      /**
+       * Where they are, across the pane.
+       *
+       * `isShirt` rather than `isDeepRed`, which found nothing at all here: the
+       * shirt is the same red, but the paper grain lies over the whole frame at
+       * a thirteenth and lifts it to 224,98,73 — three points of green past
+       * what that predicate allows. This one takes the skin of the face as well
+       * as the shirt, which is no loss: both ride the same figure, and the
+       * question is where the figure is.
+       */
+      find: (strip) => {
+        let sum = 0;
+        let n = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isShirt(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+              sum += x;
+              n++;
+            }
+          }
+        }
+        return n ? sum / n : -1;
+      },
+    },
+
+    /**
+     * Stood where the glass cuts them.
+     *
+     * The window is a hole in a wall and the figure is only painted inside it,
+     * so the interesting spot is the one where all four edges of that hole are
+     * doing something: the left edge across their chest, the top just over
+     * their head, the bottom across their shins. `offset` is set by hand rather
+     * than walked to, because half a unit either way changes which pixels the
+     * crop keeps and that is exactly what is being compared.
+     */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.collectAll();
+      const house = game.treehouse;
+      game.teleport(house.x, house.y + 40);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.interact();
+      game.running = false;
+      house.offset = 8;
+      house.facing = 1;
+      house.moving = false;
+      house.walk = 0;
+      game.camera.snapTo(house.x, house.y - 110);
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(house.x) - 30),
+        y: Math.round(game.camera.toScreenY(house.y) - 135),
+        width: 80,
+        height: 70,
+      };
+    },
+  },
+
   potedge: {
     describe: 'a paint pot on the rim of the colour, nodding to be noticed',
 

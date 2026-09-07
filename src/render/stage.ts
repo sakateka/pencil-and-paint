@@ -678,6 +678,21 @@ export class Stage {
     flipX?: boolean;
     alpha?: number;
     tint?: number;
+    /**
+     * Cut the picture to this rectangle of the world, in world units.
+     *
+     * For the one thing here that a transform cannot do: somebody seen through
+     * a window. The wall is a wall, so the figure has to stop existing at the
+     * edge of the glass rather than fade or be covered — which as a canvas was
+     * `ctx.clip()` and as a sprite is a crop.
+     *
+     * Measured in the world and converted here, because a caller thinking in
+     * texture pixels has to know how the picture was baked. Not usable with
+     * `flipX` or `rotation`: both would need the rectangle carried through the
+     * same transform, and the only look that wants a crop bakes its two
+     * facings instead of mirroring them.
+     */
+    crop?: { left: number; top: number; right: number; bottom: number };
   }): boolean {
     const scene = this.scene;
     const cameras = this.cameras;
@@ -741,6 +756,30 @@ export class Stage {
     image.setScale(scale * flip, scaleY);
     image.setRotation(rotation);
     image.setPosition(request.x + cos * dx - sin * dy, request.y + sin * dx + cos * dy);
+
+    /*
+     * The crop, in the picture's own pixels: where the world rectangle falls
+     * across the picture, once the picture is where it is going.
+     *
+     * Reset explicitly when there is none. These images are a pool and serve a
+     * different look every frame, so a crop left on one is a piece missing from
+     * whatever borrows it next.
+     */
+    if (request.crop) {
+      const left = request.x + dx;
+      const top = request.y + dy;
+      const x0 = Math.max(0, (request.crop.left - left) / scale);
+      const y0 = Math.max(0, (request.crop.top - top) / scaleY);
+      const x1 = Math.min(baked.width, (request.crop.right - left) / scale);
+      const y1 = Math.min(baked.height, (request.crop.bottom - top) / scaleY);
+      if (x1 <= x0 || y1 <= y0) {
+        image.setVisible(false);
+        return true;
+      }
+      image.setCrop(x0, y0, x1 - x0, y1 - y0);
+    } else if (image.isCropped) {
+      image.setCrop();
+    }
     return true;
   }
 
