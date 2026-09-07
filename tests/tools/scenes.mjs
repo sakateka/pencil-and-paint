@@ -43,6 +43,16 @@ function isMuzzle(r, g, b) {
   return r > 190 && g > 110 && r - g > 45 && r - b > 45;
 }
 
+/**
+ * The hedgehog's quill coat: a dull warm brown on a green bank.
+ *
+ * Nothing that grows is this: grass and the bush it comes out of are greener
+ * than they are red, and the straw of the haystack is far yellower.
+ */
+function isQuillCoat(r, g, b) {
+  return r > 95 && r < 160 && r - g > 15 && r - g < 45 && g - b > 12 && g - b < 40;
+}
+
 export const SCENES = {
   hammock: {
     describe: 'somebody lying down: the cloth sags under them over about a second',
@@ -457,6 +467,108 @@ export const SCENES = {
         y: Math.round(game.camera.toScreenY(lion.y) - 70),
         width: 140,
         height: 110,
+      };
+    },
+  },
+
+  hedgehog: {
+    describe: 'the hedgehog bustling across its patch of grass above the haystack',
+
+    /**
+     * It cannot be posed, only played into position.
+     *
+     * The animal is the haystack's reward: it stays under its bush until
+     * somebody has lain still on the hay for five seconds, and it goes back the
+     * moment they get up. So the scene colours the valley, stands the walker
+     * below the bush, and then drives the hedgehog on its own update — `lying`
+     * and `lit` both true — until it is out on the grass and walking.
+     *
+     * Which of the two approved drawings a world uses is a coin toss at
+     * restart, so it is pinned. Two builds drawing two different hedgehogs
+     * would disagree about every pixel and mean nothing by it.
+     */
+    motion: {
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        game.restart();
+        const h = game.hedgehog;
+        h.look = 'field';
+        game.collectAll();
+        game.teleport(h.x, h.y + 130);
+        for (let i = 0; i < 30; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.running = false;
+        /*
+         * The walk home, not one of its patrol legs.
+         *
+         * A patrol leg is a point drawn at random inside the patch, so which
+         * way it goes and how long it lasts are different every run — and a
+         * probe that watches one axis is measuring nothing when the animal
+         * happens to walk up the other. The walk back to the bush is the one
+         * leg in its repertoire that is aimed rather than chosen: it goes
+         * straight home, from wherever it was, and it takes six seconds.
+         *
+         * So: patrol until it stops somewhere out to one side, then stand up.
+         */
+        let guard = 0;
+        while (guard++ < 7200) {
+          h.update(1 / 60, true, true);
+          if (h.out > 0.5 && !h.moving && Math.abs(h.atX - h.x) > Math.abs(h.atY - h.y) * 1.5) {
+            break;
+          }
+        }
+        // Getting up does not frighten it; it carries on for a moment first.
+        for (let i = 0; i < 240 && !h.moving; i++) h.update(1 / 60, false, true);
+        game.camera.snapTo(h.atX, h.atY);
+        renderOnce();
+        return {
+          x: Math.round(game.camera.toScreenX(h.atX) - 40),
+          y: Math.round(game.camera.toScreenY(h.atY) - 26),
+          width: 80,
+          height: 36,
+        };
+      },
+      /** It carries on home, one frame at a time. */
+      step: (pencil) => {
+        pencil.game.hedgehog.update(1 / 60, false, true);
+        pencil.renderOnce();
+      },
+      /** Where the coat is, across the box. */
+      find: (strip) => {
+        let sum = 0;
+        let n = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isQuillCoat(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+              sum += x;
+              n++;
+            }
+          }
+        }
+        return n ? sum / n : -1;
+      },
+    },
+
+    /** Out on the grass, stopped, sniffing: everything it has, held still. */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.restart();
+      const h = game.hedgehog;
+      h.look = 'field';
+      game.collectAll();
+      game.teleport(h.x, h.y + 130);
+      for (let i = 0; i < 30; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.running = false;
+      let guard = 0;
+      while ((h.out < 0.5 || h.moving) && guard++ < 3600) h.update(1 / 60, true, true);
+      h.clock = 0;
+      game.camera.snapTo(h.atX, h.atY);
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(h.atX) - 45),
+        y: Math.round(game.camera.toScreenY(h.atY) - 35),
+        width: 90,
+        height: 50,
       };
     },
   },

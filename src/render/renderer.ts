@@ -3,7 +3,7 @@ import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawEaselPicture, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
 import type { Vigil } from '../entities/vigil';
-import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
+import { type Hedgehog } from '../entities/hedgehog';
 import type { Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
 import { bakeSkyStrip } from '../world/sky';
@@ -30,6 +30,7 @@ import {
   hammockSleeperLook,
 } from './looks/hammock';
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
+import { registerHedgehogLooks, showHedgehog } from './looks/hedgehog';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
 import { registerLionLooks, showLion } from './looks/lion';
 import { registerMirageLooks, showMirageCloud, showMirageElephant } from './looks/mirage';
@@ -192,6 +193,7 @@ export class Renderer {
       this.looks.register(look);
     }
     this.looks.register(birdLook);
+    registerHedgehogLooks(this.looks);
     registerHerdLooks(this.looks);
     registerLionLooks(this.looks);
     registerMirageLooks(this.looks);
@@ -554,25 +556,17 @@ export class Renderer {
     }
 
     /*
-     * Everything below is drawn at a fixed spot, and everything below holds
-     * still when it is drawn in pencil. Pencil strokes jitter against a boil
-     * counter that ticks seven times a second; in the colour pass nothing
-     * jitters, so this only matters for the sketch pass — and the sketch pass
-     * is only ever visible outside the colour, where the thing is meant to be a
-     * drawing on paper. Left to the live boil, the hammock and the stump and
-     * the elephant all sat out in the graphite twitching.
+     * The hedgehog: a coat and four paws, and every one of the things that used
+     * to repaint its cel every single frame — where it is, how far out of the
+     * shadow, which way it points, the waddle — is a number handed to a sprite.
      */
-    const still = <T,>(fn: () => T): T => withBoil(medium === 'color', fn);
-
     const { hedgehog } = scene;
     if (
       hedgehog.out > 0 &&
       camera.canSee(hedgehog.atX, hedgehog.atY, 60) &&
       !hidden(hedgehog.atX, hedgehog.atY, 20)
     ) {
-      at('hedgehog', hedgehog.atX, hedgehog.atY, 160, DEPTH.hedgehog, poseOf(hedgehog), (ctx) =>
-        still(() => drawHedgehog(ctx, hedgehog, medium)),
-      );
+      showHedgehog(this.stage, this.looks, hedgehog, medium, layer, DEPTH.hedgehog);
     }
 
     /*

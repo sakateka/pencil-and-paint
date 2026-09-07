@@ -281,54 +281,120 @@ export class Hedgehog {
   }
 }
 
-export function drawHedgehog(ctx: CanvasRenderingContext2D, h: Hedgehog, medium: Medium): void {
-  if (h.out <= 0.001) return;
+/*
+ * Bigger than a hedgehog. Correct scale next to this walker is about ten
+ * units, which at arm's length from the screen is a smudge — and a smudge you
+ * waited three seconds for is worse than nothing. This is a cosy game and the
+ * animal has to read.
+ */
+export const HEDGEHOG_SCALE = 1.35;
 
-  const t = h.clock;
-  /*
-   * Rocking side to side as it goes, and stopping when it stops.
-   *
-   * Four very short legs under a heavy body: a hedgehog does not glide, it
-   * bustles. The waddle is keyed to how far out it is rather than to the clock,
-   * so it settles the moment it arrives instead of trundling on the spot.
-   */
-  const moving = h.moving;
-  /*
-   * Fading up out of the shadow under the bush rather than switching on.
-   *
-   * Without this the whole animal arrived at once, fully drawn, at the foot of
-   * the bush and then walked out of itself. The bush is baked into the world
-   * and the hedgehog is drawn live on top of it, so it cannot actually be
-   * hidden behind the leaves — this is the next best thing, and it is what
-   * coming out of a shadow looks like anyway.
-   */
-  const showing = Math.min(1, h.out / UNDER_BUSH);
-  const waddle = moving ? Math.sin(t * 11) * 1.5 : 0;
-  // Once it is out and still, it sniffs. That is the whole performance.
-  const sniff = moving ? 0 : Math.sin(t * 4.4) * 0.5 + Math.sin(t * 7.1) * 0.25;
+/** How fast the paws go round while it bustles, in radians a second. */
+export const HEDGEHOG_PADDLE = 11;
 
+/** As far as the sniff ever gets, either way. */
+export const HEDGEHOG_SNIFF = 0.75;
+
+/**
+ * Fading up out of the shadow under the bush rather than switching on.
+ *
+ * Without this the whole animal arrived at once, fully drawn, at the foot of
+ * the bush and then walked out of itself. The bush is baked into the world and
+ * the hedgehog is drawn on top of it, so it cannot actually be hidden behind
+ * the leaves — this is the next best thing, and it is what coming out of a
+ * shadow looks like anyway.
+ */
+export function hedgehogShowing(h: Hedgehog): number {
+  return Math.min(1, h.out / UNDER_BUSH);
+}
+
+/**
+ * Rocking side to side as it goes, and stopping when it stops.
+ *
+ * Four very short legs under a heavy body: a hedgehog does not glide, it
+ * bustles. Keyed to whether it is walking rather than to the clock alone, so it
+ * settles the moment it arrives instead of trundling on the spot.
+ */
+export function hedgehogWaddle(h: Hedgehog): number {
+  return h.moving ? Math.sin(h.clock * HEDGEHOG_PADDLE) * 1.5 * 0.012 : 0;
+}
+
+/** Once it is out and still, it sniffs. That is the whole performance. */
+export function hedgehogSniff(h: Hedgehog): number {
+  return h.moving ? 0 : Math.sin(h.clock * 4.4) * 0.5 + Math.sin(h.clock * 7.1) * 0.25;
+}
+
+/**
+ * The animal itself, drawn from its own feet, in whichever treatment this world
+ * chose. Its paws are drawn separately — see `drawHedgehogFeet`.
+ */
+export function drawHedgehogBody(
+  ctx: CanvasRenderingContext2D,
+  look: HedgehogLook,
+  sniff: number,
+  medium: Medium,
+): void {
   ctx.save();
-  ctx.globalAlpha = showing;
-  ctx.translate(h.atX, h.atY);
-  ctx.rotate(waddle * 0.012);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  /*
-   * Bigger than a hedgehog. Correct scale next to this walker is about ten
-   * units, which at arm's length from the screen is a smudge — and a smudge you
-   * waited three seconds for is worse than nothing. This is a cosy game and the
-   * animal has to read.
-   */
-  // Mirrored to face its direction of travel. It was drawn nose-right and
-  // walks left, so left uncorrected it trundled out backwards.
-  ctx.scale(h.facing * 1.35, 1.35);
+  if (look === 'hybrid') drawHybridHedgehog(ctx, medium, sniff);
+  else drawFieldHedgehog(ctx, medium, sniff);
+  ctx.restore();
+}
 
-  if (h.look === 'hybrid') {
-    drawHybridHedgehog(ctx, medium, moving, t, sniff);
-    ctx.restore();
-    return;
+/**
+ * The four paws, at one point in their cycle.
+ *
+ * Their own drawing rather than part of the coat, because they are the only
+ * part of the animal a walk changes: everything above them is one picture
+ * whether it is bustling or sitting there sniffing. They go underneath, which
+ * is where they were in the one canvas both used to share — the coat is an
+ * opaque fill in paint and the same pencil grey in graphite, so putting them on
+ * their own sprite behind it composites to exactly what it did before.
+ */
+export function drawHedgehogFeet(
+  ctx: CanvasRenderingContext2D,
+  look: HedgehogLook,
+  stride: number,
+  medium: Medium,
+): void {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (look === 'hybrid') {
+    if (medium === 'color') {
+      ctx.strokeStyle = '#c9904d';
+      ctx.lineWidth = 1.25;
+    } else {
+      ink(ctx, 0.35, 1.05);
+    }
+    for (const [i, x] of [-6.2, -2.1, 3, 6].entries()) {
+      const step = Math.sin(stride + i * 1.5) * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, -0.1);
+      ctx.lineTo(x + step, 1.25);
+      ctx.stroke();
+    }
+  } else {
+    if (medium === 'color') {
+      ctx.strokeStyle = SNOUT;
+      ctx.lineWidth = 1.35;
+    } else {
+      ink(ctx, 0.34, 1.1);
+    }
+    for (const [i, fx] of [-6.8, -2.4, 3.2, 6.8].entries()) {
+      const step = Math.sin(stride + i * 1.6) * 0.55;
+      ctx.beginPath();
+      ctx.moveTo(fx, -0.1);
+      ctx.lineTo(fx + step, 1.35);
+      ctx.stroke();
+    }
   }
+  ctx.restore();
+}
 
+/** The first approved drawing: a coat of short quill marks. */
+function drawFieldHedgehog(ctx: CanvasRenderingContext2D, medium: Medium, sniff: number): void {
   /** A tucked underside and small points across the back: low, but not a melon. */
   const dome = (): void => {
     ctx.beginPath();
@@ -383,23 +449,7 @@ export function drawHedgehog(ctx: CanvasRenderingContext2D, h: Hedgehog, medium:
     }
   };
 
-  /** Only the tips of the paws peek out, and only while it is taking a step. */
-  const walkingFeet = (): void => {
-    if (!moving) return;
-    for (const [i, fx] of [-6.8, -2.4, 3.2, 6.8].entries()) {
-      const step = Math.sin(t * 11 + i * 1.6) * 0.55;
-      ctx.beginPath();
-      ctx.moveTo(fx, -0.1);
-      ctx.lineTo(fx + step, 1.35);
-      ctx.stroke();
-    }
-  };
-
   if (medium === 'color') {
-    ctx.strokeStyle = SNOUT;
-    ctx.lineWidth = 1.35;
-    walkingFeet();
-
     ctx.fillStyle = SPINES;
     dome();
     ctx.fill();
@@ -432,7 +482,6 @@ export function drawHedgehog(ctx: CanvasRenderingContext2D, h: Hedgehog, medium:
     ctx.fill();
   } else {
     ink(ctx, 0.34, 1.1);
-    walkingFeet();
     dome();
     ctx.stroke();
     ink(ctx, 0.3, 1);
@@ -449,16 +498,12 @@ export function drawHedgehog(ctx: CanvasRenderingContext2D, h: Hedgehog, medium:
     ctx.arc(8.2, -4.85, 0.9, 0, TAU);
     ctx.stroke();
   }
-
-  ctx.restore();
 }
 
 /** Cartoon coat with the smaller, darker face and forehead of `tmp/ezik.png`. */
 function drawHybridHedgehog(
   ctx: CanvasRenderingContext2D,
   medium: Medium,
-  moving: boolean,
-  t: number,
   sniff: number,
 ): void {
   const coat = (): void => {
@@ -508,21 +553,7 @@ function drawHybridHedgehog(
       ctx.stroke();
     }
   };
-  const feet = (): void => {
-    if (!moving) return;
-    for (const [i, x] of [-6.2, -2.1, 3, 6].entries()) {
-      const step = Math.sin(t * 11 + i * 1.5) * 0.5;
-      ctx.beginPath();
-      ctx.moveTo(x, -0.1);
-      ctx.lineTo(x + step, 1.25);
-      ctx.stroke();
-    }
-  };
-
   if (medium === 'color') {
-    ctx.strokeStyle = '#c9904d';
-    ctx.lineWidth = 1.25;
-    feet();
     ctx.fillStyle = '#985526';
     coat();
     ctx.fill();
@@ -553,7 +584,6 @@ function drawHybridHedgehog(
   }
 
   ink(ctx, 0.35, 1.05);
-  feet();
   coat();
   ctx.stroke();
   ink(ctx, 0.26, 0.8);
