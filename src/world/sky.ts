@@ -71,9 +71,13 @@ function sunFlames(ctx: CanvasRenderingContext2D, t: number): void {
     const reach = SUN.r * (1.27 + Math.sin(i * 2.7) * 0.055);
     // The tip sits past the middle of the gap, which is the hook.
     const tip = (a0 + a1) / 2 + 0.1;
+    // Round the sun's own centre, like the disc inside: the caller puts that
+    // centre where it belongs. Reaching from the sun's world position here
+    // threw the whole ring 2792 units off its own disc, so every flame landed
+    // outside the picture and was clipped away — a sun with no rays at all.
     const at = (a: number, r: number): [number, number] => [
-      SUN.x + Math.cos(a) * r,
-      SUN.y + Math.sin(a) * r,
+      Math.cos(a) * r,
+      Math.sin(a) * r,
     ];
     if (i === 0) ctx.moveTo(...at(a0, SUN.r));
     // Fat control points, so each ray is a rounded lick rather than a blade.
@@ -86,9 +90,6 @@ function sunFlames(ctx: CanvasRenderingContext2D, t: number): void {
 export function sunVisible(left: number, width: number): boolean {
   return SUN.x + SUN.r * 2.4 > left && SUN.x - SUN.r * 2.4 < left + width;
 }
-
-/** How far past the disc the flames can reach, plus a whisker for the hook. */
-const SUN_PAD = SUN.r * 1.4;
 
 /**
  * The sun, at its own centre, frozen at spin zero.
@@ -121,19 +122,6 @@ export function drawSunBody(
     ctx.stroke();
   }
 }
-
-export function drawSun(ctx: CanvasRenderingContext2D, medium: Medium, t: number): void {
-  ctx.save();
-  ctx.translate(SUN_PAD, SUN_PAD);
-  drawSunBody(ctx, medium, t);
-  ctx.restore();
-}
-
-export const SUN_BOUNDS = {
-  x: SUN.x - SUN_PAD,
-  y: SUN.y - SUN_PAD,
-  size: Math.ceil(SUN_PAD * 2),
-};
 
 export function drawSkyBackdrop(
   ctx: CanvasRenderingContext2D,
@@ -228,27 +216,6 @@ export function drawSkyBackdrop(
   ctx.stroke();
   ctx.restore();
   drawNorthernLandscape(ctx, medium, viewX, viewWidth);
-}
-
-export function drawSky(
-  ctx: CanvasRenderingContext2D,
-  viewX: number,
-  viewY: number,
-  viewWidth: number,
-  medium: Medium,
-  /** Seconds since the world began, for the shine. */
-  t: number,
-  clearAt: number,
-): void {
-  drawSkyBackdrop(ctx, viewX, viewY, viewWidth, medium, clearAt);
-  const left = viewX - 8;
-  const width = viewWidth + 16;
-  if (sunVisible(left, width)) {
-    ctx.save();
-    ctx.translate(SUN.x - SUN_PAD, SUN.y - SUN_PAD);
-    drawSun(ctx, medium, t);
-    ctx.restore();
-  }
 }
 
 /** Margin baked into the sky strip either side of the world, in world units. */
