@@ -65,7 +65,13 @@ export async function run(url) {
     const tooSoon = await game.evaluate((pencil) => {
       const { game } = pencil;
       game.interact();
-      for (let i = 0; i < 60 * 15; i++) {
+      const fromY = game.camera.y;
+      const topY = game.camera.topCentreY;
+      for (let i = 0; i < 60; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      }
+      const afterOne = game.camera.y;
+      for (let i = 0; i < 60 * 14; i++) {
         game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       }
       const held = {
@@ -74,6 +80,10 @@ export async function run(url) {
         clock: +game.vigil.clock.toFixed(2),
         seen: game.vigil.seen,
         lit: game.vigil.lit,
+        fromY,
+        afterOne,
+        topY,
+        cameraY: game.camera.y,
       };
       game.cancel(); // back on your feet — `interact` sits, it does not stand
       return held;
@@ -84,6 +94,16 @@ export async function run(url) {
     suite.equal(tooSoon.clock, 0, 'the wait has not even started');
     suite.equal(tooSoon.seen, false, 'nothing has been seen');
     suite.equal(tooSoon.lit, false, 'because the colour is nowhere near that sky');
+    suite.ok(tooSoon.afterOne < tooSoon.fromY, 'the camera begins looking up when you sit');
+    suite.ok(
+      tooSoon.afterOne - tooSoon.topY > (tooSoon.fromY - tooSoon.topY) * 0.6,
+      'and takes its time rather than jumping there',
+    );
+    suite.atMost(
+      Math.abs(tooSoon.cameraY - tooSoon.topY),
+      0.1,
+      'then reaches the very top of the sky',
+    );
 
     // Every pot in. Now the stump means something.
     await game.evaluate((pencil) => pencil.game.collectAll());
@@ -319,15 +339,15 @@ export async function run(url) {
       game.teleport(v.x, v.y + 34);
       game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       const from = { x: game.walker.x, y: game.walker.y };
-      const before = Math.hypot(game.camera.x - v.elephantX, game.camera.y - (v.elephantY - 115));
+      const beforeX = Math.abs(game.camera.x - v.elephantX);
       game.interact();
-      for (let i = 0; i < 60 * 4; i++) {
+      for (let i = 0; i < 60 * 7; i++) {
         game.advance(1 / 60, { direction: () => ({ x: 1, y: 1 }) });
       }
       pencil.renderOnce();
       return {
-        before,
-        after: Math.hypot(game.camera.x - v.elephantX, game.camera.y - (v.elephantY - 115)),
+        beforeX,
+        afterX: Math.abs(game.camera.x - v.elephantX),
         moved: Math.hypot(game.walker.x - from.x, game.walker.y - from.y),
         viewY: game.camera.viewY,
       };
@@ -335,9 +355,9 @@ export async function run(url) {
 
     suite.atMost(mobilePan.moved, 0.01, 'the walker stays still during the mobile pan');
     suite.ok(
-      mobilePan.after < mobilePan.before * 0.2,
-      'the mobile camera settles on the elephant cloud',
-      `${Math.round(mobilePan.before)}px to ${Math.round(mobilePan.after)}px`,
+      mobilePan.afterX < mobilePan.beforeX * 0.2,
+      'the mobile camera settles beside the elephant cloud',
+      `${Math.round(mobilePan.beforeX)}px to ${Math.round(mobilePan.afterX)}px`,
     );
     suite.ok(mobilePan.viewY <= -500, 'and reveals the full height of the sky', `viewY ${mobilePan.viewY}`);
 

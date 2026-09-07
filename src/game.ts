@@ -495,26 +495,29 @@ export class Game {
     else this.herd.calm();
     let cameraX = this.walker.x;
     let cameraY = this.walker.y;
-    const mobileVigilPan = this.vigil.sitting && this.won && this.isMobileViewport;
-    if (mobileVigilPan) {
+    const vigilPan = this.vigil.sitting;
+    if (vigilPan) {
       /*
-       * On a narrow screen the enlarged mirage sits outside the stump's frame.
-       * Pan only after sitting, while the walker is immobile: ordinary walking
-       * must keep the camera at exactly the walker's pace. Three seconds is
-       * slow enough to feel deliberate and early enough to watch it condense.
+       * Sitting on the stump means looking up. Over six seconds the frame rises
+       * all the way to the top edge of the painted sky; slow enough to feel like
+       * attention wandering rather than a cut, and independent of whether the
+       * shape in the cloud is allowed to arrive yet.
        *
-       * And only once the map is coloured, which is the same gate the arrival
-       * is on and for the same reason: before that there is nothing over there
-       * to look at, and swinging the camera onto an empty patch of pencil is a
-       * worse answer than leaving it where the walker is.
+       * A narrow screen also has to travel sideways once the valley is coloured,
+       * because it cannot hold both the stump and the enlarged mirage at once.
        */
-      const t = clamp(this.vigil.clock / 3, 0, 1);
+      const t = clamp(this.vigil.gazeClock / 6, 0, 1);
       const focus = t * t * (3 - 2 * t);
-      cameraX = lerp(this.walker.x, this.vigil.elephantX, focus);
-      // `elephantY` is its baseline; the visible cloud and body are above it.
-      cameraY = lerp(this.walker.y, this.vigil.elephantY - 115, focus);
+      if (this.won && this.isMobileViewport) {
+        const sidewaysT = clamp(this.vigil.gazeClock / 3, 0, 1);
+        const sidewaysFocus = sidewaysT * sidewaysT * (3 - 2 * sidewaysT);
+        cameraX = lerp(this.walker.x, this.vigil.elephantX, sidewaysFocus);
+      }
+      // `focus` subtracts the walker's usual fourteen-unit headroom; add it
+      // here so the camera centre itself lands exactly on the sky limit.
+      cameraY = lerp(this.walker.y, this.camera.topCentreY + 14, focus);
     }
-    if (mobileVigilPan) this.camera.focus(cameraX, cameraY, dt);
+    if (vigilPan) this.camera.focus(cameraX, cameraY, dt);
     else this.camera.follow(cameraX, cameraY, dt);
   }
 

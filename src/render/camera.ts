@@ -82,6 +82,11 @@ export class Camera {
     this.track(targetX, targetY, dt, false);
   }
 
+  /** Centre position that puts the very top of the painted sky on screen. */
+  get topCentreY(): number {
+    return this.viewHeight / 2 - SKY_DEPTH;
+  }
+
   private track(targetX: number, targetY: number, dt: number, useDeadZone: boolean): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
 
