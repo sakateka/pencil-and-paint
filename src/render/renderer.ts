@@ -2,7 +2,7 @@ import { context2d, createSurface, isolate, type Surface } from '../core/canvas'
 import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawEaselPicture, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
-import { drawStump, type Vigil } from '../entities/vigil';
+import type { Vigil } from '../entities/vigil';
 import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
 import type { Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
@@ -34,6 +34,7 @@ import { registerHerdLooks, showHerdAnimal } from './looks/herd';
 import { registerLionLooks, showLion } from './looks/lion';
 import { registerMirageLooks, showMirageCloud, showMirageElephant } from './looks/mirage';
 import { registerPotLooks, showPot } from './looks/pots';
+import { registerStumpLooks, showStump } from './looks/stump';
 import { registerWalkerLooks, showWalker } from './looks/walker';
 
 /**
@@ -194,6 +195,7 @@ export class Renderer {
     registerLionLooks(this.looks);
     registerMirageLooks(this.looks);
     registerPotLooks(this.looks);
+    registerStumpLooks(this.looks);
     registerWalkerLooks(this.looks);
     this.stage = new Stage(host, () => {
       this.stage.setHaze(hazeMask(), HAZE_RADIUS);
@@ -632,16 +634,7 @@ export class Renderer {
 
     const { vigil } = scene;
     if (camera.canSee(vigil.x, vigil.y, 90) && !hidden(vigil.x, vigil.y, 60)) {
-      at(
-        'stump',
-        vigil.x,
-        vigil.y,
-        300,
-        DEPTH.stump,
-        poseOf(vigil),
-        (ctx) => still(() => drawStump(ctx, vigil, medium)),
-        medium === 'color',
-      );
+      showStump(this.stage, this.looks, vigil, medium, layer, DEPTH.stump);
     }
     /*
      * Always, not only once something is there. The cloud it comes out of hangs

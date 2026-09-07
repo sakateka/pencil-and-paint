@@ -213,13 +213,17 @@ export class Vigil {
   }
 }
 
-/** The stump, and whoever is sitting on it. */
-export function drawStump(ctx: CanvasRenderingContext2D, v: Vigil, medium: Medium): void {
-  const { x, y } = v;
-  groundShadow(ctx, x, y + 2, 17, 6, medium, true);
+/**
+ * The stump.
+ *
+ * Drawn at its own origin, for the picture library to bake once and place —
+ * the stump never changes, and a canvas this size was being repainted twelve
+ * times a second for a drawing that has nothing to say. Whoever is sitting on
+ * it is a separate picture; see `drawSitter`.
+ */
+export function drawStump(ctx: CanvasRenderingContext2D, medium: Medium): void {
+  groundShadow(ctx, 0, 2, 17, 6, medium, true);
 
-  ctx.save();
-  ctx.translate(x, y);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -280,10 +284,6 @@ export function drawStump(ctx: CanvasRenderingContext2D, v: Vigil, medium: Mediu
     }
     for (const bx of [-7, 2.5, 8]) inkLine(ctx, bx, -8.4, bx + 0.8, -1.4, k + 20 + bx);
   }
-  ctx.restore();
-
-  // Facing whatever it is waiting for, which is the only reason to sit here.
-  if (v.sitting) drawSitter(ctx, x, y, v.elephantX < v.x ? -1 : 1, medium);
 }
 
 /**
@@ -296,11 +296,14 @@ export function drawStump(ctx: CanvasRenderingContext2D, v: Vigil, medium: Mediu
  * hammock is: the standing figure would otherwise be planted through the middle
  * of the stump, and a person sitting is not a person standing with a shorter
  * gap between their feet.
+ *
+ * Drawn about the seat — the point their hips rest on — and about the way they
+ * face, `face` being ±1: the mirror is part of the drawing, and the caller's
+ * offset (the bench's seat is twenty above its origin, the stump's seat is the
+ * stump) stays with the caller.
  */
 export function drawSitter(
   ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
   face: -1 | 1,
   medium: Medium,
 ): void {
@@ -311,7 +314,7 @@ export function drawSitter(
    * centre ten above that — the same spacing `player.ts` uses standing.
    */
   ctx.save();
-  ctx.translate(x - face, y - 10);
+  ctx.translate(-face, -10);
   ctx.scale(face, 1);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';

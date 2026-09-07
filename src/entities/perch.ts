@@ -87,7 +87,10 @@ export function drawPerch(ctx: CanvasRenderingContext2D, perch: Perch, medium: M
   if (perch.pose === 'bench') {
     // The bench's seat is twenty above its origin; the sitter's own drawing
     // puts the hips a little below wherever it is told, so this lands on it.
-    drawSitter(ctx, perch.x + 2, perch.y - 11, perch.face, medium);
+    ctx.save();
+    ctx.translate(perch.x + 2, perch.y - 11);
+    drawSitter(ctx, perch.face, medium);
+    ctx.restore();
     return;
   }
   drawLounger(ctx, perch, medium);
