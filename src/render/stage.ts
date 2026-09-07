@@ -766,6 +766,12 @@ export class Stage {
     y: number;
     depth: number;
     alpha?: number;
+    /**
+     * A scale about the rope's own position — a picture swelling and thinning
+     * in place, which is a size and not a drawing. The points are given
+     * unscaled, in the picture's own pixels.
+     */
+    scale?: number;
     points: readonly { x: number; y: number }[];
   }): boolean {
     const scene = this.scene;
@@ -791,6 +797,7 @@ export class Stage {
     rope.setVisible(true);
     rope.setDepth(request.depth);
     rope.setAlpha(request.alpha ?? 1);
+    rope.setScale(request.scale ?? 1);
     rope.setPosition(request.x, request.y);
     /*
      * The points array is reused rather than replaced. `setPoints` rebuilds the

@@ -1,6 +1,5 @@
 import { clamp, TAU } from '../core/math';
-import { ink, inkArc, inkLine, inkLines, jitter, withInkFade } from '../media/ink';
-import { PENCIL } from '../media/medium';
+import { ink, inkArc, inkLine, inkLines, jitter } from '../media/ink';
 import type { Medium } from '../media/medium';
 import { groundShadow } from '../media/pencil';
 
@@ -49,10 +48,15 @@ const RESTING_CLOUD = 0.34;
  * the transformation. Scaling either one independently makes the animal jump
  * in size halfway through its arrival.
  */
-const ELEPHANT_MIRAGE_SCALE = 4;
+export const ELEPHANT_MIRAGE_SCALE = 4;
 
 /** How far the cloud rides up and down on its own breath. */
 const MIRAGE_BOB = 8 + 4.6;
+
+/** The bob, which the body and the cloud both ride. Zero at the top. */
+export function mirageBobAt(clock: number): number {
+  return 8 + Math.sin(clock * 0.62) * 4.6;
+}
 
 /**
  * Lobes laid along the animal rather than heaped in a pile.
@@ -63,9 +67,11 @@ const MIRAGE_BOB = 8 + 4.6;
  * do. Deliberately loose: it should be arguable, not obvious.
  *
  * Up here at module scope rather than inside the drawing, because how far the
- * cloud reaches is a question the game asks — see `MIRAGE_REACH`.
+ * cloud reaches is a question the game asks — see `MIRAGE_REACH` — and because
+ * the baked picture of the cloud (`render/looks/mirage.ts`) is this same list
+ * of lobes, drawn once and bent from then on.
  */
-const MIRAGE_LOBES = [
+export const MIRAGE_LOBES = [
   [-2, -29, 15],
   [16, -27, 12],
   [-18, -28, 12],
@@ -100,6 +106,19 @@ export const MIRAGE_REACH = Math.max(
 ) * ELEPHANT_MIRAGE_SCALE;
 
 const SKIN = '#f2c398';
+
+/**
+ * How much cloud there is, from how far the elephant has arrived.
+ *
+ * At rest there is always a hint of it — `RESTING_CLOUD` — and while the
+ * animal gathers the cloud thickens, then burns off again as the animal
+ * resolves. The one number both the old drawing and the baked one ask for.
+ */
+export function mirageAmount(elephant: number): number {
+  const here = clamp(elephant, 0, 1);
+  const gathering = Math.min(here / 0.22, 1) * clamp((0.92 - here) / 0.46, 0, 1);
+  return RESTING_CLOUD + gathering * 0.62;
+}
 const HAIR = '#4a3527';
 const SHIRT = '#e8563f';
 const SHIRT_SHADE = '#c9452f';
@@ -413,165 +432,38 @@ export function drawSitter(
 }
 
 /**
- * The puff it arrives in and goes away in.
- *
- * Lobed the same way the clouds along the top of the map are, so that whatever
- * is happening up there looks like it belongs to the sky rather than to a menu.
- */
-function drawMirageCloud(
-  ctx: CanvasRenderingContext2D,
-  v: Vigil,
-  amount: number,
-  clock: number,
-  medium: Medium,
-): void {
-  const lobes = MIRAGE_LOBES;
-
-  ctx.save();
-  ctx.translate(v.elephantX, v.elephantY);
-  ctx.scale(ELEPHANT_MIRAGE_SCALE, ELEPHANT_MIRAGE_SCALE);
-  ctx.translate(0, -(8 + Math.sin(clock * 0.62) * 4.6));
-  // Swelling as it forms, so it does not simply switch on at full size.
-  const grow = 0.72 + amount * 0.28;
-
-  /*
-   * All the lobes in one path, filled once.
-   *
-   * Separately, each lobe composites against its neighbours: the body — where
-   * six of them overlap — comes out bright while the trunk and the legs, which
-   * are one lobe thick, all but vanish. At this opacity that left a bright
-   * smudge with no elephant in it. One fill and every part of the shape is the
-   * same weight, which is the only reason the silhouette reads at all.
-   */
-  const shape = () => {
-    ctx.beginPath();
-    for (const [lx, ly, r] of lobes) {
-      /*
-       * A `moveTo` before each one, which is not optional.
-       *
-       * `ellipse` continues the current subpath — it draws a line from wherever
-       * the pen is to where the arc starts. Without this the lobes were strung
-       * together by chords, and the non-zero rule then cancelled the overlaps
-       * into holes, so the "single fill" came out as a ring of circle edges.
-       */
-      const cx = lx * grow + Math.sin(clock * 1.3 + lx) * 1.8;
-      ctx.moveTo(cx + r * grow, ly * grow);
-      ctx.ellipse(
-        cx,
-        ly * grow,
-        r * grow,
-        r * 0.78 * grow,
-        0,
-        0,
-        TAU,
-      );
-    }
-  };
-
-  if (medium === 'color') {
-    ctx.globalAlpha = Math.min(1, amount);
-    ctx.fillStyle = '#ffffff';
-    shape();
-    ctx.fill();
-  } else {
-    /*
-     * Rubbed in with the side of the pencil, not drawn round.
-     *
-     * Stroking every lobe put fourteen overlapping circles on the paper — a
-     * tangle of rings with no elephant anywhere in it, which is worse than
-     * drawing nothing. Filling the union once gives the silhouette and only the
-     * silhouette, and a soft grey mass is what a cloud looks like in a pencil
-     * drawing anyway.
-     */
-    ctx.globalAlpha = 0.08 + Math.min(1, amount) * 0.14;
-    ctx.fillStyle = PENCIL;
-    shape();
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-/**
  * The elephant, from the painting.
  *
  * Side on and facing left, dark brown and blocky, with the ears set high on the
  * head, a long trunk hanging down with stripes across it, small green eyes and
  * red toenails. Nothing about it is to scale with anything else here, which is
  * true of the painting too.
+ *
+ * Drawn in the animal's own small units, at its own origin, for the picture
+ * library (`render/looks/mirage.ts`) to bake once and then move by transform —
+ * the way every animal in the herd is drawn. What used to be the per-frame
+ * drawing here kept repainting a canvas the size of the whole mirage for
+ * motion that was never a new picture: the bob is a position, the heat
+ * shimmer is a lean, the arrival is an alpha, and the tail is one picture
+ * swung about its root.
  */
-export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Medium): void {
-  const here = clamp(v.elephant, 0, 1);
-  // An ear, and the tail, and nothing else. It stands there.
-  const clock = v.beastClock;
-  const ear = Math.sin(clock * 0.8) * 0.09;
-  const swish = Math.sin(clock * 0.7) * 2.4;
 
-  /*
-   * It arrives as a cloud and then condenses out of it.
-   *
-   * A shape that simply fades up out of nothing is a shape being switched on.
-   * This gathers first — a blur of white in the air where nothing was — and the
-   * animal resolves inside it as the blur burns off, which is how something
-   * seen across hot air actually turns up. Run backwards it comes apart into
-   * cloud again when you stand up, which is a better exit than a dimmer.
-   */
-  const gathering = Math.min(here / 0.22, 1) * clamp((0.92 - here) / 0.46, 0, 1);
-  const solid = clamp((here - 0.3) / 0.7, 0, 1);
-  /*
-   * The cloud is always up there, and always faintly elephant-shaped.
-   *
-   * Long before you have sat down for anything there is a smudge in that corner
-   * of the sky with a trunk on it, barely enough to be sure of — and then one
-   * day you sit still for ten seconds and the thing you had half-noticed turns
-   * out to have been the shape of what was coming. It thickens while the animal
-   * gathers and thins back to a hint when it goes.
-   */
-  drawMirageCloud(ctx, v, RESTING_CLOUD + gathering * 0.62, clock, medium);
-  if (solid <= 0) return;
+/** Where the tail is rooted, in the animal's own units. See `drawElephantTail`. */
+export const ELEPHANT_TAIL_ROOT = { x: 22.5, y: -32 } as const;
 
-  ctx.save();
-  /*
-   * Never quite solid.
-   *
-   * It hangs in the sky over the top of the world, and a thing in the sky that
-   * is as opaque as the grass reads as a cut-out pasted onto it. A fifth of the
-   * blue coming through is enough to say that it is not altogether there.
-   *
-   * This is only bearable because the whole animal is one path filled once —
-   * see below. Drawn as separate shapes, every leg and ear would composite
-   * against the body and show its seams the whole time rather than only while
-   * it arrived.
-   */
-  ctx.globalAlpha = solid * 0.8;
-  ctx.translate(v.elephantX, v.elephantY);
-  /*
-   * Wavering, hardest while it is still arriving.
-   *
-   * A shear that oscillates rather than a wobble of the whole shape: leaning it
-   * a little one way and then the other is what moving air does to something
-   * seen through it. It never settles completely — a tenth of it stays, so the
-   * animal in the sky is never quite steady.
-   */
-  const heat = 0.1 + (1 - solid) * 0.9;
-  ctx.transform(
-    1,
-    0,
-    Math.sin(clock * 2.3) * 0.07 * heat,
-    1 - Math.sin(clock * 1.7) * 0.03 * heat,
-    0,
-    0,
-  );
-  ctx.scale(ELEPHANT_MIRAGE_SCALE, ELEPHANT_MIRAGE_SCALE);
+/**
+ * The body: toenails, legs, both ears, body, head and trunk.
+ *
+ * Everything that never changes. It used to include the near ear's slow flap
+ * (±0.09 rad about every eight seconds, three pixels at the tip); a flap is a
+ * rotation of one part, and one part of a translucent whole cannot rotate as a
+ * sprite without compositing against the body it overlaps — the seam problem
+ * the one-path fill below exists to prevent. Three pixels a week is not worth
+ * reintroducing it. The tail still moves; see `drawElephantTail`.
+ */
+export function drawElephantBody(ctx: CanvasRenderingContext2D, medium: Medium): void {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  /*
-   * Off the ground, and with nothing under it.
-   *
-   * It used to cast a shadow on the grass to say the gap was real. Now that it
-   * stands in the sky above the top edge of the world there is no grass beneath
-   * it to cast one on, and the shadow was just a dark smudge hanging in mid-air.
-   */
-  ctx.translate(0, -(8 + Math.sin(clock * 0.62) * 4.6));
 
   /*
    * The shape, measured off the painting rather than remembered.
@@ -579,8 +471,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * What makes it that elephant and not a generic one: the body is a deep slab
    * with a domed back, not an oval; the head and the trunk are a single tall
    * mass hanging off the front of it, and the trunk is nearly as wide as the
-   * head; and the tail comes off the rump, outside the body, ending in a frayed
-   * brush. The first version had a tail — it was simply drawn inside the body
+   * head. The first version had a tail — it was simply drawn inside the body
    * outline, so nobody ever saw it.
    */
   const body = () => {
@@ -612,10 +503,9 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
    * Wide at the top, barely tapering, hanging almost to the ground.
    *
    * Wound the same way round as everything else, deliberately. All of these go
-   * into one path and are filled in one go — see `hide` below — and the
-   * non-zero rule cuts a hole wherever two overlapping loops disagree about
-   * their direction. This one used to run the other way, which is what put a
-   * hole through the face.
+   * into one path and are filled in one go, and the non-zero rule cuts a hole
+   * wherever two overlapping loops disagree about their direction. This one
+   * used to run the other way, which is what put a hole through the face.
    */
   const trunk = () => {
     ctx.moveTo(-26, -33);
@@ -645,24 +535,6 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     [13, 7.5, -7],
     [21, 8, -6.2],
   ] as const;
-
-  /** Off the rump, down and out, ending in a splayed brush. */
-  const tail = (wide: number) => {
-    ctx.lineWidth = wide;
-    ctx.beginPath();
-    // Begin just inside the rump so the tail is visibly attached. Its control
-    // and lower end deliberately stay where they were, giving it a slight turn.
-    ctx.moveTo(22.5, -32);
-    ctx.quadraticCurveTo(31, -26, 30.5 + swish, -16);
-    ctx.stroke();
-    ctx.lineWidth = wide * 0.7;
-    for (const a of [-0.5, 0, 0.5]) {
-      ctx.beginPath();
-      ctx.moveTo(30.5 + swish, -16);
-      ctx.lineTo(30.5 + swish + Math.sin(a) * 4, -16 + Math.cos(a) * 6);
-      ctx.stroke();
-    }
-  };
 
   if (medium === 'color') {
     /*
@@ -706,7 +578,8 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
      * against the body separately, so half way through the arrival you could
      * see straight through the body to the outline of everything inside it. One
      * path means one fill, and one fill means every pixel is painted exactly
-     * once whatever the opacity happens to be.
+     * once whatever the opacity happens to be — and it is what lets the fade
+     * itself be the sprite's alpha now.
      */
     ctx.beginPath();
     for (const [fx, w, foot] of legs) ctx.rect(fx - w / 2, -18, w, 18 + foot);
@@ -720,7 +593,7 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     // The near ear, leaning as it listens. Rotated in the path rather than by
     // the canvas, so that it can join the rest of it.
     ctx.moveTo(-25.5 + 8.2, -44);
-    ctx.ellipse(-25.5, -44, 8.2, 8.8, 0.18 + ear, 0, TAU);
+    ctx.ellipse(-25.5, -44, 8.2, 8.8, 0.18, 0, TAU);
     ctx.fillStyle = hideColour;
     ctx.fill();
 
@@ -728,12 +601,8 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
     ctx.strokeStyle = '#3d3d38';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.ellipse(-25.5, -44, 8.2, 8.8, 0.18 + ear, Math.PI * 0.72, Math.PI * 1.5);
+    ctx.ellipse(-25.5, -44, 8.2, 8.8, 0.18, Math.PI * 0.72, Math.PI * 1.5);
     ctx.stroke();
-
-    ctx.strokeStyle = hideColour;
-    ctx.lineCap = 'round';
-    tail(2.6);
 
     // The stripes down the trunk.
     ctx.fillStyle = '#23231e';
@@ -750,56 +619,80 @@ export function drawElephant(ctx: CanvasRenderingContext2D, v: Vigil, medium: Me
       ctx.ellipse(ex, -36.5, 2.1, 1.6, 0.15, 0, TAU);
       ctx.fill();
     }
-
-    ctx.restore();
     return;
   }
 
-  /*
-   * Faded as one, the same as the colour version.
-   *
-   * Every stroke's weight is multiplied rather than the canvas alpha being
-   * set once: `ink` assigns `globalAlpha` outright, so anything set here
-   * would be discarded by the first line drawn — which is exactly why this
-   * arrived in graphite as a fully drawn elephant appearing from nowhere
-   * while the coloured one melted in politely.
-   */
-  withInkFade(solid, () => {
-    const k = 6100;
-    ink(ctx, 0.5, 1.3);
+  const k = 6100;
+  ink(ctx, 0.5, 1.3);
+  ctx.beginPath();
+  body();
+  ctx.stroke();
+  ink(ctx, 0.5, 1.2);
+  ctx.beginPath();
+  head();
+  ctx.stroke();
+  ctx.beginPath();
+  trunk();
+  ctx.stroke();
+  for (const [fx, w, foot] of legs) {
+    inkLines(
+      ctx,
+      [
+        [fx - w / 2, -16, fx - w / 2, foot],
+        [fx + w / 2, -16, fx + w / 2, foot],
+        [fx - w / 2, foot, fx + w / 2, foot],
+      ],
+      k + 10 + fx,
+    );
+  }
+  ink(ctx, 0.45, 1.1);
+  inkArc(ctx, -33, -43, 7.6, k + 30);
+  inkArc(ctx, -25.5, -44, 8.4, k + 32);
+  ink(ctx, 0.6, 1.6);
+  for (const i of [0, 1, 2, 3, 4, 5]) {
+    inkLine(ctx, -34.2 + i * 0.6, -27 + i * 4.6, -31.4 + i * 0.6, -26.6 + i * 4.6, k + 40 + i);
+  }
+  ink(ctx, 0.65, 1.5);
+  for (const ex of [-33.5, -26.5]) inkArc(ctx, ex, -36.5, 1.7, k + 60 + ex);
+}
+
+/**
+ * The tail: off the rump, down and out, ending in a splayed brush.
+ *
+ * Drawn about its own root — `ELEPHANT_TAIL_ROOT` — because the root is the
+ * hinge the swing turns about. The root sits four units inside the rump, as it
+ * always did: at the silhouette edge a shallow root reads as detached the
+ * moment the swing leans it either way, and the joint is hidden by the body
+ * however far the tail turns. The old drawing's comment stands: the control
+ * and lower end stay where they were, giving it a slight turn.
+ *
+ * The swish itself is not drawn: how far the tail has swung is the show's
+ * rotation, not anybody's picture.
+ */
+export function drawElephantTail(ctx: CanvasRenderingContext2D, medium: Medium): void {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const swing = (wide: number) => {
+    ctx.lineWidth = wide;
     ctx.beginPath();
-    body();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(8.5, 6, 8, 16);
     ctx.stroke();
-    ink(ctx, 0.5, 1.2);
-    ctx.beginPath();
-    head();
-    ctx.stroke();
-    ctx.beginPath();
-    trunk();
-    ctx.stroke();
-    for (const [fx, w, foot] of legs) {
-      inkLines(
-        ctx,
-        [
-          [fx - w / 2, -16, fx - w / 2, foot],
-          [fx + w / 2, -16, fx + w / 2, foot],
-          [fx - w / 2, foot, fx + w / 2, foot],
-        ],
-        k + 10 + fx,
-      );
+    ctx.lineWidth = wide * 0.7;
+    for (const a of [-0.5, 0, 0.5]) {
+      ctx.beginPath();
+      ctx.moveTo(8, 16);
+      ctx.lineTo(8 + Math.sin(a) * 4, 16 + Math.cos(a) * 6);
+      ctx.stroke();
     }
-    ink(ctx, 0.45, 1.1);
-    inkArc(ctx, -33, -43, 7.6, k + 30);
-    inkArc(ctx, -25.5, -44, 8.4, k + 32);
-    ink(ctx, 0.55, 1.2);
-    tail(1.2);
-    ink(ctx, 0.6, 1.6);
-    for (const i of [0, 1, 2, 3, 4, 5]) {
-      inkLine(ctx, -34.2 + i * 0.6, -27 + i * 4.6, -31.4 + i * 0.6, -26.6 + i * 4.6, k + 40 + i);
-    }
-    ink(ctx, 0.65, 1.5);
-    for (const ex of [-33.5, -26.5]) inkArc(ctx, ex, -36.5, 1.7, k + 60 + ex);
- 
-  });
-  ctx.restore();
+  };
+
+  if (medium === 'color') {
+    ctx.strokeStyle = '#4e4e48';
+    swing(2.6);
+    return;
+  }
+  ink(ctx, 0.55, 1.2);
+  swing(1.2);
 }

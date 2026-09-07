@@ -2,7 +2,7 @@ import { context2d, createSurface, isolate, type Surface } from '../core/canvas'
 import { drawCamp, type Fishing } from '../entities/fishing';
 import { drawEaselPicture, type Rest } from '../entities/rest';
 import { drawOwl, type Owl } from '../entities/owl';
-import { drawElephant, drawStump, type Vigil } from '../entities/vigil';
+import { drawStump, type Vigil } from '../entities/vigil';
 import { drawHedgehog, type Hedgehog } from '../entities/hedgehog';
 import type { Lion } from '../entities/lion';
 import { drawPerch, type Perch } from '../entities/perch';
@@ -32,6 +32,7 @@ import {
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
 import { registerLionLooks, showLion } from './looks/lion';
+import { registerMirageLooks, showMirageCloud, showMirageElephant } from './looks/mirage';
 import { registerPotLooks, showPot } from './looks/pots';
 import { registerWalkerLooks, showWalker } from './looks/walker';
 
@@ -191,6 +192,7 @@ export class Renderer {
     this.looks.register(birdLook);
     registerHerdLooks(this.looks);
     registerLionLooks(this.looks);
+    registerMirageLooks(this.looks);
     registerPotLooks(this.looks);
     registerWalkerLooks(this.looks);
     this.stage = new Stage(host, () => {
@@ -645,21 +647,19 @@ export class Renderer {
      * Always, not only once something is there. The cloud it comes out of hangs
      * in that patch of sky permanently, so this has to be asked every frame
      * rather than gated on the animal existing.
+     *
+     * Cloud and animal are both pictures now — one on a rope, one a sprite the
+     * way the herd is — and a frame of either is transforms and nothing else.
+     * The cel this used to be repainted a canvas the size of the whole mirage
+     * whenever the camera saw it, which made it the most expensive thing in
+     * the game, and stepped every motion it carried down to twelve a second.
      */
     if (
       camera.canSee(vigil.elephantX, vigil.elephantY, 320) &&
       !hidden(vigil.elephantX, vigil.elephantY, 90)
     ) {
-      at(
-        'elephant',
-        vigil.elephantX,
-        vigil.elephantY,
-        760,
-        DEPTH.elephant,
-        poseOf(vigil),
-        (ctx) => still(() => drawElephant(ctx, vigil, medium)),
-        medium === 'color',
-      );
+      showMirageCloud(this.stage, this.looks, vigil, medium, layer, DEPTH.elephant);
+      showMirageElephant(this.stage, this.looks, vigil, medium, layer, DEPTH.elephant);
     }
 
     const { lion } = scene;

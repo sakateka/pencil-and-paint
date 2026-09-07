@@ -542,6 +542,115 @@ export const SCENES = {
     },
   },
 
+  mirage: {
+    describe: 'the mirage cloud hanging in the sky over the north, drifting on its own breath',
+
+    motion: {
+      /**
+       * The left edge of the cloud, against the sky it hangs in.
+       *
+       * The cloud is the palest thing up there and the sky behind it is a
+       * gradient, so the probe carries its own reference: the rightmost column
+       * of the box is pure sky for every row the cloud can reach, and a column
+       * counts as cloud when its red channel stands above that row's sky by
+       * more than the sky's own variation — red is the channel white moves
+       * hardest. The bob is vertical and this is a horizontal measure, so what
+       * it watches is the drift and nothing else.
+       */
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        const v = game.vigil;
+        game.teleport(v.x, v.y + 60);
+        game.camera.snapTo(v.elephantX, v.elephantY - 140);
+        game.running = false;
+        v.lit = true;
+        v.beastClock = 0;
+        renderOnce();
+        return {
+          x: Math.round(game.camera.toScreenX(v.elephantX) - 210),
+          y: Math.round(game.camera.toScreenY(v.elephantY - 290)),
+          width: 420,
+          height: 300,
+        };
+      },
+      /** The cloud drifts on the beast's clock, which runs only when lit. */
+      step: (pencil) => {
+        const v = pencil.game.vigil;
+        v.lit = true;
+        v.beastClock += 1 / 60;
+        pencil.renderOnce();
+      },
+      find: (strip) => {
+        let left = -1;
+        for (let x = 0; x < strip.width && left < 0; x++) {
+          for (let y = 0; y < strip.height; y++) {
+            const i = (y * strip.width + x) * 4;
+            const j = (y * strip.width + (strip.width - 1)) * 4;
+            // Absolute, because the two media pull opposite ways: the cloud is
+            // brighter red than the blue sky it hangs in, and darker red than
+            // the paper it is rubbed onto.
+            if (Math.abs(strip.data[i] - strip.data[j]) > 18) {
+              left = x;
+              break;
+            }
+          }
+        }
+        return left;
+      },
+    },
+
+    /** The resting cloud, held still. */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      const v = game.vigil;
+      game.teleport(v.x, v.y + 60);
+      game.camera.snapTo(v.elephantX, v.elephantY - 140);
+      game.running = false;
+      v.lit = true;
+      v.beastClock = 0;
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(v.elephantX) - 210),
+        y: Math.round(game.camera.toScreenY(v.elephantY - 290)),
+        width: 420,
+        height: 300,
+      };
+    },
+  },
+
+  elephant: {
+    describe: 'the elephant after its arrival, standing in the sky over the north',
+
+    /**
+     * Summoned, fully arrived, held at one instant of its breath.
+     *
+     * The recipe is the vigil suite's: the whole valley in colour, so the beast
+     * is lit and allowed to arrive, then the camera carried up to it. This is
+     * the frame to compare builds on — every part of the animal is in it, at
+     * full solidity, at one fixed phase of the bob.
+     */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      const v = game.vigil;
+      game.restart();
+      game.collectAll();
+      game.teleport(v.x, v.y + 30);
+      game.summonElephant();
+      for (let i = 0; i < 60 * 12; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.running = false;
+      v.lit = true;
+      v.beastClock = 0;
+      game.camera.snapTo(v.elephantX, v.elephantY - 140);
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(v.elephantX) - 190),
+        y: Math.round(game.camera.toScreenY(v.elephantY - 290)),
+        width: 380,
+        height: 330,
+      };
+    },
+  },
+
   walk: {
     describe: 'walking west, which is the motion the camera has to follow',
 
