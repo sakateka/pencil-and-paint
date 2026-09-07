@@ -45,16 +45,16 @@ import type { Layer, Stage } from '../stage';
 /**
  * Drawings across one wing beat, and levels of a closing eyelid.
  *
- * Both chosen by measurement rather than by taste — `tmp/bakedsteps.mjs`, which
- * asks the pictures themselves how far the ink moves from one to the next,
- * because on screen these are a few pixels of dark against a dark tree:
+ * Both counted rather than guessed at, because on screen these are a few pixels
+ * of dark against a dark tree and no probe can see them:
  *
- * - the beat throws the wing about, and no two consecutive drawings of it are
- *   more than 0.43px apart;
+ * - the beat throws the wing about, and `tests/tools/bakedsteps.mjs` — which
+ *   asks the pictures themselves how far their ink moves from one to the next —
+ *   puts no two consecutive drawings of it more than 0.40 units apart;
  * - the lid comes down 5.9 units in the two tenths of a second it takes to
- *   shut, which at eight levels was a whole pixel a step — one level per frame
+ *   shut, which at eight levels was 0.84 of a unit a step, one level per frame
  *   and a half, and the only number here that was ever near the limit. Twelve
- *   puts it at 0.54px and a level a frame, which is as smooth as the easing
+ *   puts it at 0.54 and a level a frame, which is as smooth as the easing
  *   underneath it, and costs four drawings the size of a thumbnail.
  *
  * Sine is symmetric, so twenty-four phases of the beat bake as thirteen

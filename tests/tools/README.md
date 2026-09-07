@@ -80,6 +80,23 @@ node tests/tools/compare.mjs hammock --before=tmp/before/tmp/dist
 It says nothing about motion. Two builds can agree on every still and disagree
 completely on what happens between them.
 
+### `bakedsteps.mjs <look id>` — is this cycle drawn finely enough?
+
+`motion.mjs` for the things the screen cannot show. A cycle that became a row of
+drawings steps by whatever the gap between two consecutive drawings is, and the
+rule is that no step is bigger than a pixel — but the owl's wing is a few pixels
+of dark against a tree that is also dark, and a probe counting pixels over a
+threshold there reported "held still 44 frames, biggest step 1.00px" for a wing
+that was moving the whole time.
+
+So ask the pictures instead. Each is read out of the library and its ink
+centroid taken, weighted by alpha, and the distance to the one before it
+printed, in world units:
+
+```sh
+npm run display -- node tests/tools/bakedsteps.mjs owl:wings
+```
+
 ## Scenes
 
 `scenes.mjs` holds the scripted moments, so that "is it smooth" and "did it
