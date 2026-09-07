@@ -1,6 +1,6 @@
 import { clamp, TAU } from '../core/math';
 import { rr } from '../core/rng';
-import { drawDisc } from '../media/sprites';
+
 import { POT_HUES } from '../world/palette';
 
 /**
@@ -38,6 +38,23 @@ const HEART_COLOURS = ['#e0708a', '#ea8fa4', '#d95f7c'] as const;
  * hearts are not in it: they are drawn as curves rather than stamped.
  */
 export const PARTICLE_COLOURS: readonly string[] = [...MOTE_COLOURS, ...POT_HUES];
+
+/**
+ * The size one heart is baked at. Everything else about it is a scale.
+ *
+ * Every control point below is a multiple of `s`, so a heart swelling is a
+ * heart being scaled — the note that used to sit over `drawHearts` called it a
+ * shape that changes and it never was one. That is why this can be a picture at
+ * all, and it is the last thing in the game to become one.
+ */
+export const HEART_UNIT = 5;
+
+/** One little heart, about its own middle, in white so it can be tinted. */
+export function drawHeart(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = '#ffffff';
+  heartPath(ctx, 0, 0, HEART_UNIT);
+  ctx.fill();
+}
 
 /** One little heart, centred on `x, y`, `s` across. */
 function heartPath(ctx: CanvasRenderingContext2D, x: number, y: number, s: number): void {
@@ -194,60 +211,34 @@ export class Particles {
     }
   }
 
-  /** Is there a heart in the air? They are drawn by hand and are usually not. */
-  get hasHearts(): boolean {
-    return this.hearts.length > 0;
-  }
-
-  /** The box the hearts occupy, in world units. Only valid if there are any. */
-  heartBounds(): { x: number; y: number; size: number } {
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -Infinity;
-    let y1 = -Infinity;
-    for (const h of this.hearts) {
-      x0 = Math.min(x0, h.x - h.radius * 2);
-      y0 = Math.min(y0, h.y - h.radius * 2);
-      x1 = Math.max(x1, h.x + h.radius * 2);
-      y1 = Math.max(y1, h.y + h.radius * 2);
-    }
-    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, size: Math.max(x1 - x0, y1 - y0) + 16 };
-  }
-
-  /** Motes fade out towards the edge of the light; splashes do not. */
-  draw(
-    ctx: CanvasRenderingContext2D,
-    walkerX: number,
-    walkerY: number,
-    litRadius: number,
-    flooded: boolean,
-  ): void {
-    for (const d of this.discs(walkerX, walkerY, litRadius, flooded)) {
-      ctx.globalAlpha = d.alpha;
-      drawDisc(ctx, d.colour, d.x, d.y, d.radius);
-    }
-    this.drawHearts(ctx);
-    ctx.globalAlpha = 1;
-  }
-
   /**
-   * The hearts, which rise from the cat when she is stroked.
+   * The hearts that are up, as a position, a size, a fade and a colour.
    *
-   * Kept on a canvas rather than made into sprites like the discs: a heart is a
-   * pair of bezier curves whose shape changes as it swells, so it is a drawing
-   * rather than a stamp. There are three of them, they last a second, and they
-   * happen when somebody pets a cat — this is not a hot path.
+   * They rise from the cat when she is stroked, and they were the last
+   * hand-drawn thing in the game still painted into a canvas while you played:
+   * a cel the size of the box they happened to occupy, repainted at the boil's
+   * rate for the second and a half they are in the air. A heart is one drawing
+   * being scaled, so it is one picture — see `render/looks/hearts.ts`.
+   *
+   * The swell is in `size`: they come up quickly and fade as they go, so the
+   * burst has a shape rather than three dots switching on.
    */
-  drawHearts(ctx: CanvasRenderingContext2D): void {
-    // Hearts swell as they appear and fade as they go, so the burst has a shape
-    // rather than three dots switching on.
+  *heartsInAir(): Generator<{
+    x: number;
+    y: number;
+    size: number;
+    alpha: number;
+    colour: string;
+  }> {
     for (const h of this.hearts) {
       const left = clamp(h.life / h.maxLife, 0, 1);
-      ctx.globalAlpha = Math.min(1, left * 2.4) * 0.9;
-      ctx.fillStyle = h.colour;
-      heartPath(ctx, h.x, h.y, h.radius * (0.6 + 0.4 * Math.min(1, (1 - left) * 5)));
-      ctx.fill();
+      yield {
+        x: h.x,
+        y: h.y,
+        size: h.radius * (0.6 + 0.4 * Math.min(1, (1 - left) * 5)),
+        alpha: Math.min(1, left * 2.4) * 0.9,
+        colour: h.colour,
+      };
     }
-    ctx.globalAlpha = 1;
   }
 }

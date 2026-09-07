@@ -409,8 +409,9 @@ export class World {
    *
    * For the Phaser stage, which hands each tile to the GPU once and then never
    * touches it again — the camera moves instead of the picture being blitted.
-   * `drawRegion` below is the Canvas2D way of asking the same question and
-   * costs a full-screen copy every frame; this costs one upload per tile, ever.
+   * There used to be a `drawRegion` beneath this, the Canvas2D way of asking
+   * the same question at the cost of a full-screen copy every frame; nothing
+   * has called it since the frame moved to the GPU, and it is gone.
    */
   *tilesOf(medium: Medium): Generator<{
     canvas: HTMLCanvasElement;
@@ -432,63 +433,6 @@ export class World {
           width: canvas.width / layer.scale,
           height: canvas.height / layer.scale,
         };
-      }
-    }
-  }
-
-  /**
-   * Draw a region of a layer.
-   *
-   * Walks only the tiles the region touches. With a 1:1 scale this is a plain
-   * copy per tile, which is the fast path in every engine.
-   */
-  drawRegion(
-    ctx: CanvasRenderingContext2D,
-    medium: Medium,
-    sx: number,
-    sy: number,
-    sw: number,
-    sh: number,
-    dx: number,
-    dy: number,
-    dw: number,
-    dh: number,
-  ): void {
-    if (this.disposed) return;
-    const layer = this.layers[medium];
-    const scaleX = dw / sw;
-    const scaleY = dh / sh;
-    // World units covered by one full tile.
-    const span = TILE / layer.scale;
-
-    const firstCol = Math.max(0, Math.floor(sx / span));
-    const lastCol = Math.min(layer.columns - 1, Math.floor((sx + sw - 0.001) / span));
-    const firstRow = Math.max(0, Math.floor(sy / span));
-    const lastRow = Math.min(layer.rows - 1, Math.floor((sy + sh - 0.001) / span));
-
-    for (let row = firstRow; row <= lastRow; row++) {
-      for (let col = firstCol; col <= lastCol; col++) {
-        const tile = layer.tiles[row * layer.columns + col];
-        const tileX = col * span;
-        const tileY = row * span;
-        // Overlap of the requested region with this tile, in world coordinates.
-        const left = Math.max(sx, tileX);
-        const top = Math.max(sy, tileY);
-        const right = Math.min(sx + sw, tileX + tile.width / layer.scale);
-        const bottom = Math.min(sy + sh, tileY + tile.height / layer.scale);
-        if (right <= left || bottom <= top) continue;
-
-        ctx.drawImage(
-          tile,
-          (left - tileX) * layer.scale,
-          (top - tileY) * layer.scale,
-          (right - left) * layer.scale,
-          (bottom - top) * layer.scale,
-          dx + (left - sx) * scaleX,
-          dy + (top - sy) * scaleY,
-          (right - left) * scaleX,
-          (bottom - top) * scaleY,
-        );
       }
     }
   }

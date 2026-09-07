@@ -30,19 +30,6 @@ import { LookLibrary } from './looks';
 export type Layer = 'sketch' | 'colour' | 'over';
 
 /**
- * How often a hand-drawn thing's strokes are re-uploaded, in hertz.
- *
- * Not sixty, and this is the measurement that shaped the whole design. Redrawing
- * every live thing every frame costs 48% of a core; at fifteen it is 24% and at
- * seven it is 20%, against a floor of 15% with no live things at all. Position
- * is not stepped — that is a transform on a sprite and costs nothing, so things
- * still move at sixty frames a second. Only the strokes hold for a few frames,
- * which is what pencil already does: the boil in `media/ink.ts` ticks seven
- * times a second, and the drawing has always been stepped to it.
- */
-const CEL_HZ = 12;
-
-/**
  * Whether the finished frame can be read back after the fact.
  *
  * Only the tests want this, and it costs the driver a full-screen copy every
@@ -67,71 +54,6 @@ const READ_BACK =
  */
 const DRAW =
   typeof location === 'undefined' || !new URLSearchParams(location.search).has('nodraw');
-
-/**
- * A short string that changes whenever a thing's own state does.
- *
- * This is what decides whether a drawing has to be painted again, and it is
- * derived rather than listed on purpose. The first version had the caller name
- * the fields that mattered — `face`, `walkPhase`, `awake` — and that is a list
- * that goes out of date the first time somebody adds a field to an animal and
- * does not think about the renderer. The failure is quiet and horrible: the
- * thing keeps its old drawing until the next tick of the boil, so the fault
- * only shows as a shiver, and only sometimes.
- *
- * So it reads whatever the object actually holds. One level deep, primitives
- * only; anything else contributes its length or nothing. A couple of dozen
- * property reads per thing per frame, against an upload of a hundred kilobytes
- * if we get it wrong.
- */
-const IGNORED_POSE_KEYS = new Set([
-  'x',
-  'y',
-  'targetX',
-  'targetY',
-  'homeX',
-  'homeY',
-  'homeRadius',
-  'speed',
-  'clock',
-  'beastClock',
-  'timer',
-  'collectedAt',
-  'burstCount',
-  'purr',
-  /*
-   * Continuous animation phases. These change every frame while something
-   * moves, which defeated the step counter: a frog surfacing, whose `dive`
-   * eases 0..1 over a third of a second, repainted its 220px cel sixty times a
-   * second instead of twelve — and a shoal of them at the pond is what made
-   * fishing heavy. The strokes are stepped drawings; the step counter is what
-   * steps them, and the pose is for discrete state only.
-   */
-  'walkPhase',
-  'headDown',
-  'dive',
-]);
-
-export function poseOf(value: unknown, depth = 1): string {
-  if (value === null || value === undefined) return '';
-  const type = typeof value;
-  if (type === 'number') return (value as number).toFixed(2);
-  if (type === 'string' || type === 'boolean') return String(value);
-  if (type !== 'object') return '';
-  if (Array.isArray(value)) {
-    return depth > 0 ? value.map((item) => poseOf(item, depth - 1)).join(',') : String(value.length);
-  }
-  // Anything with a backing store of its own — a canvas, an image — is not
-  // state; it is the drawing. Its identity is enough.
-  if (value instanceof HTMLElement) return value.tagName;
-  if (depth <= 0) return '';
-  let out = '';
-  for (const key of Object.keys(value)) {
-    if (IGNORED_POSE_KEYS.has(key)) continue;
-    out += `${key}=${poseOf((value as Record<string, unknown>)[key], depth - 1)};`;
-  }
-  return out;
-}
 
 /**
  * A hand-drawn thing, on its own small canvas, shown as a sprite.
@@ -217,9 +139,6 @@ export class Stage {
   private readonly cels = new Map<string, Cel>();
   /** Bumped once per frame, so cels nobody asked for can be hidden. */
   private frameNumber = 0;
-  /** Bumped at `CEL_HZ`, and part of every cel's key. */
-  private celStep = 0;
-
   private nextTextureId = 0;
 
   /**
@@ -449,16 +368,17 @@ export class Stage {
   >();
 
   /**
-   * Ask for a hand-drawn thing to be on screen this frame.
+   * A drawing painted into its own canvas, repainted when `pose` changes.
    *
-   * `pose` is whatever the strokes depend on: a facing, whether an animal is
-   * awake, which frame of a walk it is on. An `animated` thing also repaints on
-   * the step counter, so its boil keeps ticking even when nothing else about it
-   * changed; a still one is painted once and then only when its pose does.
-   *
-   * When neither has changed the canvas is left exactly as it is and only the
-   * sprite's position is written. That is the whole saving — position is a
-   * transform and free, strokes are an upload and are not.
+   * One caller left: the picture the player made at the easel. Everything else
+   * the frame shows is in the picture library — listed, baked before play
+   * starts, and afterwards only moved — and this is the one drawing that
+   * cannot be, because it did not exist until somebody drew it. So the whole
+   * apparatus that used to hang off this method is gone: the step counter that
+   * kept boils ticking, the `anchored` flag for cels that covered a patch of
+   * the world, the reflection over an object's fields that decided whether a
+   * repaint was due. What is left is: paint it when the picture changes, and
+   * move the sprite when it moves.
    */
   cel(request: {
     id: string;
@@ -470,20 +390,8 @@ export class Stage {
     width: number;
     height: number;
     depth: number;
+    /** Whatever the strokes depend on. Change it and the canvas is repainted. */
     pose?: string | number;
-    animated?: boolean;
-    /**
-     * Does this cel belong to the world rather than to a moving thing?
-     *
-     * An ordinary cel is *attached*: it was painted with its subject at the
-     * centre of its own canvas, so moving the canvas moves the subject and the
-     * position may change every frame without a repaint. An anchored one — the
-     * sky, the motes of colour — covers a patch of the world instead, so
-     * moving it would drag that patch along with the camera. Its position is
-     * part of what it was painted for, and changing it forces a repaint; the
-     * caller is expected to quantise the position so that is rare.
-     */
-    anchored?: boolean;
     draw: (ctx: CanvasRenderingContext2D) => void;
   }): void {
     const scene = this.scene;
@@ -519,9 +427,7 @@ export class Stage {
      */
     cel.image.setPosition(request.left, request.top);
 
-    const step = request.animated === false ? '' : this.celStep;
-    const where = request.anchored ? `${request.left},${request.top}` : '';
-    const key = `${step}|${request.pose ?? ''}|${where}`;
+    const key = String(request.pose ?? '');
     if (cel.key !== key) {
       cel.key = key;
       cel.paint(request.left, request.top, request.draw);
@@ -977,11 +883,6 @@ export class Stage {
     this.lastCreated = this.frameCreated;
     this.framePx = 0;
     this.frameCreated = 0;
-  }
-
-  /** Advance the step that stepped drawings are keyed on. */
-  setElapsed(elapsed: number): void {
-    this.celStep = Math.floor(elapsed * CEL_HZ);
   }
 
   /** The haze that cuts the colour, as a sprite the mask filter reads. */

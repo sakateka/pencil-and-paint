@@ -19,7 +19,7 @@ import type { Camera } from './camera';
 import { disc, GRAIN } from '../media/sprites';
 import { HAZE_RADIUS, hazeMask } from './colorField';
 import type { ColorField } from './colorField';
-import { poseOf, Stage } from './stage';
+import { Stage } from './stage';
 import { LookLibrary } from './looks';
 import {
   clothPoints,
@@ -31,6 +31,7 @@ import {
 } from './looks/hammock';
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
 import { registerCampLooks, showCamp } from './looks/camp';
+import { registerHeartLooks, showHearts } from './looks/hearts';
 import { registerWindowLooks, showWindow } from './looks/window';
 import { registerHedgehogLooks, showHedgehog } from './looks/hedgehog';
 import { registerOwlLooks, showOwl } from './looks/owl';
@@ -212,6 +213,7 @@ export class Renderer {
     }
     this.looks.register(birdLook);
     registerCampLooks(this.looks);
+    registerHeartLooks(this.looks);
     registerHedgehogLooks(this.looks);
     registerHerdLooks(this.looks);
     registerLionLooks(this.looks);
@@ -401,8 +403,6 @@ export class Renderer {
     }
     world.bakeCount = 0;
 
-    this.stage.setElapsed(scene.elapsed);
-
     /*
      * Both sky strips, baked AND handed to the GPU on the first frame — during
      * the warm-up a start already pays for, not halfway through a walk. Each is
@@ -542,32 +542,6 @@ export class Renderer {
     const layer = medium === 'color' ? 'colour' : 'sketch';
     const hidden = (x: number, y: number, margin: number) =>
       medium === 'sketch' && scene.isBuriedInColour(x, y, margin);
-
-    /** A thing that carries its drawing with it: painted at the cel's centre. */
-    const at = (
-      id: string,
-      x: number,
-      y: number,
-      size: number,
-      depth: number,
-      pose: string | number,
-      draw: (ctx: CanvasRenderingContext2D) => void,
-      animated?: boolean,
-    ) => {
-      this.stage.cel({
-        id,
-        layer,
-        medium,
-        left: x - size / 2,
-        top: y - size / 2,
-        width: size,
-        height: size,
-        depth,
-        pose,
-        animated,
-        draw,
-      });
-    };
 
     /*
      * The sky is a strip baked once and handed to the GPU at warm-up — see
@@ -717,21 +691,33 @@ export class Renderer {
       showLion(this.stage, this.looks, lion, medium, layer, DEPTH.lion);
     }
 
-    // Yours, over the abandoned one baked into the board. Colour only: in
-    // pencil the easel keeps the drawing it came with. A still life: it only
-    // ever changes when the picture does, keyed by the data URL's length.
+    /*
+     * Yours, over the abandoned one baked into the board.
+     *
+     * The last cel in the game, and the one that has to stay one: everything
+     * else the frame shows was drawn by somebody who knew what they were
+     * drawing, so it could be listed and baked before play started. This is a
+     * picture the player made a minute ago. It is painted once, when it
+     * changes — the key is the data URL's length — and shown as a sprite
+     * thereafter, which is the whole of what a cel is for.
+     *
+     * Colour only: in pencil the easel keeps the drawing it came with.
+     */
     const { easel } = scene;
     if (medium === 'color' && scene.easelPicture && camera.canSee(easel.x, easel.y, 80)) {
-      at(
-        'easelPicture',
-        easel.x,
-        easel.y,
-        260,
-        DEPTH.easel,
-        scene.easelPicture.src.length,
-        (ctx) => drawEaselPicture(ctx, scene.easelPicture, easel.x, easel.y),
-        false,
-      );
+      const picture = scene.easelPicture;
+      this.stage.cel({
+        id: 'easelPicture',
+        layer,
+        medium,
+        left: easel.x - 130,
+        top: easel.y - 130,
+        width: 260,
+        height: 260,
+        depth: DEPTH.easel,
+        pose: picture.src.length,
+        draw: (ctx) => drawEaselPicture(ctx, picture, easel.x, easel.y),
+      });
     }
 
     void world;
@@ -747,31 +733,6 @@ export class Renderer {
   private drawOver(scene: Scene, flooded: boolean): void {
     const { camera, walker, world } = scene;
     const { DEPTH } = Renderer;
-
-    const at = (
-      id: string,
-      x: number,
-      y: number,
-      size: number,
-      depth: number,
-      pose: string | number,
-      draw: (ctx: CanvasRenderingContext2D) => void,
-      animated?: boolean,
-    ) => {
-      this.stage.cel({
-        id,
-        layer: 'over',
-        medium: 'color',
-        left: x - size / 2,
-        top: y - size / 2,
-        width: size,
-        height: size,
-        depth,
-        pose,
-        animated,
-        draw,
-      });
-    };
 
     /*
      * The camp belongs to the walker rather than to the world: it is pitched
@@ -832,16 +793,11 @@ export class Renderer {
       this.stage.stamp('over', disc(d.colour), d.x, d.y, d.radius, d.alpha, DEPTH.particles);
     }
     /*
-     * The hearts are still a drawing: a pair of bezier curves that change shape
-     * as they swell, three at a time, only when somebody pets the cat. Cut to
-     * the box they actually occupy rather than to the light.
+     * And the hearts, which are the same thing again: one picture, tinted,
+     * scaled by how far it has swelled. They were the last drawing in the game
+     * painted into a canvas while somebody was playing.
      */
-    if (scene.particles.hasHearts) {
-      const box = scene.particles.heartBounds();
-      at('hearts', box.x, box.y, box.size, DEPTH.particles, poseOf(scene.particles), (ctx) =>
-        scene.particles.drawHearts(ctx),
-      );
-    }
+    showHearts(this.stage, this.looks, scene.particles, 'over', DEPTH.particles);
 
     /*
      * The trees the hammock hangs from, always over the cloth.
