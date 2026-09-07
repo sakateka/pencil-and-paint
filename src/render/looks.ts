@@ -77,6 +77,31 @@ export interface BakedPose {
   readonly height: number;
 }
 
+/**
+ * Transparent pixels kept around every baked picture, so its edge can slide.
+ *
+ * `inkBounds` measures the tightest box holding any ink, and cropping to it
+ * exactly is what a texture atlas wants. It is also what made a walking cow's
+ * back judder while a sheep's did not, and the reason is worth writing down,
+ * because nothing about it is visible in a still.
+ *
+ * A sprite is a quad, and the edge of a quad is not antialiased: a screen pixel
+ * is either inside it or it is not. The only thing that can make a silhouette
+ * land between two pixels is a soft edge *inside* the texture, which the
+ * filtering then ramps across. A sheep's back is a row of fluff circles, so its
+ * topmost row of ink is a half-transparent crown — measured at alpha 124 — and
+ * it slides a tenth of a pixel at a time. A cow's back is one straight fill
+ * edge, and it lands exactly on the bake's pixel grid, so the topmost row came
+ * out at alpha 255: no ramp, nothing above it in the texture, and a silhouette
+ * that could only ever be on a whole pixel. She held still for five frames and
+ * then jumped one, which is what was reported as the top of her back shivering.
+ *
+ * One transparent pixel all the way round is enough — the filter needs
+ * something to fade to, not room to fade in. It costs about a tenth of the
+ * library's memory and `dx`/`dy` absorb it, so nothing moves.
+ */
+const BLEED = 1;
+
 /** A pose that drew nothing at all — kept so the caller can skip it. */
 const EMPTY: BakedPose = {
   canvas: undefined as unknown as HTMLCanvasElement,
@@ -195,17 +220,23 @@ export class LookLibrary {
     const box = inkBounds(ctx, size);
     if (!box) return EMPTY;
 
-    const { canvas, ctx: out } = createSurface(box.width, box.height);
-    out.drawImage(scratch.canvas, box.x, box.y, box.width, box.height, 0, 0, box.width, box.height);
+    const width = box.width + BLEED * 2;
+    const height = box.height + BLEED * 2;
+    const { canvas, ctx: out } = createSurface(width, height);
+    out.drawImage(
+      scratch.canvas,
+      box.x, box.y, box.width, box.height,
+      BLEED, BLEED, box.width, box.height,
+    );
 
     this.pictures++;
-    this.pixels += box.width * box.height;
+    this.pixels += width * height;
     return {
       canvas,
-      dx: box.x - centre,
-      dy: box.y - centre,
-      width: box.width,
-      height: box.height,
+      dx: box.x - centre - BLEED,
+      dy: box.y - centre - BLEED,
+      width,
+      height,
     };
   }
 

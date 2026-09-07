@@ -28,12 +28,13 @@ import { run as hedgehog } from './hedgehog.test.js';
 import { run as cuckoo } from './cuckoo.test.js';
 import { run as ending } from './ending.test.js';
 import { run as camera } from './camera.test.js';
+import { run as looks } from './looks.test.js';
 
 /* Named, because every suite exports a function called `run`. */
 const ALL_SUITES = Object.entries({
   startup, collision, stillness, progression, rendering, devpanel, petting, fishing,
   hammock, studio, treehouse, frogs, hen, owl, vigil, lion, sky, hills, perch,
-  hedgehog, cuckoo, ending, i18n, camera,
+  hedgehog, cuckoo, ending, i18n, camera, looks,
 });
 
 /**
