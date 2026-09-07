@@ -53,6 +53,15 @@ const CATCHES: readonly CatchSpec[] = [
 
 const TOTAL_WEIGHT = CATCHES.reduce((sum, c) => sum + c.weight, 0);
 
+/**
+ * Everything the pond can give up, so the library can bake all of it.
+ *
+ * The list, not the odds: a picture library has to hold the one-in-a-hundred
+ * gold thing as readily as the roach, or the rarest catch in the game would be
+ * the one that stalls the frame it appears in.
+ */
+export const CATCH_KINDS: readonly CatchKind[] = CATCHES.map((c) => c.kind);
+
 /** Draw one from the pond. */
 function pickCatch(): CatchSpec {
   let roll = Math.random() * TOTAL_WEIGHT;
@@ -286,28 +295,40 @@ export class Fishing {
 }
 
 /**
- * The camp, the rod, the line and the float — all in colour, all drawn live.
+ * Where every moving part of the tackle is this frame.
+ *
+ * All of it worked out in one place and none of it drawn, because none of it
+ * is a drawing: the rod is a stick turned about the hand, the line is a curve
+ * through the air, the float is a position and a tilt. What used to be a
+ * hundred and eighty kilobytes of canvas repainted at the boil's rate is these
+ * numbers and a handful of sprites — see `render/looks/camp.ts`.
  *
  * Takes the walker's position because the rod is in their hands: the line has
  * to start where they are standing this frame, not where they pitched camp.
  */
-export function drawCamp(
-  ctx: CanvasRenderingContext2D,
-  f: Fishing,
-  walkerX: number,
-  walkerY: number,
-  face: -1 | 1,
-): void {
-  if (!f.active) return;
+export interface Tackle {
+  /** How far the rod is swept up and back, 0 to 1. */
+  readonly pull: number;
+  /** How far through the leap whatever was caught is, 0 to 1. */
+  readonly leap: number;
+  readonly handX: number;
+  readonly handY: number;
+  readonly tipX: number;
+  readonly tipY: number;
+  readonly floatX: number;
+  readonly floatY: number;
+  /** How far the float is tipped over, in radians. */
+  readonly floatAngle: number;
+  /** Where the rings are, which is where the float rests rather than where it
+   * has been dragged to: the water is not pulled up with it. */
+  readonly ringX: number;
+  readonly ringY: number;
+  /** How far the line sags between the tip and the float, in world units. */
+  readonly sag: number;
+}
+
+export function tackleOf(f: Fishing, walkerX: number, walkerY: number, face: -1 | 1): Tackle {
   const t = f.clock;
-
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  drawTent(ctx, f.tentX, f.tentY);
-  drawFire(ctx, f.fireX, f.fireY, t);
-
   /*
    * Landing a fish is two movements, in order.
    *
@@ -325,46 +346,75 @@ export function drawCamp(
   const handX = walkerX + face * 9;
   const handY = walkerY - 25;
   const toFloat = Math.atan2(f.floatY - handY, f.floatX - handX);
-  const reach = 34 * (1 - pull * 0.5);
+  const reach = ROD_LENGTH * (1 - pull * 0.5);
   const tipX = handX + Math.cos(toFloat) * reach;
   const tipY = handY + Math.sin(toFloat) * reach - 10 - pull * 28;
-
-  ctx.strokeStyle = '#6b4a2c';
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  ctx.moveTo(handX, handY);
-  ctx.lineTo(tipX, tipY);
-  ctx.stroke();
 
   const bob = Math.sin(t * 1.6) * 1.4;
   // The float rides out of the water and in towards the rod as the line comes
   // in, then drops back as the next cast goes out.
   const restingY = f.floatY + bob + f.dip * 5;
-  const floatX = lerp(f.floatX, tipX, pull * 0.85);
-  const floatY = lerp(restingY, tipY + 9, pull * 0.85);
 
+  return {
+    pull,
+    leap,
+    handX,
+    handY,
+    tipX,
+    tipY,
+    floatX: lerp(f.floatX, tipX, pull * 0.85),
+    floatY: lerp(restingY, tipY + 9, pull * 0.85),
+    floatAngle: f.dip * 0.7 + pull * 0.9,
+    ringX: f.floatX,
+    ringY: restingY,
+    // A slack line sags. A straight one looks like wire — and it pulls taut as
+    // the rod comes up, so the sag goes with it.
+    sag: 9 * (1 - pull),
+  };
+}
+
+/** The rod's own length, which the sweep shortens and the sprite scales to. */
+export const ROD_LENGTH = 34;
+
+/** The rod, lying along the x axis from the hand, to be turned and scaled. */
+export function drawRod(ctx: CanvasRenderingContext2D): void {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#6b4a2c';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(ROD_LENGTH, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** How long a piece of line one baked strand is, before it is stretched. */
+export const STRAND_LENGTH = 20;
+
+/**
+ * One straight piece of fishing line, along the x axis.
+ *
+ * The line as a whole is a sagging curve, and a curve is not a drawing — so it
+ * is drawn as a few of these, each turned and stretched onto one chord of the
+ * curve. Butt ends rather than round ones, so consecutive pieces meet exactly
+ * instead of overlapping: two half-transparent ends laid over each other make
+ * a dark bead, which is the same trap the mirage's petals set.
+ */
+export function drawStrand(ctx: CanvasRenderingContext2D): void {
+  ctx.save();
+  ctx.lineCap = 'butt';
   ctx.strokeStyle = 'rgba(70,64,54,.55)';
   ctx.lineWidth = 0.9;
   ctx.beginPath();
-  ctx.moveTo(tipX, tipY);
-  // A slack line sags. A straight one looks like wire — and it pulls taut as
-  // the rod comes up, so the sag goes with it.
-  const sag = 9 * (1 - pull);
-  ctx.quadraticCurveTo((tipX + floatX) / 2, (tipY + floatY) / 2 + sag, floatX, floatY);
+  ctx.moveTo(0, 0);
+  ctx.lineTo(STRAND_LENGTH, 0);
   ctx.stroke();
+  ctx.restore();
+}
 
-  // Rings stay on the water, and fade out as the float leaves it.
-  if (pull < 0.95) {
-    ctx.save();
-    ctx.globalAlpha = 1 - pull;
-    drawRipples(ctx, f.floatX, restingY, t, f.dip);
-    ctx.restore();
-  }
-
-  // The float: red on top, white below, tipping as it is pulled under.
-  ctx.save();
-  ctx.translate(floatX, floatY);
-  ctx.rotate(f.dip * 0.7 + pull * 0.9);
+/** The float: red on top, white below, upright about its own middle. */
+export function drawFloat(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = '#f7f2e6';
   ctx.beginPath();
   ctx.ellipse(0, 1.6, 2.6, 3, 0, 0, TAU);
@@ -373,10 +423,6 @@ export function drawCamp(
   ctx.beginPath();
   ctx.ellipse(0, -1.8, 2.8, 3.2, 0, 0, TAU);
   ctx.fill();
-  ctx.restore();
-
-  if (leap > 0) drawCatch(ctx, leap, walkerX + face * 4, walkerY, f.hooked);
-  ctx.restore();
 }
 
 /**
@@ -396,57 +442,73 @@ function bump(p: number, rise: number, fall: number): number {
 /** How far into the catch the fish clears the water. The rod goes first. */
 const LEAP_AFTER = 0.38;
 
-/** Rings spreading from the float, and a hard one the moment it is pulled. */
-function drawRipples(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  t: number,
-  dip: number,
-): void {
-  ctx.strokeStyle = `rgba(232,244,250,${0.34 + dip * 0.4})`;
+/**
+ * Rings spreading from the float, and a hard one the moment it is pulled.
+ *
+ * A ring that spreads is a size, not a drawing, so what is baked is a ladder of
+ * rings a third apart and the size in between is a scale — which keeps the
+ * spread perfectly smooth, at the price of a hairline that runs about a tenth
+ * of a pixel thick either side of its 1.1. The alternative, a picture per
+ * radius fine enough not to step, is thirty drawings of a hairline.
+ */
+export const RIPPLE_BANDS: readonly number[] = [3, 4.05, 5.5, 7.4, 10, 13.5, 18.1, 24.5, 33];
+
+/** One ring, at one of the baked sizes, opaque: the fading is the sprite's. */
+export function drawRipple(ctx: CanvasRenderingContext2D, radius: number): void {
+  ctx.strokeStyle = 'rgb(232,244,250)';
   ctx.lineWidth = 1.1;
-  for (let i = 0; i < 3; i++) {
-    const age = (t * 0.55 + i / 3) % 1;
-    const r = 3 + age * (14 + dip * 12);
-    ctx.globalAlpha = (1 - age) * (0.5 + dip * 0.5);
-    ctx.beginPath();
-    ctx.ellipse(x, y + 1, r, r * 0.38, 0, 0, TAU);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius, radius * 0.38, 0, 0, TAU);
+  ctx.stroke();
 }
 
-/**
+/** The three rings on the water: how big each is, and how far it has faded. */
+export function ripplesAt(t: number, dip: number): { radius: number; alpha: number }[] {
+  const rings = [];
+  for (let i = 0; i < 3; i++) {
+    const age = (t * 0.55 + i / 3) % 1;
+    rings.push({
+      radius: 3 + age * (14 + dip * 12),
+      // The stroke's own alpha and the ring's, which the canvas multiplied
+      // together and a sprite carries as one number.
+      alpha: (0.34 + dip * 0.4) * (1 - age) * (0.5 + dip * 0.5),
+    });
+  }
+  return rings;
+}
+
+/*
  * Whatever came up, over the walker for a moment and gone again.
  *
  * `u` runs 0 to 1 across the leap alone, which is the fix for what this used to
  * do: it was driven from the camp's own clock, so the arc had nothing to do
  * with when anything was caught and the fish simply appeared mid-flight.
+ *
+ * The arc and the turn are transforms; only the animal is a drawing.
  */
-function drawCatch(
-  ctx: CanvasRenderingContext2D,
-  u: number,
-  x: number,
-  y: number,
-  kind: CatchKind,
-): void {
-  const height = Math.sin(Math.min(1, u) * Math.PI) * 40;
-  if (height < 0.5) return;
 
-  ctx.save();
-  ctx.translate(x, y - 30 - height);
-  /*
-   * A fish turns as it goes — head up on the way, head down coming back. An
-   * old boot does not: it hangs off the line and swings, which is most of what
-   * makes it read as rubbish rather than as a catch.
-   */
+/** How high whatever was caught is above the walker's head, at `u`. */
+export function catchHeight(u: number): number {
+  return Math.sin(Math.min(1, u) * Math.PI) * 40;
+}
+
+/**
+ * How far it is turned over at `u`.
+ *
+ * A fish turns as it goes — head up on the way, head down coming back. An old
+ * boot does not: it hangs off the line and swings, which is most of what makes
+ * it read as rubbish rather than as a catch.
+ */
+export function catchAngle(u: number, kind: CatchKind): number {
   const alive = kind !== 'boot' && kind !== 'shoe' && kind !== 'treasure';
-  ctx.rotate(
-    alive
-      ? -Math.cos(Math.min(1, u) * Math.PI) * 0.75
-      : 0.35 + Math.sin(u * Math.PI * 2.4) * 0.22,
-  );
+  return alive
+    ? -Math.cos(Math.min(1, u) * Math.PI) * 0.75
+    : 0.35 + Math.sin(u * Math.PI * 2.4) * 0.22;
+}
+
+/** Whatever came up, drawn about its own middle and facing east. */
+export function drawCatchKind(ctx: CanvasRenderingContext2D, kind: CatchKind): void {
+  ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -470,7 +532,7 @@ function drawCatch(
       drawShoe(ctx);
       break;
     case 'treasure':
-      drawTreasure(ctx, u);
+      drawTreasure(ctx);
       break;
   }
   ctx.restore();
@@ -726,7 +788,7 @@ function drawShoe(ctx: CanvasRenderingContext2D): void {
 }
 
 /** Something gold, and one cast in a hundred. */
-function drawTreasure(ctx: CanvasRenderingContext2D, u: number): void {
+function drawTreasure(ctx: CanvasRenderingContext2D): void {
   /*
    * Stroked, not a disc with a hole punched in it.
    *
@@ -754,26 +816,36 @@ function drawTreasure(ctx: CanvasRenderingContext2D, u: number): void {
   ctx.closePath();
   ctx.fill();
 
-  // A glint that crosses it once, rather than twinkling all the way up.
-  const glint = Math.sin(Math.min(1, u * 1.6) * Math.PI);
-  if (glint > 0.02) {
-    ctx.save();
-    ctx.globalAlpha = glint;
-    ctx.strokeStyle = '#fffdf2';
-    ctx.lineWidth = 1.4;
-    const r = 5 + glint * 7;
-    ctx.beginPath();
-    ctx.moveTo(-r, 0);
-    ctx.lineTo(r, 0);
-    ctx.moveTo(0, -r);
-    ctx.lineTo(0, r);
-    ctx.stroke();
-    ctx.restore();
-  }
 }
 
-/** A small ridge tent, pitched facing the fire. */
-function drawTent(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+/**
+ * A glint that crosses the gold ring once, rather than twinkling all the way
+ * up. How wide it is opened is a scale and how bright it is an alpha, so this
+ * is one drawing: a cross of arms `GLINT_ARM` long.
+ */
+export const GLINT_ARM = 12;
+
+export function drawGlint(ctx: CanvasRenderingContext2D): void {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#fffdf2';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-GLINT_ARM, 0);
+  ctx.lineTo(GLINT_ARM, 0);
+  ctx.moveTo(0, -GLINT_ARM);
+  ctx.lineTo(0, GLINT_ARM);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** How far through its one crossing the glint is at `u`: 0 to 1. */
+export function glintAt(u: number): number {
+  return Math.sin(Math.min(1, u * 1.6) * Math.PI);
+}
+
+/** A small ridge tent, pitched facing the fire. One drawing, for ever. */
+export function drawTent(ctx: CanvasRenderingContext2D, x = 0, y = 0): void {
   ctx.fillStyle = 'rgba(60,55,45,.16)';
   ctx.beginPath();
   ctx.ellipse(x, y + 2, 30, 8, 0, 0, TAU);
@@ -812,18 +884,33 @@ function drawTent(ctx: CanvasRenderingContext2D, x: number, y: number): void {
   ctx.stroke();
 }
 
-/** Stones, two logs and a flame that never repeats itself. */
-function drawFire(ctx: CanvasRenderingContext2D, x: number, y: number, t: number): void {
-  // The glow first, under everything, so the grass around it warms up.
-  const flicker = 0.82 + Math.sin(t * 7.3) * 0.09 + Math.sin(t * 11.7) * 0.06;
-  const glow = ctx.createRadialGradient(x, y - 4, 2, x, y - 4, 46 * flicker);
+/**
+ * How brightly the fire is burning at this instant, about nine tenths.
+ *
+ * Continuous, and so a scale on the glow rather than a picture of it: the glow
+ * is a soft blob with no detail in it at all, and shrinking it by a tenth is
+ * exactly what pulling its gradient in by a tenth did.
+ */
+export function fireFlicker(t: number): number {
+  return 0.82 + Math.sin(t * 7.3) * 0.09 + Math.sin(t * 11.7) * 0.06;
+}
+
+/** The warmth on the grass, at full flicker. Under everything else. */
+export function drawFireGlow(ctx: CanvasRenderingContext2D, x = 0, y = 0): void {
+  const glow = ctx.createRadialGradient(x, y - 4, 2, x, y - 4, 46);
   glow.addColorStop(0, 'rgba(255,196,96,.42)');
   glow.addColorStop(1, 'rgba(255,196,96,0)');
   ctx.fillStyle = glow;
   ctx.beginPath();
   ctx.ellipse(x, y - 2, 46, 30, 0, 0, TAU);
   ctx.fill();
+}
 
+/** Stones and two logs: the part of a fire that holds still. */
+export function drawHearth(ctx: CanvasRenderingContext2D, x = 0, y = 0): void {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   ctx.strokeStyle = '#7a5a38';
   ctx.lineWidth = 4.2;
   ctx.beginPath();
@@ -839,11 +926,45 @@ function drawFire(ctx: CanvasRenderingContext2D, x: number, y: number, t: number
     ctx.ellipse(x + Math.cos(a) * 15, y + 1 + Math.sin(a) * 6, 3.6, 2.6, a, 0, TAU);
     ctx.fill();
   }
+  ctx.restore();
+}
 
-  // Three tongues at different rates: nothing here lines up twice.
+/**
+ * How long the flame takes to come back round to where it started.
+ *
+ * A flame is the one thing in this valley that really is a different drawing
+ * every instant: three tongues, each swaying and rising on its own pair of
+ * sines, and the note over them said *nothing here lines up twice*. Nothing
+ * that never repeats can be listed, and what cannot be listed cannot be baked.
+ *
+ * So the rates are pulled onto multiples of one period and the flame is drawn
+ * as every hand-drawn fire has ever been drawn: a loop. Two and two fifths of a
+ * second is long enough that the eye does not catch the join, and every rate
+ * moved by less than a seventh to get there — the tongues sway and gutter at
+ * the speeds they always did.
+ */
+export const FLAME_PERIOD = 2.4;
+
+/** Drawings in one loop. Twelve and a half a second, a hand-drawn fire's rate. */
+export const FLAME_FRAMES = 30;
+
+/** The base rate of the loop, and every tongue is a whole multiple of it. */
+const FLAME_BASE = TAU / FLAME_PERIOD;
+
+/** Which drawing of the loop belongs to this moment. */
+export function flameFrame(t: number): number {
+  const step = Math.floor((t / FLAME_PERIOD) * FLAME_FRAMES);
+  return ((step % FLAME_FRAMES) + FLAME_FRAMES) % FLAME_FRAMES;
+}
+
+/** Three tongues, at one moment of the loop. */
+export function drawFlames(ctx: CanvasRenderingContext2D, t: number, x = 0, y = 0): void {
+  ctx.save();
+  ctx.lineJoin = 'round';
   for (const [i, colour] of (['#e8563f', '#f7a13b', '#ffd98a'] as const).entries()) {
-    const sway = Math.sin(t * (5.4 + i * 1.9) + i) * (3 - i);
-    const height = (16 - i * 4) * (0.85 + Math.sin(t * (8.1 + i * 2.3) + i * 2) * 0.15);
+    const sway = Math.sin(t * FLAME_BASE * (2 + i) + i) * (3 - i);
+    const height =
+      (16 - i * 4) * (0.85 + Math.sin(t * FLAME_BASE * (3 + i) + i * 2) * 0.15);
     ctx.fillStyle = colour;
     ctx.beginPath();
     ctx.moveTo(x - (6 - i * 1.6), y - 3);
@@ -852,4 +973,5 @@ function drawFire(ctx: CanvasRenderingContext2D, x: number, y: number, t: number
     ctx.closePath();
     ctx.fill();
   }
+  ctx.restore();
 }

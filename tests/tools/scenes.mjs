@@ -949,6 +949,151 @@ export const SCENES = {
     },
   },
 
+  camp: {
+    describe: 'a line in the water: the float bobbing, the fire going',
+
+    /**
+     * Fishing is the last thing the valley opens, so it has to be played into:
+     * every pot found, stand on the bank, press the key. `interact` is enough
+     * here — the sound dispatch a click would exercise is not what is being
+     * looked at.
+     */
+    motion: {
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        game.restart();
+        game.collectAll();
+        const pond = game.world.pond;
+        game.teleport(pond.x, pond.y + pond.ry + 22);
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.interact();
+        game.running = false;
+        game.fishing.clock = 0;
+        game.camera.snapTo(game.walker.x, game.walker.y);
+        renderOnce();
+        // A box around the float, which is the only red thing out on the water.
+        return {
+          x: Math.round(game.camera.toScreenX(game.fishing.floatX) - 12),
+          y: Math.round(game.camera.toScreenY(game.fishing.floatY) - 14),
+          width: 24,
+          height: 28,
+        };
+      },
+      /** Only its own clock runs: the bob is what is being watched. */
+      step: (pencil) => {
+        pencil.game.fishing.clock += 1 / 60;
+        pencil.renderOnce();
+      },
+      /** Where the float's red cap is, down the box. */
+      find: (strip) => {
+        let sum = 0;
+        let n = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isDeepRed(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+              sum += y;
+              n++;
+            }
+          }
+        }
+        return n ? sum / n : -1;
+      },
+    },
+
+    /** The whole camp at the start of its clock, where every build agrees. */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.restart();
+      game.collectAll();
+      const pond = game.world.pond;
+      game.teleport(pond.x, pond.y + pond.ry + 22);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.interact();
+      game.running = false;
+      game.fishing.clock = 0;
+      game.camera.snapTo(game.walker.x, game.walker.y - 20);
+      renderOnce();
+      /*
+       * Below the skyline on purpose. The mirage cloud drifts on the game's own
+       * elapsed clock, and how many frames the page has run before a tool takes
+       * hold of it is not the same twice — so any box with sky in it compares
+       * two different afternoons and reports the difference as yours.
+       */
+      return {
+        x: Math.round(game.camera.toScreenX(game.walker.x) - 110),
+        y: Math.round(game.camera.toScreenY(game.walker.y) - 62),
+        width: 220,
+        height: 122,
+      };
+    },
+  },
+
+  float: {
+    describe: 'the float and its rings, out on the water where the line ends',
+
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.restart();
+      game.collectAll();
+      const pond = game.world.pond;
+      game.teleport(pond.x, pond.y + pond.ry + 22);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.interact();
+      game.running = false;
+      game.fishing.clock = 0;
+      const f = game.fishing;
+      game.camera.snapTo(f.floatX, f.floatY);
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(f.floatX) - 40),
+        y: Math.round(game.camera.toScreenY(f.floatY) - 30),
+        width: 80,
+        height: 60,
+      };
+    },
+  },
+
+  catch: {
+    describe: 'a carp in the air over the walker, halfway through its leap',
+
+    /*
+     * Noisy on purpose, and worth knowing before reading a number off it: how
+     * long the pond takes to bite is random, so the two runs being compared are
+     * seconds apart in the valley's own clock and everything that drifts with
+     * it has drifted. Measured against itself, this scene reports mean 1.46 and
+     * worst 110 — so only a difference well past that means anything, and the
+     * fish itself is better looked at than measured.
+     */
+
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      game.restart();
+      game.collectAll();
+      const pond = game.world.pond;
+      game.teleport(pond.x, pond.y + pond.ry + 22);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.interact();
+      const still = { direction: () => ({ x: 0, y: 0 }) };
+      // Wait for a bite, strike, and then stop partway through the leap.
+      for (let i = 0; i < 3600 && game.fishing.phase !== 'bite'; i++) game.advance(1 / 60, still);
+      game.interact();
+      game.fishing.hooked = 'carp';
+      for (let i = 0; i < 600 && game.fishing.catchProgress < 0.62; i++) {
+        game.advance(1 / 60, still);
+      }
+      game.running = false;
+      game.camera.snapTo(game.walker.x, game.walker.y - 40);
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(game.walker.x) - 60),
+        y: Math.round(game.camera.toScreenY(game.walker.y) - 100),
+        width: 120,
+        height: 110,
+      };
+    },
+  },
+
   hay: {
     describe: 'somebody lying back in the haystack, breathing',
 

@@ -1,5 +1,5 @@
 import { context2d, createSurface, isolate, type Surface } from '../core/canvas';
-import { drawCamp, type Fishing } from '../entities/fishing';
+import { type Fishing } from '../entities/fishing';
 import { drawEaselPicture, type Rest } from '../entities/rest';
 import { type Owl } from '../entities/owl';
 import type { Vigil } from '../entities/vigil';
@@ -30,6 +30,7 @@ import {
   hammockSleeperLook,
 } from './looks/hammock';
 import { birdAlpha, birdFacesLeft, birdLook, birdOffsetY, birdPose } from './looks/birds';
+import { registerCampLooks, showCamp } from './looks/camp';
 import { registerHedgehogLooks, showHedgehog } from './looks/hedgehog';
 import { registerOwlLooks, showOwl } from './looks/owl';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
@@ -195,6 +196,7 @@ export class Renderer {
       this.looks.register(look);
     }
     this.looks.register(birdLook);
+    registerCampLooks(this.looks);
     registerHedgehogLooks(this.looks);
     registerHerdLooks(this.looks);
     registerLionLooks(this.looks);
@@ -725,16 +727,20 @@ export class Renderer {
      * where they stand and packs up when they leave, so it is drawn with them,
      * in colour only, and never baked into a layer.
      *
-     * Asked for only while it is pitched. `drawCamp` returns at once when it is
-     * not, but the cel around it does not know that and was clearing and
-     * re-uploading a blank 360px square twelve times a second for the whole of
-     * a session in which nobody went fishing.
+     * Asked for only while it is pitched, which the old cel around it did not
+     * know either: it cleared and re-uploaded a blank 360px square twelve times
+     * a second for the whole of a session in which nobody went fishing.
      */
-    if (scene.fishing.active) {
-      at('camp', walker.x, walker.y, 360, DEPTH.camp, poseOf(scene.fishing) + walker.face, (ctx) =>
-        drawCamp(ctx, scene.fishing, walker.x, walker.y, walker.face),
-      );
-    }
+    showCamp(
+      this.stage,
+      this.looks,
+      scene.fishing,
+      walker.x,
+      walker.y,
+      walker.face,
+      'over',
+      DEPTH.camp,
+    );
 
     /*
      * In the hammock, the walker *is* the drawing in the hammock — the standing
