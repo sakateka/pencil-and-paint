@@ -419,6 +419,77 @@ export const SCENES = {
     },
   },
 
+  potedge: {
+    describe: 'a paint pot on the rim of the colour, nodding to be noticed',
+
+    /**
+     * Placed by measurement rather than by hand.
+     *
+     * `maskRadius` is not a constant — it grows with every pot found — so the
+     * spot that puts one pot exactly on the rim has to be worked out from the
+     * radius the walker actually has, and then checked, because the ground
+     * decides where a teleport really lands.
+     */
+    motion: {
+      begin: (pencil) => {
+        const { game, renderOnce } = pencil;
+        const pot = game.pots.find((p) => !p.found);
+        game.teleport(pot.x, pot.y + game.maskRadius - 20);
+        for (let i = 0; i < 10; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        game.camera.snapTo(pot.x, pot.y);
+        game.running = false;
+        // Start where the bob is rising fastest, not at the top of it.
+        pot.clock = -pot.phase / 2.2;
+        renderOnce();
+        return {
+          x: Math.round(game.camera.toScreenX(pot.x) - 20),
+          y: Math.round(game.camera.toScreenY(pot.y) - 40),
+          width: 40,
+          height: 50,
+        };
+      },
+      step: (pencil) => {
+        const pot =
+          pencil.game.pots.find((p) => p.hue === '#e8563f') ?? pencil.game.pots[0];
+        pot.clock += 1 / 60;
+        pencil.renderOnce();
+      },
+      /** Where the red jar is, down the box. */
+      find: (strip) => {
+        let sum = 0;
+        let n = 0;
+        for (let y = 0; y < strip.height; y++) {
+          for (let x = 0; x < strip.width; x++) {
+            const i = (y * strip.width + x) * 4;
+            if (isDeepRed(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+              sum += y;
+              n++;
+            }
+          }
+        }
+        return n ? sum / n : -1;
+      },
+    },
+
+    /** The same pot, held at the top of its nod. */
+    still: (pencil) => {
+      const { game, renderOnce } = pencil;
+      const pot = game.pots.find((p) => p.hue === '#e8563f') ?? game.pots[0];
+      game.teleport(pot.x, pot.y + game.maskRadius - 20);
+      for (let i = 0; i < 10; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      game.camera.snapTo(pot.x, pot.y);
+      game.running = false;
+      pot.clock = (Math.PI / 2 - pot.phase) / 2.2;
+      renderOnce();
+      return {
+        x: Math.round(game.camera.toScreenX(pot.x) - 45),
+        y: Math.round(game.camera.toScreenY(pot.y) - 55),
+        width: 90,
+        height: 80,
+      };
+    },
+  },
+
   lion: {
     describe: 'the lion lifting its head to look at you, over about a second',
 

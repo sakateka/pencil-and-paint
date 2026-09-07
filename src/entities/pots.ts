@@ -23,7 +23,68 @@ export interface Pot {
   awake: boolean;
   /** Its own clock: an unfound pot in the pencil does not bob. */
   clock: number;
+  /** How hard it is bobbing, 0 to about two. See `potStir`. */
+  stir: number;
 }
+
+/**
+ * How hard a pot bobs, given how far inside the colour it is standing.
+ *
+ * A pot is the one thing in the valley whose job is to be noticed, and the
+ * moment it has any job at all is the moment the colour's edge arrives at it —
+ * which is exactly where the plain bob was least use, because the bob is three
+ * and a half pixels over three seconds and at arm's length that is nothing.
+ * So a pot the colour has only just reached nods twice as far as one standing
+ * well inside it, and settles as you come on.
+ *
+ * Nought outside, and the ramp starts at nought on the line itself, because
+ * nothing the colour has not reached may move — that is the rule the whole game
+ * is built on. What this buys is that a pot does not *snap* into motion either:
+ * it comes to life across the first few units of colour rather than at a step.
+ */
+export function potStir(inside: number): number {
+  if (inside <= 0) return 0;
+  return Math.min(1, inside / WAKE_OVER) * (1 + NOD * atRim(inside));
+}
+
+/**
+ * How much faster the nod runs at the rim, one to about a half as fast again.
+ *
+ * A bigger bob alone reads as a balloon: the pot floats further and just as
+ * slowly. What says *over here* is a quicker one, so the rim hurries the pot's
+ * own clock rather than only stretching it. Applied to the clock and not to the
+ * rate inside the sine on purpose — the clock is an accumulator, so changing
+ * how fast it fills cannot jump the phase, where changing the rate a phase is
+ * multiplied by would jump it every time you took a step.
+ */
+export function potHurry(inside: number): number {
+  return 1 + HURRY * atRim(inside);
+}
+
+/** One at the edge of the colour, nought once it is well inside. */
+function atRim(inside: number): number {
+  const near = 1 - Math.min(1, Math.max(0, inside) / NOTICE_WITHIN);
+  return near * near;
+}
+
+/**
+ * Units of colour over a pot before it is bobbing its full height.
+ *
+ * Short on purpose. This is not a fade-in — the pot is *meant* to come alive
+ * the moment the colour touches it — it is only there so that the amplitude
+ * leaves nought continuously rather than at a step, and four units is about a
+ * twentieth of a second of walking.
+ */
+const WAKE_OVER = 4;
+
+/** How far inside the colour the pot is still calling you over. */
+const NOTICE_WITHIN = 120;
+
+/** How much taller the nod is at the rim than the bob is deep inside. */
+const NOD = 0.6;
+
+/** And how much quicker. */
+const HURRY = 0.6;
 
 /**
  * A pot rising and settling on the spot. Its whole animation, and a translate.
@@ -37,8 +98,8 @@ export interface Pot {
  * ratio and drops a whole session onto the software path. Nothing is baked from
  * a pot's own numbers now, so there is nothing left to throw away.
  */
-export function potBob(clock: number, phase: number): number {
-  return Math.sin(clock * 2.2 + phase) * 3.5;
+export function potBob(clock: number, phase: number, stir = 1): number {
+  return Math.sin(clock * 2.2 + phase) * 3.5 * stir;
 }
 
 /** The soft light a pot gives off, in white, so one picture serves all of them. */
@@ -174,6 +235,7 @@ export function scatterPots(
       found: false,
       awake: false,
       clock: Math.random() * 20,
+      stir: 0,
     });
   }
   return pots;

@@ -12,7 +12,7 @@ import { Lion } from './entities/lion';
 import { Perch } from './entities/perch';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
-import { scatterPots, type Pot } from './entities/pots';
+import { potHurry, potStir, scatterPots, type Pot } from './entities/pots';
 import { Camera } from './render/camera';
 import { ColorField } from './render/colorField';
 import type { Scene } from './render/renderer';
@@ -379,7 +379,17 @@ export class Game {
     for (const pot of this.pots) {
       if (pot.found) continue;
       pot.awake = this.isAwakeAt(pot.x, pot.y, 8);
-      if (pot.awake) pot.clock += dt;
+      /*
+       * How far inside the colour it is standing, which is what decides how
+       * hard it bobs — hardest at the rim, where it is trying to be seen. The
+       * clock runs whenever it is moving at all and stops dead outside, so a
+       * pot out in the graphite is a still life, as everything out there is.
+       */
+      const dx = pot.x - this.walker.x;
+      const dy = pot.y - this.walker.y - 14;
+      const inside = this.maskRadius - Math.hypot(dx, dy);
+      pot.stir = potStir(inside);
+      if (pot.stir > 0) pot.clock += dt * potHurry(inside);
     }
     if (!this.won) this.collectPots();
 

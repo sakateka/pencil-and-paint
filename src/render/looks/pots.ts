@@ -101,7 +101,7 @@ export function showPot(
   depth: number,
 ): void {
   const pose = poseOfPot(pot);
-  const y = pot.y + potBob(pot.clock, pot.phase);
+  const y = pot.y + potBob(pot.clock, pot.phase, pot.stir);
 
   if (medium === 'color') {
     stage.showLook({
