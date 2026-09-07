@@ -12,7 +12,7 @@ import type { Treehouse } from '../entities/treehouse';
 import { drawThroughWindow } from '../world/treehouse';
 import type { Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
-import type { Particles } from '../entities/particles';
+import { PARTICLE_COLOURS, type Particles } from '../entities/particles';
 import type { Pot } from '../entities/pots';
 import type { World } from '../world/world';
 import type { Camera } from './camera';
@@ -34,6 +34,22 @@ import { registerHerdLooks, showHerdAnimal } from './looks/herd';
 import { registerLionLooks, showLion } from './looks/lion';
 import { registerPotLooks, showPot } from './looks/pots';
 import { registerWalkerLooks, showWalker } from './looks/walker';
+
+/**
+ * How many stamped particles the pool is built to hold, made at warm-up.
+ *
+ * Measured rather than derived, because there is nothing in the code to derive
+ * it from: motes spawn on a coin flip and live for a random time, so how many
+ * are in the air is a distribution, not a bound. Walking the valley hard peaks
+ * at 57; a pot found on top of that adds its splash of 26; `collectAll`, which
+ * the instruments use, sets off all fourteen at once and peaks at 177.
+ *
+ * So: big enough for the debug path too, since an unused pooled sprite is a few
+ * dozen bytes and no texture at all. Going over is not a fault — the pool still
+ * grows and the particle is still drawn — it just costs an object, and `new` in
+ * the readout says so.
+ */
+const STAMP_POOL = 192;
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -182,6 +198,7 @@ export class Renderer {
       this.stage.resize(this.width, this.height);
       // Phaser may finish booting after the bake did; adopting twice is free.
       this.stage.adoptLooks(this.looks);
+      this.warmStamps();
     });
   }
 
@@ -197,6 +214,19 @@ export class Renderer {
   *warmUpLooks(): Generator<{ done: number; total: number }> {
     yield* this.looks.bake();
     this.stage.adoptLooks(this.looks);
+    this.warmStamps();
+  }
+
+  /**
+   * The particles, paid for under the load screen like everything else.
+   *
+   * Every disc the game can show, in every colour it can be, and a pool deep
+   * enough to hold the worst frame — see `STAMP_POOL`. Called from both places
+   * the warm-up can finish in, because Phaser's boot and the bake race and
+   * either may be last; doing it twice is free.
+   */
+  private warmStamps(): void {
+    this.stage.warmStamps('over', PARTICLE_COLOURS.map(disc), STAMP_POOL);
   }
 
   resize(width: number, height: number, scale: number): void {
@@ -947,6 +977,16 @@ export class Renderer {
    */
   uploadReport(): { totalMb: number; worst: string } {
     return this.stage.uploadReport();
+  }
+
+  /** The same question about the other half of the invariant: what got made. */
+  createReport(): { total: number; worst: string } {
+    return this.stage.createReport();
+  }
+
+  /** The most particles ever on screen at once this session, against the pool. */
+  get stampPeak(): { peak: number; pool: number } {
+    return { peak: this.stage.stampPeak, pool: STAMP_POOL };
   }
 
   /**

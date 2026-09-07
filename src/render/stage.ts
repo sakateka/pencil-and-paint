@@ -235,6 +235,16 @@ export class Stage {
   readonly uploadedBy = new Map<string, number>();
 
   /**
+   * Objects brought into being since the last report, and by whom.
+   *
+   * The twin of `uploadedBy`, and needed for the same reason: `new 25` in the
+   * readout says the invariant is broken without saying by what, and the four
+   * places that can raise it — a sprite, a cel, a stamp's texture, a stamp's
+   * image — look nothing alike once you know which one it was.
+   */
+  readonly createdBy = new Map<string, number>();
+
+  /**
    * What this frame cost the GPU, in the only currency this design has.
    *
    * A frame that draws nothing new is free; a frame that repaints a cel or
@@ -249,6 +259,12 @@ export class Stage {
   private frameCreated = 0;
   private lastFramePx = 0;
   private lastCreated = 0;
+
+  /** One object came into being, and this is who asked for it. */
+  private noteCreated(who: string): void {
+    this.frameCreated++;
+    this.createdBy.set(who, (this.createdBy.get(who) ?? 0) + 1);
+  }
 
   /** This frame's cost: pixels re-uploaded, and textures or objects created. */
   get frameCost(): { uploadedPx: number; created: number } {
@@ -372,7 +388,7 @@ export class Stage {
     if (!held) {
       const key = `sprite${this.nextTextureId++}`;
       if (!scene.textures.addCanvas(key, request.canvas)) return;
-      this.frameCreated++;
+      this.noteCreated(`sprite ${request.id}`);
       const image = scene.add.image(0, 0, key).setOrigin(0, 0);
       this.assign(image, request.layer);
       held = { key, canvas: request.canvas, image, touched: -1, persistent: request.persistent };
@@ -445,7 +461,7 @@ export class Stage {
         this.cels.delete(slot);
       }
       cel = new Cel(scene, `cel${this.nextTextureId++}`, width, height);
-      this.frameCreated++;
+      this.noteCreated(`cel ${request.id}`);
       this.cels.set(slot, cel);
       this.assign(cel.image, request.layer);
     }
@@ -489,7 +505,9 @@ export class Stage {
    * fifty transforms is not a cost.
    *
    * The pool is kept between frames and only grows; `endStamps` hides whatever
-   * was not used, so a splash of twenty-six does not churn objects.
+   * was not used, so a splash of twenty-six does not churn objects. It is also
+   * filled to its full size at warm-up — see `warmStamps` — because "only
+   * grows" still means it grows during play the first time a pot is found.
    */
   stamp(
     layer: Layer,
@@ -506,17 +524,18 @@ export class Stage {
     if (!key) {
       key = `stamp${this.nextTextureId++}`;
       if (!scene.textures.addCanvas(key, canvas)) return;
-      this.frameCreated++;
+      this.noteCreated('stamp texture');
       this.stampKeys.set(canvas, key);
     }
     let image = this.stamps[this.stampsUsed];
     if (!image) {
-      this.frameCreated++;
+      this.noteCreated('stamp image');
       image = scene.add.image(0, 0, key);
       this.assign(image, layer);
       this.stamps.push(image);
     }
     this.stampsUsed++;
+    if (this.stampsUsed > this.stampPeak) this.stampPeak = this.stampsUsed;
     image.setTexture(key);
     image.setVisible(true);
     image.setPosition(x, y);
@@ -525,9 +544,54 @@ export class Stage {
     image.setDepth(depth);
   }
 
+  /**
+   * Every stamp the game can ever ask for, made before it asks.
+   *
+   * Both halves of a stamp are created lazily, and both were being created in
+   * the middle of play: the texture the first time a colour appears — which for
+   * a paint pot's splash is the moment it is found — and the pooled image the
+   * first time that many are on screen at once, which is the same moment, since
+   * a splash is twenty-six of them arriving together. Measured on a walk to the
+   * first few pots: a new texture and up to thirty-two new images per pot.
+   *
+   * Neither is expensive in itself. Both are forbidden by the invariant for the
+   * same reason the uploads are: they happen in the GPU process after the frame
+   * has returned, so they cost nothing we can time and everything the player
+   * can feel.
+   *
+   * The colours have to be listed rather than discovered — a colour is only
+   * discovered by being wanted, and by then it is too late.
+   */
+  warmStamps(layer: Layer, canvases: readonly HTMLCanvasElement[], images: number): void {
+    const scene = this.scene;
+    if (!scene) return;
+    for (const canvas of canvases) {
+      if (this.stampKeys.has(canvas)) continue;
+      const key = `stamp${this.nextTextureId++}`;
+      if (!scene.textures.addCanvas(key, canvas)) continue;
+      this.stampKeys.set(canvas, key);
+    }
+    const first = this.stampKeys.values().next();
+    if (first.done) return;
+    while (this.stamps.length < images) {
+      const image = scene.add.image(0, 0, first.value).setVisible(false);
+      this.assign(image, layer);
+      this.stamps.push(image);
+    }
+  }
+
   private readonly stamps: Phaser.GameObjects.Image[] = [];
   private readonly stampKeys = new Map<HTMLCanvasElement, string>();
   private stampsUsed = 0;
+
+  /**
+   * The most stamps ever wanted in one frame this session.
+   *
+   * What `warmStamps` has to be told, and the only honest source for it: the
+   * count is a splash on top of however many motes the light happens to be
+   * carrying, and both are random.
+   */
+  stampPeak = 0;
 
   /*
    * ---- Baked looks ------------------------------------------------------
@@ -770,6 +834,18 @@ export class Stage {
     const totalMb = [...this.uploadedBy.values()].reduce((a, b) => a + b, 0) / 262144;
     this.uploadedBy.clear();
     return { totalMb: Math.round(totalMb * 10) / 10, worst };
+  }
+
+  /** What has been created since this was last called, most first. */
+  createReport(): { total: number; worst: string } {
+    const worst = [...this.createdBy.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([who, n]) => `${who} ${n}`)
+      .join('  ');
+    const total = [...this.createdBy.values()].reduce((a, b) => a + b, 0);
+    this.createdBy.clear();
+    return { total, worst };
   }
 
   /** Hide everything nobody asked for this frame, and start the next one. */

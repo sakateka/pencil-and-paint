@@ -1,6 +1,7 @@
 import { clamp, TAU } from '../core/math';
 import { rr } from '../core/rng';
 import { drawDisc } from '../media/sprites';
+import { POT_HUES } from '../world/palette';
 
 /**
  * Paint splashes when a pot is found, and drifting motes of colour that follow
@@ -23,6 +24,20 @@ export interface Particle {
 const MOTE_COLOURS = ['#fff6c9', '#ffd9a0', '#cfeeff', '#ffd4e6'] as const;
 
 const HEART_COLOURS = ['#e0708a', '#ea8fa4', '#d95f7c'] as const;
+
+/**
+ * Every colour a stamped particle can ever be.
+ *
+ * Written down rather than discovered, because a disc's texture is baked and
+ * handed to the GPU the first time that colour is asked for — and the first
+ * time a pot's colour is asked for is the moment somebody finds the pot. The
+ * renderer bakes this list at warm-up instead; see `Stage.warmStamps`.
+ *
+ * A colour not listed here still works, and still costs a texture upload in
+ * the middle of play. If a new one is added to a burst, add it here. The
+ * hearts are not in it: they are drawn as curves rather than stamped.
+ */
+export const PARTICLE_COLOURS: readonly string[] = [...MOTE_COLOURS, ...POT_HUES];
 
 /** One little heart, centred on `x, y`, `s` across. */
 function heartPath(ctx: CanvasRenderingContext2D, x: number, y: number, s: number): void {

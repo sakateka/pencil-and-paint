@@ -35,7 +35,13 @@ try {
     const { renderer, perf } = pencil;
     const cost = renderer.frameCost;
     const worst = perf.worstFrames[0];
+    // Who, not just how much: `new 25` names nothing on its own, and the four
+    // things that can raise it want four different fixes.
+    const uploaders = renderer.uploadReport();
+    const makers = renderer.createReport();
     return {
+      blame: [uploaders.worst, makers.worst].filter(Boolean).join('  |  '),
+      stamps: renderer.stampPeak,
       build: pencil.build,
       looks: {
         pictures: renderer.looks.pictures,
@@ -59,6 +65,11 @@ try {
     `frame     upload ${state.uploadedKb}KB  new ${state.created}  ` +
       `bakes ${state.bakes}  draw ${state.drawMs}ms`,
   );
+  // The whole session, not the last frame: what is uploaded once at warm-up
+  // belongs in this list too, and the way to tell them apart is that a warm-up
+  // sprite appears once and a fault appears again the next time you look.
+  if (state.blame) console.log(`since load ${state.blame}`);
+  console.log(`stamps    ${state.stamps.peak} at once, pool ${state.stamps.pool}`);
   console.log(`worst     ${state.worst}`);
 
   const path = join(ROOT, 'tmp', `look-${name ?? 'start'}.png`);

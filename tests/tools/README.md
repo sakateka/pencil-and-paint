@@ -45,6 +45,13 @@ built to hold both at zero once the valley is warm: a frame is meant to be
 nothing but transforms. Anything else is a fault, and this is where it shows up
 before a player ever feels it.
 
+`since load` names who did it — the cel that repainted, the sprite or stamp that
+was made. Both numbers name a fault without naming a culprit otherwise, and the
+things that raise them want quite different fixes. It covers the session rather
+than the frame, so the warm-up's own sprites are in it; the way to tell those
+apart from a fault is that warm-up appears once and a fault appears again the
+next time you look.
+
 ### `motion.mjs <scene>` — is this movement smooth, or is it stepped?
 
 Samples where a moving thing actually is, once per frame, and prints the steps.
