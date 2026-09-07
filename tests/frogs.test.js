@@ -58,20 +58,43 @@ export async function run(url) {
      */
     const later = await game.evaluate((pencil, at) => {
       const { game } = pencil;
-      const before = game.herd.animals
-        .filter((a) => a.kind === 'frog')
-        .map((f) => ({ x: f.x, y: f.y }));
+      /*
+       * Each frog matched to itself, by `slot`, and not to whoever is standing
+       * in its place in the list.
+       *
+       * `herd.animals` is re-sorted by depth on every update, and the frogs do
+       * not go into it in depth order — they are pushed biggest lily pad first
+       * (see `layout.ts`). So the array as the page hands it over is in spawn
+       * order until the first update sorts it, and an index taken before that
+       * point names a different frog afterwards. This test read 210 units of
+       * drift about one run in five on exactly that: not a frog that moved, two
+       * frogs on opposite sides of the pond being subtracted from each other.
+       * Whether it fired came down to whether the page's own loop had managed a
+       * single frame before the snapshot, which under a four-way parallel run
+       * is a coin toss. `slot` is assigned once, in the herd's constructor, for
+       * this: it is the only handle on an animal that survives the sort.
+       */
+      const before = new Map(
+        game.herd.animals.filter((a) => a.kind === 'frog').map((f) => [f.slot, { x: f.x, y: f.y }]),
+      );
       game.teleport(at.x, at.y + 190);
       for (let i = 0; i < 600; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       const frogs = game.herd.animals.filter((a) => a.kind === 'frog');
       return {
         drift: +Math.max(
-          ...frogs.map((f, i) => Math.hypot(f.x - before[i].x, f.y - before[i].y)),
+          ...frogs.map((f) => {
+            const was = before.get(f.slot);
+            return was ? Math.hypot(f.x - was.x, f.y - was.y) : Infinity;
+          }),
         ).toFixed(2),
+        // Every frog that was there is still there, and no new ones.
+        same: frogs.length === before.size && frogs.every((f) => before.has(f.slot)),
         awake: frogs.filter((f) => f.awake).length,
         of: frogs.length,
       };
     }, POND);
+
+    suite.ok(later.same, 'the same frogs are there ten seconds later');
 
     suite.equal(later.drift, 0, 'and not one of them has moved an inch');
     suite.ok(later.awake > 0, 'the near ones are in colour', `${later.awake}/${later.of}`);
