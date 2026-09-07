@@ -9,6 +9,7 @@ import { type Perch } from '../entities/perch';
 import { bakeSkyStrip } from '../world/sky';
 import { boilTick } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
+import type { Medium } from '../media/medium';
 import type { Walker } from '../entities/player';
 import type { Herd } from '../entities/herd';
 import { PARTICLE_COLOURS, type Particles } from '../entities/particles';
@@ -57,6 +58,20 @@ import { registerWalkerLooks, showWalker } from './looks/walker';
  * the readout says so.
  */
 const STAMP_POOL = 192;
+
+/**
+ * The one name an occluder's picture goes by on the GPU.
+ *
+ * Two passes show these — the one that lays a tree over the walker, and the one
+ * that keeps the hammock's own trees above the cloth — and they used to name
+ * their sprites differently, which meant a tree that was both was uploaded
+ * twice under two ids. One name, one texture, one depth: whichever pass asks
+ * last decides where it sits, and since the occluder pass runs second and sits
+ * higher, a tree that is both ends up exactly where it did before.
+ */
+function occluderId(occluder: { id: number }, medium: Medium): string {
+  return `occluder:${occluder.id}:${medium}`;
+}
 
 /** Everything the renderer needs to draw a frame. */
 export interface Scene {
@@ -213,6 +228,7 @@ export class Renderer {
       // Phaser may finish booting after the bake did; adopting twice is free.
       this.stage.adoptLooks(this.looks);
       this.warmStamps();
+      if (this.warmedOccluders) this.adoptOccluders(this.warmedOccluders);
     });
   }
 
@@ -233,9 +249,43 @@ export class Renderer {
      * whole drawing — see `looks/owl.ts`.
      */
     registerOwlLooks(this.looks, world.owlPerch.scale);
-    yield* this.looks.bake();
+    /*
+     * One count for both halves, so the bar goes forwards.
+     *
+     * The pictures and the occluders are separate bakes with separate totals,
+     * and handing them to the loader one after the other would run the bar to
+     * the end and start it again.
+     */
+    const total = this.looks.total() + world.occluderCount * 2;
+    let done = 0;
+    for (const _ of this.looks.bake()) yield { done: ++done, total };
     this.stage.adoptLooks(this.looks);
     this.warmStamps();
+
+    /*
+     * And the occluders: every tall thing in the valley, drawn and handed over
+     * here rather than on the frame somebody first walks behind it.
+     */
+    for (const _ of world.bakeOccluders()) yield { done: ++done, total };
+    this.adoptOccluders(world);
+    this.warmedOccluders = world;
+  }
+
+  /** The world whose occluders are already on the GPU, if any. */
+  private warmedOccluders: World | undefined;
+
+  /**
+   * Hand every baked occluder to the GPU, hidden until something wants it.
+   *
+   * Both passes that show an occluder — the one that lays a tree over the
+   * walker and the one that keeps the hammock's own trees above the cloth —
+   * name the same sprite, so a tree that is both is one picture on the GPU
+   * shown at one depth, rather than two textures of the same canvas.
+   */
+  private adoptOccluders(world: World): void {
+    for (const { occluder, medium, sprite } of world.occluderSprites()) {
+      this.stage.warmSprite(occluderId(occluder, medium), 'over', sprite.canvas);
+    }
   }
 
   /**
@@ -813,7 +863,7 @@ export class Renderer {
         const medium = lit ? 'color' : 'sketch';
         const sprite = world.spriteFor(occluder, medium);
         this.stage.sprite({
-          id: `hammockTree:${occluder.id}:${medium}`,
+          id: occluderId(occluder, medium),
           layer: 'over',
           canvas: sprite.canvas,
           left: sprite.x,
@@ -845,7 +895,7 @@ export class Renderer {
       const medium = lit ? 'color' : 'sketch';
       const sprite = world.spriteFor(occluder, medium);
       this.stage.sprite({
-        id: `occluder:${occluder.id}:${medium}`,
+        id: occluderId(occluder, medium),
         layer: 'over',
         canvas: sprite.canvas,
         left: sprite.x,

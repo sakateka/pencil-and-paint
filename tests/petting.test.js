@@ -170,7 +170,17 @@ export async function run(url) {
         .map((e) => Math.round(e.startTime)),
     );
     suite.equal(fetched.length, 1, 'the purr is fetched once');
-    suite.ok(fetched[0] > 0, 'and only once she was stroked, not at load', `${fetched[0]}ms in`);
+    /*
+     * After the page is up, not on the way to it.
+     *
+     * It used to be fetched on the first stroke, and it is fetched under the
+     * loading screen now along with the owl's hoot — a sound that arrives at
+     * the moment it is wanted is a sound that stutters. What has to stay true
+     * either way is that it is not on the critical path: `startTime` is
+     * milliseconds since the navigation began, so anything above zero is after
+     * the document, and one entry means one fetch however many strokes.
+     */
+    suite.ok(fetched[0] > 0, 'and not on the way in', `${fetched[0]}ms in`);
 
     const sound = await game.evaluate(async () => {
       const audio = [...document.querySelectorAll('audio')].find((a) =>

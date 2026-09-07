@@ -463,8 +463,6 @@ async function boot(): Promise<void> {
     onCancel: () => cancel(),
   });
 
-  let owlHoot: HTMLAudioElement | undefined;
-
   /**
    * Everything bound to the topmost element, in one place.
    *
@@ -492,17 +490,7 @@ async function boot(): Promise<void> {
       const dy = (y - (game.camera.toScreenY(game.owl.y) - 16 * size)) / (22 * size);
       if (!game.won || !game.owlInReach() || dx * dx + dy * dy > 1 || !game.owl.hoot()) return;
 
-      if (!owlHoot) {
-        owlHoot = new Audio(owlHootUrl);
-        owlHoot.preload = 'auto';
-        owlHoot.volume = 0.85;
-        owlHoot.dataset.sound = 'owl-hoot';
-        owlHoot.dataset.level = String(owlHoot.volume);
-        owlHoot.style.display = 'none';
-        document.body.append(owlHoot);
-      }
-      owlHoot.currentTime = 0;
-      void owlHoot.play().catch(() => undefined);
+      playHoot();
     });
 
     /*
@@ -563,6 +551,8 @@ async function boot(): Promise<void> {
       if (!running) return;
       await sample.preload();
     }
+    await whenIdle();
+    if (running) warmOneShots();
   }
 
   /** Cleared on `pagehide`, after which nothing may touch a canvas. */
@@ -809,6 +799,7 @@ async function boot(): Promise<void> {
     },
     purrStrength,
     purrsPlayed: () => purrsPlayed,
+    hootsPlayed: () => hootsPlayed,
     i18n: {
       keys: () => KEYS,
       languages: () => Object.keys(LANGUAGES),
@@ -1022,19 +1013,71 @@ function chime(index: number): void {
  */
 let purr: HTMLAudioElement | undefined;
 function playPurr(): void {
-  if (!purr) {
-    purr = new Audio(purrUrl);
-    purr.preload = 'auto';
-    purr.volume = 0.55;
-    purr.dataset.sound = 'purr.mp3';
-    purr.dataset.level = String(purr.volume);
-    purr.style.display = 'none';
-    document.body.append(purr);
-  }
+  purr ??= oneShot(purrUrl, 0.55, 'purr.mp3');
+  if (!purr) return;
   // From the top each time: every stroke is a new murrr, not a resume of the
   // last one.
   purr.currentTime = 0;
   void purr.play().catch(() => undefined);
+}
+
+/** The owl, which answers if you touch it. Same shape as the purr. */
+let owlHoot: HTMLAudioElement | undefined;
+
+/**
+ * How many times the owl has been asked to answer.
+ *
+ * Counted rather than inferred from the element existing, which is what the
+ * suite used to do: the recording is fetched under the loading screen now, so
+ * an element is there whether or not anybody has touched the bird. The purr has
+ * had a counter for the same reason since it stopped being synthesised.
+ */
+let hootsPlayed = 0;
+function playHoot(): void {
+  owlHoot ??= oneShot(owlHootUrl, 0.85, 'owl-hoot');
+  if (!owlHoot) return;
+  hootsPlayed++;
+  owlHoot.currentTime = 0;
+  void owlHoot.play().catch(() => undefined);
+}
+
+/**
+ * A recording that plays from the top and is not faded: the purr, the hoot.
+ *
+ * Not a `Sample`, which loops and fades and belongs to a place you are sitting
+ * in. These are answers to something you did, and the whole of them is four
+ * seconds long.
+ *
+ * Attached to the document though nothing displays it — some browsers will not
+ * preload a detached media element, and the sound tests look for it there.
+ */
+function oneShot(url: string, volume: number, name: string): HTMLAudioElement | undefined {
+  try {
+    const audio = new Audio(url);
+    audio.preload = 'auto';
+    audio.volume = volume;
+    audio.dataset.sound = name;
+    audio.dataset.level = String(volume);
+    audio.style.display = 'none';
+    document.body.append(audio);
+    return audio;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Fetch the one-shots without playing them.
+ *
+ * The last two sounds in the game that were still fetched at the moment they
+ * were wanted — which is to say, the first stroke of the cat and the first
+ * touch of the owl each waited on the network. Both are moments where
+ * something is happening, and both are exactly what the rest of the loading
+ * screen exists to prevent.
+ */
+export function warmOneShots(): void {
+  purr ??= oneShot(purrUrl, 0.55, 'purr.mp3');
+  owlHoot ??= oneShot(owlHootUrl, 0.85, 'owl-hoot');
 }
 
 /**

@@ -157,6 +157,16 @@ export interface DebugHandle {
    */
   purrsPlayed(): number;
   /**
+   * And how many hoots.
+   *
+   * The owl's answer used to be counted by looking for its `<audio>` element,
+   * on the reasoning that the element only existed once the recording had been
+   * asked for. It is fetched under the loading screen now, like everything
+   * else, so the element is there from the start and says nothing about whether
+   * the bird has spoken.
+   */
+  hootsPlayed(): number;
+  /**
    * The dictionary, for the translation tests.
    *
    * A missing key is invisible in play — it falls back to English and reads as

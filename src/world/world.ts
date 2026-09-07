@@ -85,9 +85,6 @@ function pickBakeScale(): number {
   return constrained ? 0.62 : 1;
 }
 
-/** Cap on cached occluder sprites, which are baked lazily as you explore. */
-const MAX_OCCLUDER_SPRITES = 48;
-
 /**
  * The valley, drawn twice and held in memory.
  *
@@ -142,9 +139,6 @@ export class World {
     const parts = worst.slice(0, 3).map(([k, v]) => `${k} ${v.toFixed(0)}`);
     return `bake ${total.toFixed(0)}ms · ${parts.join(' · ')} · ${this.bakeYields} yields`;
   }
-  /** Insertion order of cached occluder sprites, oldest first. */
-  private readonly spriteOrder: { occluder: Occluder; medium: Medium }[] = [];
-
   /** Sprites baked since the counter was last reset. Read by the perf overlay. */
   bakeCount = 0;
 
@@ -407,7 +401,6 @@ export class World {
     // in `hills.ts`, because they are drawn over the sky rather than baked into
     // a layer. They are canvas all the same, and this is where canvas goes back.
     disposeLandmarks();
-    this.spriteOrder.length = 0;
     this.disposed = true;
   }
 
@@ -530,6 +523,44 @@ export class World {
     }
   }
 
+  /**
+   * Every occluder, in both media, drawn under the loading screen.
+   *
+   * A generator, so the loader can let the browser breathe — the same courtesy
+   * the layer bake pays, and here it matters more, because this is a second of
+   * work spread over a hundred and sixty drawings.
+   *
+   * These were baked as you walked into them, and that is what a microfreeze in
+   * this game *is*: measured in `bugs/bug8.txt`, an ordinary frame costs 0.4ms
+   * and a frame that bakes one tree costs 17 to 22. Whether you had seen the
+   * tree before did not help either — the cache held forty-eight sprites for
+   * eighty occluders, so walking back the way you came baked them all again.
+   */
+  /** How many tall things there are, for the loader's own arithmetic. */
+  get occluderCount(): number {
+    return this.occluders.length;
+  }
+
+  *bakeOccluders(): Generator<{ done: number; total: number }> {
+    const total = this.occluders.length * 2;
+    let done = 0;
+    for (const medium of ['color', 'sketch'] as const) {
+      for (const occluder of this.occluders) {
+        this.spriteFor(occluder, medium);
+        yield { done: ++done, total };
+      }
+    }
+  }
+
+  /** Every baked occluder, for handing to the GPU in one go at warm-up. */
+  *occluderSprites(): Generator<{ occluder: Occluder; medium: Medium; sprite: OccluderSprite }> {
+    for (const occluder of this.occluders) {
+      for (const [medium, sprite] of occluder.sprites) {
+        yield { occluder, medium, sprite };
+      }
+    }
+  }
+
   /** The occluder rendered on its own transparent canvas, cached per medium. */
   spriteFor(occluder: Occluder, medium: Medium): OccluderSprite {
     const cached = occluder.sprites.get(medium);
@@ -554,21 +585,6 @@ export class World {
       y: bounds.y0 - SPRITE_PAD,
     };
     occluder.sprites.set(medium, sprite);
-
-    // Bounded. These are baked lazily as you walk past things, so left
-    // unchecked the cache grows with everything you have ever seen — which on a
-    // phone is memory the tab does not have to spare.
-    this.spriteOrder.push({ occluder, medium });
-    while (this.spriteOrder.length > MAX_OCCLUDER_SPRITES) {
-      const oldest = this.spriteOrder.shift();
-      if (!oldest) break;
-      const stale = oldest.occluder.sprites.get(oldest.medium);
-      if (stale) {
-        stale.canvas.width = 1;
-        stale.canvas.height = 1;
-        oldest.occluder.sprites.delete(oldest.medium);
-      }
-    }
     return sprite;
   }
 }

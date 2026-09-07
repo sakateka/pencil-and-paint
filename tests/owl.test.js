@@ -138,12 +138,21 @@ export async function run(url) {
       };
     });
     await game.page.mouse.click(locked.x, locked.y);
+    /*
+     * Counted, not looked for.
+     *
+     * This used to ask whether an `audio[data-sound="owl-hoot"]` element
+     * existed, on the reasoning that it was made the first time the bird was
+     * asked to speak. The recording is fetched under the loading screen now,
+     * so the element is there from the start; `hootsPlayed` is the question
+     * that was always being asked.
+     */
     const beforeWin = await game.evaluate((pencil) => ({
       flap: pencil.game.owl.flap,
-      sounds: document.querySelectorAll('audio[data-sound="owl-hoot"]').length,
+      hoots: pencil.hootsPlayed(),
     }));
     suite.equal(beforeWin.flap, 0, 'before the whole world is coloured it keeps still');
-    suite.equal(beforeWin.sounds, 0, 'and keeps quiet');
+    suite.equal(beforeWin.hoots, 0, 'and keeps quiet');
 
     // Far enough off and it stops paying attention, rather than staring across
     // the whole valley.
@@ -190,10 +199,10 @@ export async function run(url) {
     await game.page.mouse.click(distant.x, distant.y);
     const noHoot = await game.evaluate((pencil) => ({
       flap: pencil.game.owl.flap,
-      sounds: document.querySelectorAll('audio[data-sound="owl-hoot"]').length,
+      hoots: pencil.hootsPlayed(),
     }));
     suite.equal(noHoot.flap, 0, 'clicked at arm’s length it does not stir');
-    suite.equal(noHoot.sounds, 0, 'and does not hoot');
+    suite.equal(noHoot.hoots, 0, 'and does not hoot');
 
     const target = await game.evaluate((pencil) => {
       const { game } = pencil;
@@ -213,6 +222,7 @@ export async function run(url) {
       const audio = document.querySelector('audio[data-sound="owl-hoot"]');
       return {
         flap: pencil.game.owl.flap,
+        hoots: pencil.hootsPlayed(),
         sounds: document.querySelectorAll('audio[data-sound="owl-hoot"]').length,
         loops: audio?.loop,
         level: Number(audio?.dataset.level),
@@ -220,7 +230,8 @@ export async function run(url) {
     });
 
     suite.ok(clicked.flap > 0, 'touching it starts a wing beat');
-    suite.equal(clicked.sounds, 1, 'and asks for one hoot');
+    suite.equal(clicked.hoots, 1, 'and asks for one hoot');
+    suite.equal(clicked.sounds, 1, 'from the one recording, fetched once');
     suite.ok(!clicked.loops, 'the hoot does not loop');
     suite.equal(clicked.level, 0.85, 'and plays clearly without shouting');
 

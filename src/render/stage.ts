@@ -370,10 +370,9 @@ export class Stage {
    * ever redrawn, so after the first frame that shows one there is no cost at
    * all beyond the camera moving.
    *
-   * The canvas is watched for identity rather than assumed constant, because
-   * occluder sprites are baked lazily and evicted past a cap of forty-eight —
-   * `World` shrinks the old canvas to a pixel on the way out, and a texture
-   * still pointing at it would show as a one-pixel smear.
+   * The canvas is watched for identity rather than assumed constant: `World`
+   * shrinks a canvas to one pixel when it hands it back, and a texture still
+   * pointing at that would show as a one-pixel smear.
    */
   sprite(request: {
     id: string;
@@ -413,6 +412,29 @@ export class Stage {
     held.image.setVisible(true).setDepth(request.depth);
     held.image.setPosition(request.left, request.top);
     held.image.setDisplaySize(request.width, request.height);
+  }
+
+  /**
+   * Put a sprite's picture on the GPU now, hidden, and leave it there.
+   *
+   * For the occluders. `sprite()` above makes the texture the first time it is
+   * shown, which for a tree means the frame you walk behind it — and that frame
+   * is the one measured at 17 to 22ms in `bugs/bug8.txt`. Called from the
+   * warm-up, it moves all of that under the loading screen, and afterwards
+   * `sprite()` finds it already made and does nothing but place it.
+   *
+   * Safe to call twice: Phaser's boot and the world bake race, and whichever
+   * finishes second calls this.
+   */
+  warmSprite(id: string, layer: Layer, canvas: HTMLCanvasElement): void {
+    const scene = this.scene;
+    if (!scene || this.sprites.has(id)) return;
+    const key = `sprite${this.nextTextureId++}`;
+    if (!scene.textures.addCanvas(key, canvas)) return;
+    this.noteCreated(`sprite ${id}`);
+    const image = scene.add.image(0, 0, key).setOrigin(0, 0).setVisible(false);
+    this.assign(image, layer);
+    this.sprites.set(id, { key, canvas, image, touched: -1 });
   }
 
   private readonly sprites = new Map<
@@ -931,16 +953,24 @@ export class Stage {
         }
       }
     }
-    // Sprites: persistent ones (tiles, the sky strip) stay whatever happens;
-    // dynamic ones (occluders) are hidden when unused and evicted after a spell.
-    for (const [id, held] of this.sprites.entries()) {
+    /*
+     * Sprites: hidden when nobody asked for them this frame, and never thrown
+     * away.
+     *
+     * They used to be evicted after three seconds unused, which was the right
+     * answer while they were made as you walked into them — and the wrong half
+     * of the same fault: an evicted sprite is one that has to be built again,
+     * and building one costs a frame of 17 to 22ms against an ordinary 0.4
+     * (`bugs/bug8.txt`). Every sprite that can exist is now made under the
+     * loading screen, so there is nothing here to collect: the whole set is
+     * paid for once and hidden or shown by a boolean thereafter.
+     *
+     * The persistent ones — the valley's tiles and the sky — are not even
+     * hidden; the camera scrolls them in and out of view.
+     */
+    for (const held of this.sprites.values()) {
       if (held.persistent || held.touched === this.frameNumber) continue;
       held.image.setVisible(false);
-      if (this.frameNumber - held.touched > 180) {
-        held.image.destroy();
-        if (scene) scene.textures.remove(held.key);
-        this.sprites.delete(id);
-      }
     }
     this.frameNumber++;
     this.lastFramePx = this.framePx;
