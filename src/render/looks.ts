@@ -191,7 +191,21 @@ export class LookLibrary {
       for (const pose of look.poses()) {
         for (const medium of look.media) {
           const grain = look.grain?.(medium) ?? 1;
-          const size = Math.max(2, Math.ceil((look.reach * 2) / grain));
+          /*
+           * Even, so that the middle of the scratch is a whole pixel.
+           *
+           * The drawing is laid down about that middle and `dx` is measured
+           * from it, so a middle on a half pixel makes `dx` a half pixel too —
+           * and then the sprite is placed half a texel off the grid the ink was
+           * rasterised on, and the filter smears every edge in the picture.
+           * Measured on the owl's face: a tenth of the fully dark pixels gone,
+           * the eyes visibly mushy.
+           *
+           * It only ever bites a look with a `grain`, because twice a whole
+           * reach is already even, which is why it went unnoticed until the
+           * third such look.
+           */
+          const size = Math.max(2, Math.ceil((look.reach * 2) / grain / 2) * 2);
           let scratch = scratches.get(grain);
           if (!scratch) {
             scratch = createSurface(size, size, { willReadFrequently: true });
