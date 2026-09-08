@@ -14,6 +14,23 @@
 # of seconds. This is for the ones that look at pixels, and for the instruments.
 set -euo pipefail
 
+# Do not take the whole machine.
+#
+# There is no GPU behind this display, so Mesa draws with llvmpipe — on the
+# processor, across every core it can find. Measured with tmp/cpu.mjs: one
+# browser at 1864x913 sat on **ten cores**, and the person whose machine it is
+# felt it as their own game dropping frames while a suite ran beside it.
+#
+# Two brakes, both overridable:
+#   LP_NUM_THREADS  how many threads llvmpipe rasterises with
+#   PENCIL_NICE     the priority the whole run is given
+#
+# Neither changes what is drawn, and the pixel suites do not care how long they
+# take. Raise LP_NUM_THREADS when the run is the only thing on the box and you
+# want it over with.
+export LP_NUM_THREADS="${LP_NUM_THREADS:-3}"
+NICE="${PENCIL_NICE:-15}"
+
 # A display of our own by default, even when DISPLAY is already set.
 #
 # Trusting an inherited one looked tidier and was wrong: this box exports
@@ -22,7 +39,7 @@ set -euo pipefail
 # Set PENCIL_KEEP_DISPLAY=1 to use the one you have — on a workstation with a
 # real desktop, that shows you the browser.
 if [ -n "${PENCIL_KEEP_DISPLAY:-}" ] && [ -n "${DISPLAY:-}" ]; then
-  PENCIL_HEADED=1 exec "$@"
+  PENCIL_HEADED=1 exec nice -n "${NICE}" "$@"
 fi
 unset DISPLAY
 
@@ -53,4 +70,4 @@ for _ in $(seq 1 100); do
   sleep 0.05
 done
 
-DISPLAY=":${number}" PENCIL_HEADED=1 "$@"
+DISPLAY=":${number}" PENCIL_HEADED=1 nice -n "${NICE}" "$@"
