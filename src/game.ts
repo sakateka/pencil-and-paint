@@ -14,7 +14,7 @@ import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
 import { potHurry, potStir, scatterPots, type Pot } from './entities/pots';
 import { Camera } from './render/camera';
-import { ColorField } from './render/colorField';
+import { ColorField, SOLID_TO } from './render/colorField';
 import type { Scene } from './render/renderer';
 import { isSpotClear, resolveCollisions, type WorldEdges } from './systems/collision';
 import { northernSurfaceY } from './world/hills';
@@ -381,15 +381,33 @@ export class Game {
       pot.awake = this.isAwakeAt(pot.x, pot.y, 8);
       /*
        * How far inside the colour it is standing, which is what decides how
-       * hard it bobs — hardest at the rim, where it is trying to be seen. The
+       * hard it shakes — hardest at the rim, where it is trying to be seen. The
        * clock runs whenever it is moving at all and stops dead outside, so a
        * pot out in the graphite is a still life, as everything out there is.
        */
       const dx = pot.x - this.walker.x;
       const dy = pot.y - this.walker.y - 14;
       const inside = this.maskRadius - Math.hypot(dx, dy);
-      pot.stir = potStir(inside);
-      if (pot.stir > 0) pot.clock += dt * potHurry(inside);
+      /*
+       * The band round the outside of the colour where a pot is lit but not
+       * fully painted — the fog, in other words, which is everything from the
+       * edge in to where the mask goes solid. That is where a pot may be
+       * missed, so that is the only place it calls.
+       */
+      const unseenWithin = this.maskRadius * (1 - SOLID_TO);
+      const stir = potStir(inside, unseenWithin);
+      /*
+       * The colour has just this instant reached it, so its clock starts here.
+       *
+       * This is the whole of what makes a pot read as *noticing* you rather
+       * than as a thing that happens to be moving. On a shared clock the shake
+       * was a metronome the light merely uncovered, and the pot you had just
+       * walked into view of was as likely as not to be in the silence between
+       * two calls — which is precisely the moment it was built to speak.
+       */
+      if (stir > 0 && pot.stir === 0) pot.clock = 0;
+      pot.stir = stir;
+      if (pot.stir > 0) pot.clock += dt * potHurry(inside, unseenWithin);
     }
     if (!this.won) this.collectPots();
 

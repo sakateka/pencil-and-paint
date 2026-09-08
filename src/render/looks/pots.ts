@@ -1,5 +1,5 @@
 import type { Hex } from '../../core/color';
-import { drawPotGlow, drawPotJar, potBob, type Pot } from '../../entities/pots';
+import { drawPotGlow, drawPotJar, potLift, potShake, type Pot } from '../../entities/pots';
 import { withBoilAt } from '../../media/ink';
 import type { Medium } from '../../media/medium';
 import { POT_HUES } from '../../world/palette';
@@ -9,8 +9,8 @@ import type { Layer, Stage } from '../stage';
 /**
  * The paint pots: fourteen jars and one glow.
  *
- * A pot does exactly one thing — it rises and settles on the spot — and that is
- * a translate. Everything else about it is fixed from the moment the valley is
+ * A pot does exactly one thing — it rocks on its base and settles — and that is
+ * a rotation. Everything else about it is fixed from the moment the valley is
  * scattered. So the whole animal, so to speak, is two sprites and a number.
  *
  * The colours are not a tint. A jar is cream at the lid, the pot's own colour in
@@ -101,9 +101,14 @@ export function showPot(
   depth: number,
 ): void {
   const pose = poseOfPot(pot);
-  const y = pot.y + potBob(pot.clock, pot.phase, pot.stir);
 
   if (medium === 'color') {
+    /*
+     * The glow stays where the pot stands. It is a soft round light and a
+     * turned one is the same picture, so it neither rotates nor follows the
+     * lean — the jar rocks inside its own halo, which is what a jar on the
+     * ground being nudged does.
+     */
     stage.showLook({
       library,
       id: potGlow.id,
@@ -111,7 +116,7 @@ export function showPot(
       medium,
       layer,
       x: pot.x,
-      y,
+      y: pot.y,
       depth: depth - 0.000002,
       tint: tintOf(pot.hue),
     });
@@ -124,7 +129,9 @@ export function showPot(
     medium,
     layer,
     x: pot.x,
-    y,
+    y: pot.y - potLift(pot.clock, pot.stir),
     depth,
+    /* Hinged at the origin, which the jar is drawn standing on. */
+    rotation: potShake(pot.clock, pot.stir),
   });
 }

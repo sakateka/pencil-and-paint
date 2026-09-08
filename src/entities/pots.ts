@@ -16,59 +16,68 @@ export interface Pot {
   readonly x: number;
   readonly y: number;
   readonly hue: Hex;
-  /** Offset into the bob, so they do not pulse in unison. */
-  readonly phase: number;
   found: boolean;
   /** Whether the colour has reached it. */
   awake: boolean;
-  /** Its own clock: an unfound pot in the pencil does not bob. */
+  /**
+   * Seconds since the colour reached it. Zero is the instant it noticed, which
+   * is the instant it starts calling; it does not run at all out in the pencil.
+   */
   clock: number;
-  /** How hard it is bobbing, 0 to about two. See `potStir`. */
+  /** How hard it is shaking, nought to one. See `potStir`. */
   stir: number;
 }
 
 /**
- * How hard a pot bobs, given how far inside the colour it is standing.
+ * How hard a pot shakes: full while it is still half-lost in the fog, nought
+ * the moment it can be seen properly.
  *
- * A pot is the one thing in the valley whose job is to be noticed, and the
- * moment it has any job at all is the moment the colour's edge arrives at it —
- * which is exactly where the plain bob was least use, because the bob is three
- * and a half pixels over three seconds and at arm's length that is nothing.
- * So a pot the colour has only just reached nods twice as far as one standing
- * well inside it, and settles as you come on.
+ * A pot is the one thing in the valley whose job is to be noticed, and it only
+ * has that job while it has not been. The colour does not end at a line — it is
+ * solid out to `SOLID_TO` of its radius and fades the rest of the way — so
+ * there is a wide band round the outside of it where a pot is *there*, and dim,
+ * and easy to walk straight past. That band is exactly where it calls. Come far
+ * enough in that it is painted at full strength and it goes quiet: it has been
+ * seen, you are walking towards it, and a thing that keeps jiggling after it
+ * has your attention is a thing you stop believing.
  *
- * Nought outside, and the ramp starts at nought on the line itself, because
- * nothing the colour has not reached may move — that is the rule the whole game
- * is built on. What this buys is that a pot does not *snap* into motion either:
- * it comes to life across the first few units of colour rather than at a step.
+ * `unseenWithin` is the width of that band, which grows with the light — every
+ * pot found widens the colour — so it is handed in rather than fixed here.
+ *
+ * The ramp off nought on the line is because nothing the colour has not reached
+ * may move — that is the rule the whole game is built on — and it means a pot
+ * does not *snap* into motion either: it comes to life across the first few
+ * units of colour rather than at a step.
  */
-export function potStir(inside: number): number {
+export function potStir(inside: number, unseenWithin: number): number {
   if (inside <= 0) return 0;
-  return Math.min(1, inside / WAKE_OVER) * (1 + NOD * atRim(inside));
+  return Math.min(1, inside / WAKE_OVER) * atRim(inside, unseenWithin);
 }
 
 /**
- * How much faster the nod runs at the rim, one to about a half as fast again.
+ * How much faster the call comes at the rim, one to about a half as fast again.
  *
- * A bigger bob alone reads as a balloon: the pot floats further and just as
- * slowly. What says *over here* is a quicker one, so the rim hurries the pot's
- * own clock rather than only stretching it. Applied to the clock and not to the
+ * A wider twist alone is a pot taking its time: it leans further and waits just
+ * as long before it says anything again. What says *over here* is a pot that
+ * calls more often, so the rim hurries the pot's own clock rather than only
+ * stretching the lean. Applied to the clock and not to the
  * rate inside the sine on purpose — the clock is an accumulator, so changing
  * how fast it fills cannot jump the phase, where changing the rate a phase is
  * multiplied by would jump it every time you took a step.
  */
-export function potHurry(inside: number): number {
-  return 1 + HURRY * atRim(inside);
+export function potHurry(inside: number, unseenWithin: number): number {
+  return 1 + HURRY * atRim(inside, unseenWithin);
 }
 
-/** One at the edge of the colour, nought once it is well inside. */
-function atRim(inside: number): number {
-  const near = 1 - Math.min(1, Math.max(0, inside) / NOTICE_WITHIN);
+/** One at the edge of the colour, nought once the pot is properly in view. */
+function atRim(inside: number, unseenWithin: number): number {
+  if (unseenWithin <= 0) return 0;
+  const near = 1 - Math.min(1, Math.max(0, inside) / unseenWithin);
   return near * near;
 }
 
 /**
- * Units of colour over a pot before it is bobbing its full height.
+ * Units of colour over a pot before it is shaking its full width.
  *
  * Short on purpose. This is not a fade-in — the pot is *meant* to come alive
  * the moment the colour touches it — it is only there so that the amplitude
@@ -77,29 +86,120 @@ function atRim(inside: number): number {
  */
 const WAKE_OVER = 4;
 
-/** How far inside the colour the pot is still calling you over. */
-const NOTICE_WITHIN = 120;
-
-/** How much taller the nod is at the rim than the bob is deep inside. */
-const NOD = 0.6;
-
-/** And how much quicker. */
+/** How much more often the call comes right on the line than at the far edge. */
 const HURRY = 0.6;
 
 /**
- * A pot rising and settling on the spot. Its whole animation, and a translate.
- *
- * The phase is what keeps fourteen of them from pulsing in unison. It used to
- * be baked into the drawing, which is why an unfound pot kept a private frozen
- * canvas that had to be thrown away and remade whenever the colour crossed it —
- * and `awake` is recomputed from the lit radius every tick with no hysteresis,
- * so a pot sitting on the edge of the circle allocated a fresh canvas every
- * frame. That churn is what drives an accelerated canvas past its cache-miss
- * ratio and drops a whole session onto the software path. Nothing is baked from
- * a pot's own numbers now, so there is nothing left to throw away.
+ * How far over the pot leans on the first swing, in radians. About eight
+ * degrees, and deliberately not more: past that the jar stops reading as being
+ * jogged where it stands and starts reading as being tipped over.
  */
-export function potBob(clock: number, phase: number, stir = 1): number {
-  return Math.sin(clock * 2.2 + phase) * 3.5 * stir;
+const TILT = 0.14;
+
+/**
+ * And how far it comes up off the ground at the ends of its swing, in world
+ * units.
+ *
+ * A jar rocked on the spot pivots on the rim of its base rather than on the
+ * middle, so it rises as it leans — which is what makes a lean read as *being
+ * shaken* rather than as a picture drawn crooked. It is also where the liveliness
+ * comes from now: the lift is generous where the tilt is small, because three
+ * pixels of rise is quite visible and eight degrees of lean is not.
+ */
+const LIFT = 3.5;
+
+/**
+ * A beat between the colour arriving and the pot answering it.
+ *
+ * Without it the shake lands on the same frame as the light does, and two
+ * things happening at once read as one thing: the pot looks like part of how
+ * the colour paints itself in, rather than like something the colour has just
+ * found. Wait a third of a second and the eye has time to put the jar down as
+ * scenery — which is exactly what makes it moving afterwards a thing that
+ * speaks to you.
+ */
+const BEFORE_CALLING = 0.35;
+
+/**
+ * Seconds of shaking, once it starts.
+ *
+ * Two swings inside it, so each takes half a second. Brisker than that and the
+ * jar moves more than a pixel a frame at the crossings, which is where a smooth
+ * curve starts reading as a stepped one however honest the maths is — measured
+ * with `motion.mjs pots`, which is what that instrument is for.
+ */
+const SHAKE_FOR = 1;
+
+/** And how long from one shake to the next, so there is a silence between calls. */
+const SHAKE_EVERY = 2.6;
+
+/** Swings per shake: over, back, over, back. Two calls, not a wag. */
+const SWINGS = 2;
+
+/**
+ * One swing of the shake, minus one to one, envelope and all.
+ *
+ * Both halves of a pot's animation are this number: the lean is it, and the
+ * rise is its size. Written once so they cannot drift apart — a jar that comes
+ * up off the ground at a different moment from the one it leans at is a jar
+ * being pulled by two hands.
+ */
+function swing(clock: number, stir: number): number {
+  const t = (clock % SHAKE_EVERY) - BEFORE_CALLING;
+  if (t < 0 || t >= SHAKE_FOR) return 0;
+  /*
+   * Straight down from the first swing rather than a bell, because a bell is a
+   * pot working up to it and a nudge is hardest the instant it lands. Linear
+   * and not squared so the second call still carries: at a square it is a
+   * seventh of the first and reads as one swing with a tremor after it.
+   */
+  const through = t / SHAKE_FOR;
+  return Math.sin(through * TAU * SWINGS) * (1 - through) * stir;
+}
+
+/**
+ * A pot shaken on the spot, in radians about its own base. Half its animation;
+ * `potLift` is the other half.
+ *
+ * It used to be a bob — a translate, up and down. Which is a hop, and a hopping
+ * jar is a thing with legs; what a pot wants to look like is a jar somebody has
+ * just given a nudge, calling *here, over here*. So it is a rotation now,
+ * hinged where the jar meets the ground, and it comes in bursts rather than
+ * running forever: two swings that die away, then a second and a half of
+ * standing perfectly still before it asks again. The silence is most of what
+ * does the work — a thing that moves all the time is scenery, and a thing that
+ * is still and then moves is something calling you.
+ *
+ * The clock is seconds since the colour arrived, not a free-running one, which
+ * is the whole reason a pot has a clock of its own: the first swing has to land
+ * on the instant the light touches it. Started from a shared clock with a
+ * per-pot offset — as the bob was — a pot the colour reached mid-silence stood
+ * there saying nothing for two seconds, exactly when it had the most to say.
+ * Nothing keeps the fourteen from calling in chorus now and nothing needs to:
+ * they are two hundred units apart at the least, so the colour cannot arrive at
+ * two of them at once.
+ *
+ * The bob was also baked into the drawing once, which is why an unfound pot
+ * kept a private frozen canvas that had to be thrown away and remade whenever
+ * the colour crossed it — and `awake` is recomputed from the lit radius every
+ * tick with no hysteresis, so a pot sitting on the edge of the circle allocated
+ * a fresh canvas every frame. That churn is what drives an accelerated canvas
+ * past its cache-miss ratio and drops a whole session onto the software path.
+ * Nothing is baked from a pot's own numbers now, so there is nothing left to
+ * throw away.
+ */
+export function potShake(clock: number, stir = 1): number {
+  return swing(clock, stir) * TILT;
+}
+
+/**
+ * How far the pot is up off the ground, in world units. Never negative: a jar
+ * rocking on the rim of its base rises whichever way it leans, and it is the
+ * rise that carries the shake — this is the old bob, kept, but spent on the
+ * ends of the swings instead of running on for ever on a clock of its own.
+ */
+export function potLift(clock: number, stir = 1): number {
+  return Math.abs(swing(clock, stir)) * LIFT;
 }
 
 /** The soft light a pot gives off, in white, so one picture serves all of them. */
@@ -231,10 +331,9 @@ export function scatterPots(
        * you did not already have.
        */
       hue: hues[pots.length % hues.length],
-      phase: Math.random() * TAU,
       found: false,
       awake: false,
-      clock: Math.random() * 20,
+      clock: 0,
       stir: 0,
     });
   }

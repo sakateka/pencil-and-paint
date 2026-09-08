@@ -30,6 +30,18 @@ export interface DirtyRect {
 /** Points around the blob's rim. Enough to look organic, few enough to be cheap. */
 const RIM_SEGMENTS = 54;
 
+/**
+ * How much of the radius the colour is completely opaque over, before the fade
+ * out to nothing begins. Anything nearer the walker than this is *fully* seen;
+ * anything past it is somewhere in the fog.
+ *
+ * Exported because a pot decides whether to call you by it — see `potStir`.
+ * That is the whole of the rule the pots follow, and it would be a silent lie
+ * if this number were copied rather than shared: the gradient below is what
+ * "fully seen" actually means on the screen.
+ */
+export const SOLID_TO = 0.42;
+
 /** The wobble that keeps the edge from looking like a spotlight. */
 function rimScale(angle: number): number {
   return (
@@ -84,7 +96,7 @@ function haze(): HTMLCanvasElement {
    * is spent fading and no ring of the mask is where the colour visibly stops.
    */
   grad.addColorStop(0.0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.42, 'rgba(255,255,255,1)');
+  grad.addColorStop(SOLID_TO, 'rgba(255,255,255,1)');
   grad.addColorStop(0.62, 'rgba(255,255,255,.9)');
   grad.addColorStop(0.78, 'rgba(255,255,255,.62)');
   grad.addColorStop(0.91, 'rgba(255,255,255,.28)');

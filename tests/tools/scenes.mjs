@@ -48,6 +48,20 @@ function isDeepRed(r, g, b) {
   return r > 180 && g < 95 && b < 90;
 }
 
+/**
+ * The red jar, seen through the fog at the edge of the colour.
+ *
+ * `isDeepRed` is for paint at full strength, and a pot only shakes where the
+ * colour is thin — so the jar these probes watch is a washed-out red over
+ * graphite, and half of it fails that test. Losing it entirely for whole frames
+ * is what that looked like from the outside. This asks only that it be much
+ * redder than it is green or blue, which neither the paper (near-neutral) nor
+ * the field (green) ever is.
+ */
+function isThinRed(r, g, b) {
+  return r > 120 && r - g > 45 && r - b > 45;
+}
+
 /** A cow's muzzle: the one pink thing in a green field, and it rides the head. */
 function isMuzzle(r, g, b) {
   return r > 190 && g > 110 && r - g > 45 && r - b > 45;
@@ -349,28 +363,35 @@ export const SCENES = {
   },
 
   pots: {
-    describe: 'a paint pot bobbing on the spot, which is all it ever does',
+    describe: 'a paint pot shaken on the spot, which is all it ever does',
 
     motion: {
       /**
        * The red jar, as the centroid of its own colour.
        *
-       * The bob is three and a half pixels either way over three seconds, so at
-       * sixty frames it moves about a tenth of a pixel at a time and there is no
-       * other way to see it. This is the movement most likely to be quantised by
-       * accident, because it is the smallest one in the game.
+       * The shake is a lean of eight degrees and a rise of three pixels, over
+       * about a second, so at sixty frames the jar moves well under a pixel at a
+       * time and there is no other way to see it. This is the movement most
+       * likely to be quantised by accident, because it is the smallest one in
+       * the game.
+       *
+       * A pot only calls while it is in the fog at the edge of the colour, so
+       * the walker is stood far enough back to leave it there — close up, the
+       * jar has been seen and holds perfectly still, which is the point of it.
        */
       begin: (pencil) => {
         const { game, renderOnce } = pencil;
         const pot = game.pots.find((p) => p.hue === '#e8563f') ?? game.pots[0];
-        // To one side, or the walker stands in front of the thing being watched.
-        game.teleport(pot.x + 55, pot.y + 30);
+        // Below and to one side, or the walker stands in front of the thing
+        // being watched; back far enough that the pot is still in the fog.
+        game.teleport(pot.x + 40, pot.y + game.maskRadius - 40);
         // Let the colour reach it: an unfound pot in the pencil is not red.
         for (let i = 0; i < 40; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         game.camera.snapTo(pot.x, pot.y);
         game.running = false;
-        // Start where it is rising fastest, not at the top of the bob.
-        pot.clock = -pot.phase / 2.2;
+        // Start on the first swing, past the beat the pot waits before calling
+        // — 0.35s, `BEFORE_CALLING` in entities/pots.ts.
+        pot.clock = 0.35;
         renderOnce();
         return {
           x: Math.round(game.camera.toScreenX(pot.x) - 20),
@@ -390,7 +411,7 @@ export const SCENES = {
         for (let y = 0; y < strip.height; y++) {
           for (let x = 0; x < strip.width; x++) {
             const i = (y * strip.width + x) * 4;
-            if (isDeepRed(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+            if (isThinRed(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
               sum += y;
               n++;
             }
@@ -400,7 +421,7 @@ export const SCENES = {
       },
     },
 
-    /** A pot standing in the colour, at the bottom of its bob. */
+    /** A pot close up, standing perfectly still, which is what it does once seen. */
     still: (pencil) => {
       const { game, renderOnce } = pencil;
       const pot = game.pots.find((p) => p.hue === '#e8563f') ?? game.pots[0];
@@ -408,7 +429,6 @@ export const SCENES = {
       for (let i = 0; i < 40; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       game.camera.snapTo(pot.x, pot.y);
       game.running = false;
-      pot.clock = -pot.phase / 2.2;
       renderOnce();
       return {
         x: Math.round(game.camera.toScreenX(pot.x) - 60),
@@ -515,7 +535,7 @@ export const SCENES = {
   },
 
   potedge: {
-    describe: 'a paint pot on the rim of the colour, nodding to be noticed',
+    describe: 'a paint pot on the rim of the colour, shaking to be noticed',
 
     /**
      * Placed by measurement rather than by hand.
@@ -533,8 +553,9 @@ export const SCENES = {
         for (let i = 0; i < 10; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         game.camera.snapTo(pot.x, pot.y);
         game.running = false;
-        // Start where the bob is rising fastest, not at the top of it.
-        pot.clock = -pot.phase / 2.2;
+        // Start on the first swing, past the beat the pot waits before it
+        // answers the colour — 0.35s, `BEFORE_CALLING` in entities/pots.ts.
+        pot.clock = 0.35;
         renderOnce();
         return {
           x: Math.round(game.camera.toScreenX(pot.x) - 20),
@@ -556,7 +577,7 @@ export const SCENES = {
         for (let y = 0; y < strip.height; y++) {
           for (let x = 0; x < strip.width; x++) {
             const i = (y * strip.width + x) * 4;
-            if (isDeepRed(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
+            if (isThinRed(strip.data[i], strip.data[i + 1], strip.data[i + 2])) {
               sum += y;
               n++;
             }
@@ -566,7 +587,7 @@ export const SCENES = {
       },
     },
 
-    /** The same pot, held at the top of its nod. */
+    /** The same pot, held at the top of its first swing. */
     still: (pencil) => {
       const { game, renderOnce } = pencil;
       const pot = game.pots.find((p) => p.hue === '#e8563f') ?? game.pots[0];
@@ -574,7 +595,8 @@ export const SCENES = {
       for (let i = 0; i < 10; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
       game.camera.snapTo(pot.x, pot.y);
       game.running = false;
-      pot.clock = (Math.PI / 2 - pot.phase) / 2.2;
+      // `BEFORE_CALLING` plus an eighth of the shake: the top of the swing.
+      pot.clock = 0.35 + 1 * 0.125;
       renderOnce();
       return {
         x: Math.round(game.camera.toScreenX(pot.x) - 45),
