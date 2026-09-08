@@ -387,6 +387,12 @@ async function boot(): Promise<void> {
      * make it an achievement, and it is meant to be something you notice.
      */
     onElephant: () => ui.note('note.elephant', 7000),
+    /*
+     * The owl calling on its own. The same recording a touch gets, and no note
+     * with it: something you hear from under the tree, not something the game
+     * tells you has happened.
+     */
+    onOwlCall: () => playHoot(),
     onHedgehog: () => ui.note('note.hedgehog', 6000),
     onDraw: () => openStudio(),
     onLookCloser: (subject) => {

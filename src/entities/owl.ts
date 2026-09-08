@@ -12,6 +12,10 @@ import { PAPER, type Medium } from '../media/medium';
  * you. Come near and its head comes round to follow you, and holds. Everything
  * else in this valley either ignores the walker or runs from them; this is the
  * only thing that looks back.
+ *
+ * Once the valley is whole it will also speak, which is the same character
+ * again rather than a second one: not a greeting and not an answer, just a
+ * call every so often over the head of whoever has stayed to listen.
  */
 
 /** How near you have to be before it takes an interest. */
@@ -19,6 +23,16 @@ const NOTICES = 230;
 
 /** One quick double beat, back at rest before the hoot has died away. */
 const FLAP_SECONDS = 0.8;
+
+/**
+ * The shortest and longest it will hold its tongue with somebody standing there.
+ *
+ * Varied, and widely, because a call on a fixed timer is a car alarm: the ear
+ * finds the period after two of them and everything after that is a machine.
+ * Long enough at the bottom end that the recording — near three seconds of it —
+ * has been quiet a good while before the next one starts.
+ */
+const CALL_GAP = { least: 8, most: 16 };
 
 export class Owl {
   /** Its own clock, which only runs while the colour has reached it. */
@@ -33,13 +47,35 @@ export class Owl {
   /** Seconds left in the wing beat started by touching it. */
   flap = 0;
 
+  /**
+   * Seconds until it calls, or nothing while there is nobody to call to.
+   *
+   * Reset to nothing the moment the walker leaves, so the wait always starts
+   * over: whatever was left of it is not banked against your coming back.
+   */
+  voice = 0;
+
   constructor(
     readonly x: number,
     readonly y: number,
     readonly scale: number,
   ) {}
 
-  update(dt: number, walkerX: number, walkerY: number, awake: boolean): void {
+  /**
+   * A frame of owl, and whether it has just called.
+   *
+   * `answering` is the game's question, not the bird's: somebody is standing
+   * near enough to be called to, and the valley is finished. The owl knows
+   * about waiting and about wing beats; how far is near and what a finished
+   * valley is are rules of the place, and they live there.
+   */
+  update(
+    dt: number,
+    walkerX: number,
+    walkerY: number,
+    awake: boolean,
+    answering = false,
+  ): boolean {
     this.awake = awake;
     /*
      * Asleep means asleep, as for every animal: no clock, no blink, no turn.
@@ -47,7 +83,8 @@ export class Owl {
      */
     if (!awake) {
       this.flap = 0;
-      return;
+      this.voice = 0;
+      return false;
     }
     this.clock += dt;
     this.flap = Math.max(0, this.flap - dt);
@@ -62,6 +99,8 @@ export class Owl {
     // Owls turn their heads in one deliberate movement rather than swivelling
     // to follow, so this is quick to arrive and then perfectly still.
     this.look += (wanted - this.look) * Math.min(1, dt * 4.5);
+
+    return this.waited(dt, answering);
   }
 
   hoot(): boolean {
@@ -69,6 +108,36 @@ export class Owl {
     this.flap = FLAP_SECONDS;
     return true;
   }
+
+  /**
+   * The wait between calls, and the end of one.
+   *
+   * Arriving is deliberately not what sets it off. A bird that hoots the
+   * instant you are in range is answering the walker, and this one is not
+   * answering anybody — it is an owl in a tree that says something every so
+   * often, and you happen to be there for it. So the first thing company does
+   * is start a wait; only standing through the wait gets you a call.
+   */
+  private waited(dt: number, answering: boolean): boolean {
+    if (!answering) {
+      this.voice = 0;
+      return false;
+    }
+    if (this.voice === 0) {
+      this.voice = gap();
+      return false;
+    }
+    this.voice -= dt;
+    if (this.voice > 0) return false;
+    this.voice = gap();
+    this.flap = FLAP_SECONDS;
+    return true;
+  }
+}
+
+/** How long until the next one. Never the same twice running. */
+function gap(): number {
+  return CALL_GAP.least + Math.random() * (CALL_GAP.most - CALL_GAP.least);
 }
 
 /** Rare, slow blinks, and the two eyes together. */

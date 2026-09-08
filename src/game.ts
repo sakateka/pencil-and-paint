@@ -126,6 +126,8 @@ export interface GameEvents {
   onSitEnd(note: string): void;
   /** Two minutes of sitting still, rewarded. */
   onElephant(): void;
+  /** The owl has called, of its own accord, to whoever is standing under it. */
+  onOwlCall(): void;
   /** Somebody has leaned in on something. */
   onLookCloser(subject: Lookable): void;
   /** The hedgehog has come right out of its bush. */
@@ -436,7 +438,25 @@ export class Game {
     const wasFishing = this.fishing.active;
     this.fishing.update(dt, this.walker.x, this.walker.y);
     this.rest.update(dt, this.won);
-    this.owl.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.owl.x, this.owl.y, 10));
+    /*
+     * The owl, which now has something to say as well as something to watch.
+     *
+     * Same gate as the pond and the treehouse: it is one of the things the
+     * valley gives back once it is whole, not a noise you meet on the way. And
+     * the same reach a touch is answered at, because there is only one notion
+     * here of being near the bird.
+     */
+    if (
+      this.owl.update(
+        dt,
+        this.walker.x,
+        this.walker.y,
+        this.isAwakeAt(this.owl.x, this.owl.y, 10),
+        this.won && this.owlInReach(),
+      )
+    ) {
+      this.events.onOwlCall();
+    }
     this.lion.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.lion.x, this.lion.y, 14));
     for (const perch of this.perches) perch.update(dt, this.isAwakeAt(perch.x, perch.y, 12));
     /*

@@ -260,6 +260,53 @@ export async function run(url) {
     suite.ok(sound.seconds > 2.5 && sound.seconds < 3, 'and no stray sound at the tail', `${sound.seconds}s`);
     suite.equal(sound.flap, 0, 'the wings settle again after the beat');
 
+    /*
+     * And, once the valley is whole, it calls without being asked.
+     *
+     * The three things this is: it does not go off the moment you walk up —
+     * that would make it an answer, and it is not answering anybody; it does
+     * go off if you stay; and it keeps whatever it was about to say for
+     * itself the moment you wander away again.
+     *
+     * The gap between calls is random, so the counts below are ranges: over
+     * forty-six seconds of standing there, a gap of eight to sixteen seconds
+     * can fit as few as two calls and as many as five.
+     */
+    const called = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const step = (seconds) => {
+        for (let i = 0; i < Math.round(seconds * 60); i++) {
+          game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        }
+      };
+      const away = () => game.teleport(game.owl.x + 420, game.owl.y + 60);
+
+      // Out of earshot first, so the wait starts from nothing when we return.
+      away();
+      step(2);
+      const start = pencil.hootsPlayed();
+
+      game.teleport(game.owl.x, game.owl.y + 60);
+      step(6);
+      const arrived = pencil.hootsPlayed() - start;
+      step(40);
+      const stood = pencil.hootsPlayed() - start;
+
+      away();
+      const held = pencil.hootsPlayed();
+      step(60);
+      return { arrived, stood, waiting: +game.owl.voice.toFixed(2), after: pencil.hootsPlayed() - held };
+    });
+
+    suite.equal(called.arrived, 0, 'walking up to it does not set it off');
+    suite.ok(
+      called.stood >= 2 && called.stood <= 5,
+      'but stand there and it calls every so often',
+      `${called.stood} calls in 46s`,
+    );
+    suite.equal(called.after, 0, 'walk off and it goes quiet again');
+    suite.equal(called.waiting, 0, 'with nothing saved up for your coming back');
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();
