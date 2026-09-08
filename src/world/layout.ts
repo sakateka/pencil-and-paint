@@ -18,6 +18,7 @@ import {
   makeBush,
   makeFenceRun,
   makeFlower,
+  makeGate,
   makeLamp,
   makeRock,
   makeTree,
@@ -251,7 +252,13 @@ function enclose(
     if (inGate(p)) break;
     run.push(p.point);
   }
-  if (run.length >= 2) into.push(makeFenceRun(run, height));
+  if (run.length >= 2) {
+    into.push(makeFenceRun(run, height));
+    // The run starts just past the gate and ends just before it, so its two
+    // free ends are the gate's hanging posts. Hang the gate between them and
+    // the field is closed all the way round.
+    into.push(makeGate(run[run.length - 1], run[0], height));
+  }
 
   // Claim the field itself. Otherwise a tree scatters onto the boundary and
   // grows straight through the rails.

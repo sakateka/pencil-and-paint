@@ -320,6 +320,141 @@ export function makeFenceRun(path: Point[], height = 32): Scenery {
   };
 }
 
+/**
+ * The gate that shuts the gap the fence run leaves, and the rails either side.
+ *
+ * Shut, not standing open. The gap was there so the stock had a way in and you
+ * had a way through, but an unfilled gap reads as a missing wall rather than as
+ * a way in — worst on the hen run, where the gap is the whole of one end. A
+ * hung gate says the same thing and looks deliberate, and it holds the stock,
+ * since you walk through it exactly as you walk through the rails.
+ *
+ * The gate is not stretched across the whole gap. It was, and the result read
+ * as a stretch of fence with extra rails: the paddock's gap is 223 across and
+ * 36 high, so bars drawn corner to corner were four near-parallel lines and the
+ * brace lay almost flat. A gate is about three times as wide as it is tall,
+ * which is the proportion the eye knows one by — so it is cut to that, hung in
+ * the middle of the gap, and plain fence fills whatever is left over.
+ *
+ * Uses no `rng` at build time on purpose — it is made inside `enclose`, which
+ * runs before the valley is scattered, and one extra draw from the shared
+ * stream would move every tree, rock and pot in it. The gap's two ends already
+ * carry the fence's own jitter, so nothing here stands quite straight anyway.
+ */
+export function makeGate(from: Point, to: Point, height = 32): Scenery {
+  const span = Math.hypot(to[0] - from[0], to[1] - from[1]);
+  const ux = (to[0] - from[0]) / (span || 1);
+  const uy = (to[1] - from[1]) / (span || 1);
+
+  const width = Math.min(span, height * 3);
+  const start = (span - width) / 2;
+  const at = (d: number): Point => [from[0] + ux * d, from[1] + uy * d];
+
+  // The two hanging posts, and the plain fence shutting the rest of the gap.
+  const hangA = at(start);
+  const hangB = at(start + width);
+  const stubs: [Point, Point][] = [];
+  if (start > 1) stubs.push([from, hangA], [hangB, to]);
+
+  const POST_HEIGHT = height * 1.3;
+  const RAILS = [height * 0.44, height * 0.75];
+  const BARS = [0.26, 0.5, 0.74, 0.98].map((f) => height * f);
+
+  /** A line from one end of the gate to the other, at a given height. */
+  const bar = (ctx: CanvasRenderingContext2D, offset: number, wobble: number) => {
+    ctx.beginPath();
+    ctx.moveTo(hangA[0], hangA[1] - offset + wobble);
+    ctx.lineTo(hangB[0], hangB[1] - offset - wobble);
+    ctx.stroke();
+  };
+
+  /** The stub fence: two rails and a post at each end, like the run it joins. */
+  const stubRails = (ctx: CanvasRenderingContext2D, wobble: () => number) => {
+    for (const [p, q] of stubs) {
+      for (const offset of RAILS) {
+        ctx.beginPath();
+        ctx.moveTo(p[0], p[1] - offset + wobble());
+        ctx.lineTo(q[0], q[1] - offset + wobble());
+        ctx.stroke();
+      }
+    }
+  };
+
+  const stubPosts = (ctx: CanvasRenderingContext2D, wobble: () => number) => {
+    for (const [p] of stubs) {
+      ctx.beginPath();
+      ctx.moveTo(p[0] + wobble(), p[1]);
+      ctx.lineTo(p[0] + wobble(), p[1] - height);
+      ctx.stroke();
+    }
+  };
+
+  return {
+    y: Math.max(from[1], to[1]),
+    // Solid to the stock across the whole gap — gate and stubs alike — so the
+    // field is a closed field. You are not stock.
+    stockColliders: [segmentCollider(from[0], from[1], to[0], to[1], RAIL_THICKNESS)],
+    draw(ctx, medium) {
+      const none = () => 0;
+      if (medium === 'color') {
+        ctx.strokeStyle = FENCE;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 3.5;
+        stubRails(ctx, none);
+        ctx.lineWidth = 5;
+        stubPosts(ctx, none);
+
+        // Four bars where the fence has two rails: a gate is the close-boarded
+        // bit, and that difference is most of what names it at a glance.
+        ctx.lineWidth = 2.8;
+        for (const offset of BARS) bar(ctx, offset, 0);
+        // The brace, rising from the hanging post to the far top corner. This
+        // is the line that says hung rather than propped.
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(hangA[0], hangA[1] - BARS[0]);
+        ctx.lineTo(hangB[0], hangB[1] - BARS[BARS.length - 1]);
+        ctx.stroke();
+        // And the posts it hangs between, taller and heavier than the fence's.
+        ctx.lineWidth = 6.5;
+        for (const [px, py] of [hangA, hangB]) {
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px, py - POST_HEIGHT);
+          ctx.stroke();
+        }
+        return;
+      }
+      isolate(ctx, () => {
+        const wobble = () => rr(-1, 1);
+        ctx.strokeStyle = PENCIL;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalAlpha = 0.5;
+        ctx.lineWidth = 1.1;
+        stubRails(ctx, wobble);
+        ctx.lineWidth = 1.3;
+        stubPosts(ctx, wobble);
+
+        ctx.lineWidth = 1.1;
+        for (const offset of BARS) bar(ctx, offset, wobble());
+        ctx.beginPath();
+        ctx.moveTo(hangA[0] + wobble(), hangA[1] - BARS[0]);
+        ctx.lineTo(hangB[0] + wobble(), hangB[1] - BARS[BARS.length - 1]);
+        ctx.stroke();
+        ctx.lineWidth = 1.6;
+        for (const [px, py] of [hangA, hangB]) {
+          ctx.beginPath();
+          ctx.moveTo(px + wobble(), py);
+          ctx.lineTo(px + wobble(), py - POST_HEIGHT);
+          ctx.stroke();
+        }
+      });
+    },
+  };
+}
+
 /** A straight run between two points. */
 export function makeFence(
   x1: number,
