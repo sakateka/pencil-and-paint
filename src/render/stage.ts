@@ -298,6 +298,14 @@ export class Stage {
    * The canvas is watched for identity rather than assumed constant: `World`
    * shrinks a canvas to one pixel when it hands it back, and a texture still
    * pointing at that would show as a one-pixel smear.
+   *
+   * A picture may be shown on more than one layer — the hammock's trees are on
+   * the valley's own layers, where the light cuts them, *and* on the layer that
+   * lays scenery back over the walker — so the image is per layer while the
+   * texture is per canvas. `Camera.ignore` only ever sets bits, so one image
+   * cannot change camera after it is made; that is the whole reason for the
+   * split, and giving the second layer its own id instead would upload the same
+   * pixels to the card twice.
    */
   sprite(request: {
     id: string;
@@ -317,21 +325,22 @@ export class Stage {
   }): void {
     const scene = this.scene;
     if (!scene) return;
-    let held = this.sprites.get(request.id);
+    const slot = `${request.id}:${request.layer}`;
+    let held = this.sprites.get(slot);
     if (held && held.canvas !== request.canvas) {
       held.image.destroy();
-      scene.textures.remove(held.key);
-      this.sprites.delete(request.id);
+      this.sprites.delete(slot);
+      this.dropTexture(held.key, held.canvas);
       held = undefined;
     }
     if (!held) {
-      const key = `sprite${this.nextTextureId++}`;
-      if (!scene.textures.addCanvas(key, request.canvas)) return;
+      const key = this.spriteTexture(request.canvas);
+      if (!key) return;
       this.noteCreated(`sprite ${request.id}`);
       const image = scene.add.image(0, 0, key).setOrigin(0, 0);
       this.assign(image, request.layer);
       held = { key, canvas: request.canvas, image, touched: -1, persistent: request.persistent };
-      this.sprites.set(request.id, held);
+      this.sprites.set(slot, held);
     }
     held.touched = this.frameNumber;
     held.image.setVisible(true).setDepth(request.depth);
@@ -353,15 +362,41 @@ export class Stage {
    */
   warmSprite(id: string, layer: Layer, canvas: HTMLCanvasElement): void {
     const scene = this.scene;
-    if (!scene || this.sprites.has(id)) return;
-    const key = `sprite${this.nextTextureId++}`;
-    if (!scene.textures.addCanvas(key, canvas)) return;
+    const slot = `${id}:${layer}`;
+    if (!scene || this.sprites.has(slot)) return;
+    const key = this.spriteTexture(canvas);
+    if (!key) return;
     this.noteCreated(`sprite ${id}`);
     const image = scene.add.image(0, 0, key).setOrigin(0, 0).setVisible(false);
     this.assign(image, layer);
-    this.sprites.set(id, { key, canvas, image, touched: -1 });
+    this.sprites.set(slot, { key, canvas, image, touched: -1 });
   }
 
+  /**
+   * The texture for a baked canvas, handed to the card the first time it is
+   * wanted and shared by every layer that shows it afterwards.
+   */
+  private spriteTexture(canvas: HTMLCanvasElement): string | undefined {
+    const scene = this.scene;
+    if (!scene) return undefined;
+    const existing = this.spriteTextures.get(canvas);
+    if (existing) return existing;
+    const key = `sprite${this.nextTextureId++}`;
+    if (!scene.textures.addCanvas(key, canvas)) return undefined;
+    this.spriteTextures.set(canvas, key);
+    return key;
+  }
+
+  /** Let go of a texture, once nothing is left showing it. */
+  private dropTexture(key: string, canvas: HTMLCanvasElement): void {
+    for (const held of this.sprites.values()) if (held.key === key) return;
+    this.scene?.textures.remove(key);
+    this.spriteTextures.delete(canvas);
+  }
+
+  private readonly spriteTextures = new Map<HTMLCanvasElement, string>();
+
+  /** Keyed by picture *and layer*: one image can only ever be on one camera. */
   private readonly sprites = new Map<
     string,
     {

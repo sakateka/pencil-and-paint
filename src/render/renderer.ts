@@ -7,6 +7,7 @@ import { type Hedgehog } from '../entities/hedgehog';
 import type { Lion } from '../entities/lion';
 import { type Perch } from '../entities/perch';
 import { bakeSkyStrip } from '../world/sky';
+import { HAMMOCK } from '../world/layout';
 import { boilTick } from '../media/ink';
 import type { Treehouse } from '../entities/treehouse';
 import type { Medium } from '../media/medium';
@@ -79,6 +80,20 @@ const STAMP_POOL = 192;
  * Going over is not a fault, only an object; `new` in the readout names it.
  */
 const LOOK_POOL = 64;
+
+/**
+ * The patch of field the hammock hangs in.
+ *
+ * Whatever tall thing stands in it has to be laid back over the cloth, because
+ * the valley is baked flat and the hammock is drawn live on top of it. Written
+ * once so that the warm-up and the frame agree about which trees those are.
+ */
+const hammockBox = (x: number, y: number) => ({
+  x0: x - 90,
+  x1: x + 90,
+  y0: y - 130,
+  y1: y + 8,
+});
 
 /**
  * The one name an occluder's picture goes by on the GPU.
@@ -310,6 +325,25 @@ export class Renderer {
   private adoptOccluders(world: World): void {
     for (const { occluder, medium, sprite } of world.occluderSprites()) {
       this.stage.warmSprite(occluderId(occluder, medium), 'over', sprite.canvas);
+    }
+    /*
+     * The hammock's two trees again, on the valley's own layers.
+     *
+     * They are shown twice over: once by the pass that lays scenery back over
+     * the walker, on the layer the light does not touch, and once above the
+     * cloth, where they have to be cut by the light like every other tree. Two
+     * layers means two images — a camera assignment cannot be taken back — but
+     * one texture each, because the stage keys those by canvas.
+     */
+    for (const occluder of world.occludersOver(hammockBox(HAMMOCK.x, HAMMOCK.y))) {
+      for (const medium of ['sketch', 'color'] as const) {
+        const layer = medium === 'color' ? 'colour' : 'sketch';
+        this.stage.warmSprite(
+          occluderId(occluder, medium),
+          layer,
+          world.spriteFor(occluder, medium).canvas,
+        );
+      }
     }
   }
 
@@ -720,6 +754,34 @@ export class Renderer {
         bend(hammockSleeperLook, DEPTH.hammock + 0.0002);
       }
       if (medium === 'color') bend(hammockEdgeLook, DEPTH.hammock + 0.0003);
+
+      /*
+       * The trees it hangs from, laid back over the cloth.
+       *
+       * The valley is baked flat and the hammock is drawn live on top of it, so
+       * without this the cloth is painted over two tree crowns. They are put
+       * back here, on this same layer and in this same medium — which is the
+       * whole point: a copy on the `over` layer is a copy the light never
+       * touches, so it had to guess its own medium from how far away the walker
+       * was standing, and a whole tree flipped from graphite to full colour in
+       * one frame as you approached. On the valley's own layers there is
+       * nothing to guess. The colour camera's mask cuts these two exactly as it
+       * cuts the trees baked into the tile underneath them, and they come into
+       * the light at the same rate as every other tree in the field.
+       */
+      for (const occluder of world.occludersOver(hammockBox(rest.x, rest.y))) {
+        const sprite = world.spriteFor(occluder, medium);
+        this.stage.sprite({
+          id: occluderId(occluder, medium),
+          layer,
+          canvas: sprite.canvas,
+          left: sprite.x,
+          top: sprite.y,
+          width: sprite.canvas.width,
+          height: sprite.canvas.height,
+          depth: DEPTH.hammockTrees + occluder.scenery.y / 10000,
+        });
+      }
     }
 
     const { vigil } = scene;
@@ -866,38 +928,6 @@ export class Renderer {
     showHearts(this.stage, this.looks, scene.particles, 'over', DEPTH.particles);
 
     /*
-     * The trees the hammock hangs from, always over the cloth.
-     *
-     * They are baked into the world beneath everything drawn live, so the cloth
-     * is painted over their crowns — and then the ordinary occluder pass lifts
-     * one of them above everything the moment the walker stands where it
-     * overlaps them. Approach the hammock and its trees jump in front of it;
-     * step away and they fall behind. So they are placed here instead, above
-     * the hammock and below the walker, whoever is standing where.
-     */
-    const { rest } = scene;
-    if (camera.canSee(rest.x, rest.y, 130)) {
-      const box = { x0: rest.x - 90, x1: rest.x + 90, y0: rest.y - 130, y1: rest.y + 8 };
-      for (const occluder of world.occludersOver(box)) {
-        const centre = (occluder.bounds.x0 + occluder.bounds.x1) / 2;
-        const lit =
-          Math.hypot(centre - walker.x, occluder.scenery.y - walker.y - 14) < scene.maskRadius;
-        const medium = lit ? 'color' : 'sketch';
-        const sprite = world.spriteFor(occluder, medium);
-        this.stage.sprite({
-          id: occluderId(occluder, medium),
-          layer: 'over',
-          canvas: sprite.canvas,
-          left: sprite.x,
-          top: sprite.y,
-          width: sprite.canvas.width,
-          height: sprite.canvas.height,
-          depth: DEPTH.hammockTrees + occluder.scenery.y / 10000,
-        });
-      }
-    }
-
-    /*
      * Tall scenery standing in front of the walker, laid back over them. These
      * are baked canvases already, so they go to the GPU as they are and are
      * never redrawn. An occluder by definition overlaps the walker, who is the
@@ -942,6 +972,7 @@ export class Renderer {
      * know that and re-uploaded a blank 420px square twelve times a second for
      * the whole of any session in which nobody finished the game.
      */
+    const { rest } = scene;
     if (rest.perched && camera.canSee(rest.x, rest.y, 260)) {
       const t = rest.birdTime;
       const pose = birdPose(rest.landed, t);
