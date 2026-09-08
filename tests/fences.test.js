@@ -95,19 +95,24 @@ export async function run(url) {
       game.collectAll();
       game.teleport(1300, 300);
       const rails = game.world.stockColliders.filter((c) => c.kind === 'segment');
-      const walkers = game.herd.animals.filter(
-        (a) => a.kind !== 'frog' && a.kind !== 'cat',
-      );
+      /*
+       * Only the ones that walk. A frog on a lily pad, the sleeping cat and the
+       * hen on the nest all have a speed of nought and are meant to stay
+       * exactly where they were put — asking whether they got stuck against a
+       * fence is asking the wrong question of them.
+       */
+      const walkers = game.herd.animals.filter((a) => a.speed > 0);
       const from = walkers.map((a) => ({ x: a.x, y: a.y }));
 
       let worst = 0;
       let where = null;
-      let stillest = Infinity;
       const moved = walkers.map(() => 0);
+      const awakeFor = walkers.map(() => 0);
 
       for (let step = 0; step < 36000; step++) {
         game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
         walkers.forEach((a, i) => {
+          if (a.awake) awakeFor[i] += 1;
           moved[i] = Math.max(moved[i], Math.hypot(a.x - from[i].x, a.y - from[i].y));
           const radius = (a.kind === 'chick' ? 4 : 11) * a.scale;
           for (const c of rails) {
@@ -127,16 +132,32 @@ export async function run(url) {
           }
         });
       }
-      stillest = Math.min(...moved);
+      /*
+       * Judged only on the ones that were awake for it.
+       *
+       * `collectAll` floods the map from where the walker stands and the flood
+       * does not reach the far corners, so the south-west pasture can sleep
+       * through the whole run — and something asleep has not moved because
+       * nothing is moving it, which says nothing about fences. Asking the
+       * question of the sleepers is what made this flaky.
+       */
+      const watched = walkers
+        .map((a, i) => ({ a, travelled: moved[i], awakeFor: awakeFor[i] }))
+        .filter((w) => w.awakeFor > 30000);
+      const laziest = watched.reduce(
+        (least, w) => (w.travelled < least.travelled ? w : least),
+        watched[0],
+      );
       return {
         worst: +worst.toFixed(2),
         where,
-        stillest: +stillest.toFixed(1),
-        counted: walkers.length,
+        stillest: +(laziest?.travelled ?? -1).toFixed(1),
+        counted: watched.length,
+        laziest: laziest ? `${laziest.a.kind} at ${Math.round(laziest.a.x)},${Math.round(laziest.a.y)}` : 'nobody',
       };
     });
 
-    suite.atLeast(roam.counted, 20, 'the whole herd was watched');
+    suite.atLeast(roam.counted, 12, 'a good part of the herd was awake throughout');
     suite.atMost(roam.worst, 0.01, 'no animal is ever standing in a rail');
     suite.ok(
       roam.where === null || roam.worst <= 0.01,
@@ -147,7 +168,7 @@ export async function run(url) {
     suite.ok(
       roam.stillest > 15,
       'and none of them is stuck against a fence',
-      `the stillest moved ${roam.stillest}px`,
+      `the stillest moved ${roam.stillest}px — ${roam.laziest}`,
     );
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
