@@ -252,7 +252,7 @@ export function showMirageElephant(
 }
 
 /** How many slices the wave is carried by. The cloud is a few hundred px wide. */
-const MIRAGE_SLICES = 26;
+export const MIRAGE_SLICES = 26;
 
 /**
  * Show the cloud.

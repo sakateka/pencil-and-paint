@@ -29,6 +29,12 @@ import { LookLibrary } from './looks';
 /** How the three layers of the frame map onto cameras. */
 export type Layer = 'sketch' | 'colour' | 'over';
 
+/** A rope kept for one picture, and the frame something last wanted it. */
+interface HeldRope {
+  readonly rope: Phaser.GameObjects.Rope;
+  touched: number;
+}
+
 /**
  * Whether the finished frame can be read back after the fact.
  *
@@ -634,8 +640,10 @@ export class Stage {
     if (!image) {
       image = scene.add.image(0, 0, key).setOrigin(0, 0);
       this.lookImages.push(image);
+      this.noteCreated('look image');
     }
     this.looksUsed++;
+    if (this.looksUsed > this.looksPeak) this.looksPeak = this.looksUsed;
 
     /*
      * A pooled sprite serves a different layer every frame, so the camera
@@ -715,6 +723,39 @@ export class Stage {
   private looksUsed = 0;
 
   /**
+   * The most pictures ever wanted in one frame this session.
+   *
+   * The twin of `stampPeak`, and read for the same reason: the pool has to be
+   * filled under the loading screen, and the only honest source for its size is
+   * the busiest frame the valley can actually produce.
+   */
+  looksPeak = 0;
+
+  /**
+   * Fill the picture pool before play, so no frame ever makes one.
+   *
+   * The pool used to grow as you walked — a frame that wanted one more picture
+   * than any frame before it made a Phaser image, and said nothing, because
+   * `showLook` was the one creator in here that never called `noteCreated`.
+   * Measured on a tour of the whole valley with every pot lit: it climbed from
+   * twenty-five at the spawn to fifty. Now it is made here, and `new` reports
+   * any frame that still wants more than this.
+   *
+   * Any texture will do to hold them: every image is retextured, repositioned
+   * and re-filtered by `showLook` on the frame it is used, and hidden on every
+   * frame it is not.
+   */
+  warmLooks(count: number): void {
+    const scene = this.scene;
+    const first = this.lookTextures.values().next();
+    if (!scene || first.done) return;
+    while (this.lookImages.length < count) {
+      const image = scene.add.image(0, 0, first.value).setOrigin(0, 0).setVisible(false);
+      this.lookImages.push(image);
+    }
+  }
+
+  /**
    * Show a baked picture bent along a curve.
    *
    * For the things that are one drawing being deformed rather than a set of
@@ -753,18 +794,10 @@ export class Stage {
     const baked = request.library.get(request.id, request.poseKey, request.medium);
     if (!key || !baked || request.points.length < 2) return false;
 
-    let rope = this.ropes[this.ropesUsed];
-    if (!rope) {
-      rope = scene.add.rope(
-        0,
-        0,
-        key,
-        undefined,
-        request.points.map((p) => ({ x: p.x, y: p.y })),
-      );
-      this.ropes.push(rope);
-    }
-    this.ropesUsed++;
+    const held = this.ropeFor(request.id, request.medium, key, request.points.length);
+    if (!held) return false;
+    const { rope } = held;
+    held.touched = this.frameNumber;
     rope.cameraFilter = this.maskExcept(request.layer);
     rope.setTexture(key);
     rope.setVisible(true);
@@ -780,9 +813,6 @@ export class Stage {
      * points it already has and marking it dirty is the whole difference
      * between handing the GPU new geometry and handing it new everything.
      */
-    if (rope.points.length !== request.points.length) {
-      rope.setPoints(request.points.map((p) => ({ x: p.x, y: p.y })));
-    }
     for (let i = 0; i < request.points.length; i++) {
       rope.points[i].x = request.points[i].x;
       rope.points[i].y = request.points[i].y;
@@ -791,8 +821,79 @@ export class Stage {
     return true;
   }
 
-  private readonly ropes: Phaser.GameObjects.Rope[] = [];
-  private ropesUsed = 0;
+  /**
+   * The rope belonging to this picture, made once and kept for ever.
+   *
+   * One per look and medium rather than a pool taken in draw order, because a
+   * rope is not interchangeable the way an image is: its buffers are as long as
+   * its point list, and handing a twenty-three point hammock the slot that a
+   * twenty-six point mirage had last frame means `setPoints`, which rebuilds
+   * the vertex, uv, colour and alpha arrays and the WebGL buffer behind them.
+   * That is exactly what walking north out of sight of the hammock and back
+   * used to do, once per crossing, for as long as the valley stood.
+   */
+  private ropeFor(
+    id: string,
+    medium: Medium,
+    textureKey: string,
+    points: number,
+  ): HeldRope | undefined {
+    const scene = this.scene;
+    if (!scene) return undefined;
+    const slot = `${id}:${medium}`;
+    let held = this.ropes.get(slot);
+    if (held && held.rope.points.length !== points) {
+      /*
+       * A look that changed how many points it asks for between one frame and
+       * the next. Nothing does this today; if something starts, it pays for a
+       * rebuild once and `new` says whose fault it is.
+       */
+      held.rope.destroy();
+      this.ropes.delete(slot);
+      held = undefined;
+    }
+    if (!held) {
+      const rope = scene.add.rope(
+        0,
+        0,
+        textureKey,
+        undefined,
+        Array.from({ length: points }, () => ({ x: 0, y: 0 })),
+      );
+      this.noteCreated(`rope ${id}`);
+      held = { rope, touched: -1 };
+      this.ropes.set(slot, held);
+    }
+    return held;
+  }
+
+  private readonly ropes = new Map<string, HeldRope>();
+
+  /**
+   * Make every rope the game can show, under the loading screen.
+   *
+   * The same rule the sprites and the stamps already follow: a rope built
+   * halfway through a walk is geometry handed to the driver in the middle of a
+   * frame. There are only a handful — the hammock's cloth, its edge, whoever is
+   * lying in it, and the mirage's cloud — so they are listed rather than
+   * discovered, and the one that was born the first time somebody lay down is
+   * born here instead.
+   */
+  warmRopes(
+    entries: readonly {
+      id: string;
+      poseKey: string;
+      medium: Medium;
+      points: number;
+    }[],
+  ): void {
+    for (const entry of entries) {
+      const key = this.lookTextures.get(LookLibrary.slot(entry.id, entry.poseKey, entry.medium));
+      if (!key) continue;
+      const held = this.ropeFor(entry.id, entry.medium, key, entry.points);
+      held?.rope.setVisible(false);
+    }
+  }
 
   /** The bitmask of every camera that must *not* draw this object. */
   private maskExcept(layer: Layer): number {
@@ -811,8 +912,9 @@ export class Stage {
       this.lookImages[i].setVisible(false);
     }
     this.looksUsed = 0;
-    for (let i = this.ropesUsed; i < this.ropes.length; i++) this.ropes[i].setVisible(false);
-    this.ropesUsed = 0;
+    for (const held of this.ropes.values()) {
+      if (held.touched !== this.frameNumber) held.rope.setVisible(false);
+    }
   }
 
   /** Hide the stamps nobody asked for, and start counting again. */
@@ -847,17 +949,19 @@ export class Stage {
 
   /** Hide everything nobody asked for this frame, and start the next one. */
   endFrame(): void {
-    const scene = this.scene;
-    // Cels: if not touched this frame, hide it. If untouched for 180 frames (~3 sec), clean it up.
-    for (const [slot, cel] of this.cels.entries()) {
-      if (cel.touched !== this.frameNumber) {
-        cel.image.setVisible(false);
-        if (this.frameNumber - cel.touched > 180) {
-          cel.destroy();
-          if (scene) scene.textures.remove(cel.texture.key);
-          this.cels.delete(slot);
-        }
-      }
+    /*
+     * The one cel left: hidden when nobody asks for it, and never thrown away.
+     *
+     * It used to be destroyed after three seconds unused, and that was the last
+     * survivor of the fault the sprites were cured of: an evicted thing is a
+     * thing that has to be built again. The easel stands beside the hammock, so
+     * walking north far enough that they leave the frame and coming back down
+     * destroyed the cel and then rebuilt it — a new canvas, a new texture and
+     * all 260 by 260 pixels of it re-uploaded, on the frame it reappeared, once
+     * per crossing, for ever. Measured: `new 1` and 67,600 pixels every time.
+     */
+    for (const cel of this.cels.values()) {
+      if (cel.touched !== this.frameNumber) cel.image.setVisible(false);
     }
     /*
      * Sprites: hidden when nobody asked for them this frame, and never thrown
@@ -1002,8 +1106,8 @@ export class Stage {
     this.sprites.clear();
     for (const image of this.lookImages) image.destroy();
     this.lookImages.length = 0;
-    for (const rope of this.ropes) rope.destroy();
-    this.ropes.length = 0;
+    for (const held of this.ropes.values()) held.rope.destroy();
+    this.ropes.clear();
     this.lookTextures.clear();
     this.game?.destroy(true, false);
   }

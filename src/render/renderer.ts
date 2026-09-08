@@ -22,6 +22,7 @@ import type { ColorField } from './colorField';
 import { Stage } from './stage';
 import { LookLibrary } from './looks';
 import {
+  CLOTH_POINTS,
   clothPoints,
   hammockBoil,
   hammockClothLook,
@@ -37,7 +38,13 @@ import { registerHedgehogLooks, showHedgehog } from './looks/hedgehog';
 import { registerOwlLooks, showOwl } from './looks/owl';
 import { registerHerdLooks, showHerdAnimal } from './looks/herd';
 import { registerLionLooks, showLion } from './looks/lion';
-import { registerMirageLooks, showMirageCloud, showMirageElephant } from './looks/mirage';
+import {
+  MIRAGE_SLICES,
+  mirageCloudLook,
+  registerMirageLooks,
+  showMirageCloud,
+  showMirageElephant,
+} from './looks/mirage';
 import { registerPerchLooks, showPerch } from './looks/perch';
 import { registerPotLooks, showPot } from './looks/pots';
 import { registerStumpLooks, showStump } from './looks/stump';
@@ -59,6 +66,19 @@ import { registerWalkerLooks, showWalker } from './looks/walker';
  * the readout says so.
  */
 const STAMP_POOL = 192;
+
+/**
+ * How many baked pictures the pool is built to hold, made at warm-up.
+ *
+ * Measured the same way and for the same reason as `STAMP_POOL`: a tour of the
+ * whole valley with every pot lit, watching the pool's own length, which only
+ * ever grows and is therefore its own peak. It climbed from 25 at the spawn to
+ * 50 and stopped — the hammock, the treehouse, the camp with a fish on and the
+ * haystack all fit inside that. Rounded up for the content still to come.
+ *
+ * Going over is not a fault, only an object; `new` in the readout names it.
+ */
+const LOOK_POOL = 64;
 
 /**
  * The one name an occluder's picture goes by on the GPU.
@@ -182,8 +202,9 @@ export class Renderer {
   /**
    * Every drawing that is baked once and afterwards only moved.
    *
-   * Empty until a look registers itself. Things move onto it one at a time —
-   * see `PLAN.md` — and until then the `cel` path below still paints them.
+   * Which is everything hand-drawn in the game, bar the picture the player made
+   * at the easel: that one did not exist when this was baked, so it is the one
+   * thing left on the `cel` path below.
    */
   readonly looks = new LookLibrary();
 
@@ -207,7 +228,7 @@ export class Renderer {
      */
     this.width = Math.max(1, host.clientWidth || globalThis.innerWidth || 1);
     this.height = Math.max(1, host.clientHeight || globalThis.innerHeight || 1);
-    // One look at a time moves off the repaint-as-you-go path. See PLAN.md.
+    // Every look the game has. Registering one here is what gets it baked.
     for (const look of [hammockEndsLook, hammockClothLook, hammockEdgeLook, hammockSleeperLook]) {
       this.looks.register(look);
     }
@@ -230,6 +251,7 @@ export class Renderer {
       // Phaser may finish booting after the bake did; adopting twice is free.
       this.stage.adoptLooks(this.looks);
       this.warmStamps();
+      this.warmPools();
       if (this.warmedOccluders) this.adoptOccluders(this.warmedOccluders);
     });
   }
@@ -263,6 +285,7 @@ export class Renderer {
     for (const _ of this.looks.bake()) yield { done: ++done, total };
     this.stage.adoptLooks(this.looks);
     this.warmStamps();
+    this.warmPools();
 
     /*
      * And the occluders: every tall thing in the valley, drawn and handed over
@@ -300,6 +323,42 @@ export class Renderer {
    */
   private warmStamps(): void {
     this.stage.warmStamps('over', PARTICLE_COLOURS.map(disc), STAMP_POOL);
+  }
+
+  /**
+   * The two pools the pictures are shown through, filled before play.
+   *
+   * Same rule as the stamps and the occluders, and the last two places that
+   * broke it. Neither told anybody: `showLook` and `showRope` were the only
+   * creators in the stage that never called `noteCreated`, so the pools grew
+   * during a walk while the readout said `new 0`. Measured: the picture pool
+   * climbed from 25 to 50 walking north out of the field, and the mirage's rope
+   * and the hammock's took turns in the same slot — a swap that rebuilds the
+   * vertex, uv, colour and alpha buffers, once per crossing, because their
+   * point counts differ.
+   *
+   * Ropes are listed rather than counted: there are four of them, they are not
+   * interchangeable, and the one for whoever is lying in the hammock used to be
+   * born at the moment somebody first lay down.
+   */
+  private warmPools(): void {
+    this.stage.warmLooks(LOOK_POOL);
+    const boil = hammockBoil(0);
+    const ropes: { id: string; poseKey: string; medium: Medium; points: number }[] = [];
+    for (const look of [hammockClothLook, hammockEdgeLook, hammockSleeperLook]) {
+      for (const medium of look.media) {
+        ropes.push({
+          id: look.id,
+          poseKey: look.key(boil, medium),
+          medium,
+          points: CLOTH_POINTS,
+        });
+      }
+    }
+    for (const medium of mirageCloudLook.media) {
+      ropes.push({ id: mirageCloudLook.id, poseKey: 'one', medium, points: MIRAGE_SLICES });
+    }
+    this.stage.warmRopes(ropes);
   }
 
   resize(width: number, height: number, scale: number): void {
@@ -702,9 +761,16 @@ export class Renderer {
      * thereafter, which is the whole of what a cel is for.
      *
      * Colour only: in pencil the easel keeps the drawing it came with.
+     *
+     * Asked for whether or not it is on screen, which is the whole difference
+     * between a cost paid once per drawing and a cost paid per visit. Gated on
+     * the camera it was hidden when the easel left the frame, and a hidden cel
+     * is one that gets rebuilt — see `Stage.endFrame`. Off screen it is a
+     * sprite standing where the easel stands, which the camera does not reach
+     * and the driver does not draw.
      */
     const { easel } = scene;
-    if (medium === 'color' && scene.easelPicture && camera.canSee(easel.x, easel.y, 80)) {
+    if (medium === 'color' && scene.easelPicture) {
       const picture = scene.easelPicture;
       this.stage.cel({
         id: 'easelPicture',
