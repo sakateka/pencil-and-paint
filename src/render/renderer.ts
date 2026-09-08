@@ -71,15 +71,32 @@ const STAMP_POOL = 192;
 /**
  * How many baked pictures the pool is built to hold, made at warm-up.
  *
- * Measured the same way and for the same reason as `STAMP_POOL`: a tour of the
- * whole valley with every pot lit, watching the pool's own length, which only
- * ever grows and is therefore its own peak. It climbed from 25 at the spawn to
- * 50 and stopped — the hammock, the treehouse, the camp with a fish on and the
- * haystack all fit inside that. Rounded up for the content still to come.
+ * Measured the same way and for the same reason as `STAMP_POOL`. It was 64,
+ * from a tour that climbed 25 → 50 and stopped, and **64 was not enough**: a
+ * player standing on the farm's east side watched `new` climb, which is the
+ * pool growing during a walk — the exact fault this constant exists to prevent.
  *
- * Going over is not a fault, only an object; `new` in the readout names it.
+ * The old tour simply never stood there. The busiest corner of the valley is
+ * the farm: the paddock and its herd, the chicken run and its birds, the garden,
+ * the well and the bench are all within one screen of each other, and outside
+ * the colour every one of them is drawn twice — once in graphite, once in
+ * paint — so the count roughly doubles at the edge of the light.
+ *
+ * Measured again, properly, by standing on a grid over the whole map at five
+ * stages of the colour (`tmp/t28peak.mjs`):
+ *
+ *   1864x778   peak 88 pictures, at the paddock rail and the garden
+ *   2560x1440  peak 110 pictures, same corner
+ *
+ * So it is a number that grows with the window, not just with the content, and
+ * the honest response is headroom rather than a tight fit: an unused pooled
+ * image is a few dozen bytes and no texture at all, while going over costs an
+ * object made in the middle of somebody's walk.
+ *
+ * Going over is still not a fault, only an object; `new` in the readout names
+ * it, which is how this was found.
  */
-const LOOK_POOL = 64;
+const LOOK_POOL = 192;
 
 /**
  * The patch of field the hammock hangs in.
