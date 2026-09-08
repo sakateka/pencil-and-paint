@@ -9,6 +9,7 @@ import { Hedgehog } from './entities/hedgehog';
 import { LOOKABLES, type Lookable } from './world/lookables';
 import { MIRAGE_REACH, Vigil, VIGIL_SECONDS } from './entities/vigil';
 import { Lion } from './entities/lion';
+import { SECRET_REACH, SecretStone } from './entities/stone';
 import { Perch } from './entities/perch';
 import { Particles } from './entities/particles';
 import { makeWalker, resetWalker, type Walker } from './entities/player';
@@ -170,6 +171,12 @@ export class Game {
   readonly lion: Lion;
 
   /**
+   * The black stone. Its wink is gated on the whole of it being lit, not on the
+   * point it stands on — see `isWhollyLit`.
+   */
+  readonly secret: SecretStone;
+
+  /**
    * Places to stop that want nothing from you: the bench and the haystack.
    *
    * Unlike the stump, nothing is waiting at the end of either. That is the
@@ -228,6 +235,7 @@ export class Game {
     this.herd = new Herd(world.animalSpawns);
     this.owl = new Owl(world.owlPerch.x, world.owlPerch.y, world.owlPerch.scale);
     this.lion = new Lion(world.lion.x, world.lion.y);
+    this.secret = new SecretStone(world.secret.x, world.secret.y);
     this.perches = [
       new Perch(BENCH.x, BENCH.y, 'bench', 'prompt.sitBench', 1),
       /*
@@ -460,6 +468,7 @@ export class Game {
       this.events.onOwlCall();
     }
     this.lion.update(dt, this.walker.x, this.walker.y, this.isAwakeAt(this.lion.x, this.lion.y, 14));
+    this.secret.update(dt, this.isWhollyLit(this.secret.x, this.secret.y, SECRET_REACH));
     for (const perch of this.perches) perch.update(dt, this.isAwakeAt(perch.x, perch.y, 12));
     /*
      * The hedgehog comes out for the hay and nothing else — not the bench, not
@@ -991,6 +1000,7 @@ export class Game {
       vigil: this.vigil,
       hedgehog: this.hedgehog,
       lion: this.lion,
+      secret: this.secret,
       perches: this.perches,
       easel: EASEL,
       treehouse: this.treehouse,

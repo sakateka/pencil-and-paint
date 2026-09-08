@@ -5,6 +5,7 @@ import { type Owl } from '../entities/owl';
 import type { Vigil } from '../entities/vigil';
 import { type Hedgehog } from '../entities/hedgehog';
 import type { Lion } from '../entities/lion';
+import type { SecretStone } from '../entities/stone';
 import { type Perch } from '../entities/perch';
 import { bakeSkyStrip } from '../world/sky';
 import { HAMMOCK } from '../world/layout';
@@ -48,6 +49,7 @@ import {
 } from './looks/mirage';
 import { registerPerchLooks, showPerch } from './looks/perch';
 import { registerPotLooks, showPot } from './looks/pots';
+import { registerStoneLooks, showSecretStone } from './looks/stone';
 import { registerStumpLooks, showStump } from './looks/stump';
 import { registerSunLooks, showSun } from './looks/sun';
 import { registerWalkerLooks, showWalker } from './looks/walker';
@@ -139,6 +141,7 @@ export interface Scene {
   readonly vigil: Vigil;
   readonly hedgehog: Hedgehog;
   readonly lion: Lion;
+  readonly secret: SecretStone;
   readonly perches: readonly Perch[];
   readonly treehouse: Treehouse;
   /** The last thing drawn at the easel, if there is one. */
@@ -274,6 +277,7 @@ export class Renderer {
     registerPerchLooks(this.looks);
     registerPotLooks(this.looks);
     registerStumpLooks(this.looks);
+    registerStoneLooks(this.looks);
     registerSunLooks(this.looks);
     registerWalkerLooks(this.looks);
     registerWindowLooks(this.looks);
@@ -499,6 +503,7 @@ export class Renderer {
     stump: 50,
     elephant: 60,
     lion: 70,
+    stone: 52,
     easel: 80,
     camp: 100,
     walker: 110,
@@ -835,6 +840,16 @@ export class Renderer {
     const { lion } = scene;
     if (camera.canSee(lion.x, lion.y, 90) && !hidden(lion.x, lion.y, 60)) {
       showLion(this.stage, this.looks, lion, medium, layer, DEPTH.lion);
+    }
+
+    /*
+     * The black stone. Small, so the margins are small — but it is asked for on
+     * both passes, because out in the graphite it is still a stone lying there;
+     * only its wink belongs to the colour, and `showSecretStone` decides that.
+     */
+    const { secret } = scene;
+    if (camera.canSee(secret.x, secret.y, 40) && !hidden(secret.x, secret.y, 18)) {
+      showSecretStone(this.stage, this.looks, secret, medium, layer, DEPTH.stone);
     }
 
     /*

@@ -94,6 +94,8 @@ export interface Layout {
   vigil: { x: number; y: number; elephantX: number; elephantY: number };
   /** Where the lion lies, up in the top-left corner. */
   lion: { x: number; y: number };
+  /** The black stone, out where the paths do not go. */
+  secret: { x: number; y: number };
 }
 
 /**
@@ -481,10 +483,24 @@ export function buildLayout(): Layout {
     scenery.push(makeBush(spot.x, spot.y, rr(0.8, 1.4)));
     sites.reserve(spot.x, spot.y, 24);
   }
+  /*
+   * Stones, and smaller than they were.
+   *
+   * At 0.7–1.3 a stone stood as high as a bush and as wide as the walker, which
+   * made a meadow strewn with boulders. These are the stones you kick along a
+   * path.
+   *
+   * Only the drawn scale moved. The spot each one gets comes from `findFree`,
+   * whose numbers depend on what has already been claimed — and what is claimed
+   * is a flat 24 whatever size the stone turns out to be. Shrinking the reserve
+   * to match would be tidier and would move every stone, flower and tuft placed
+   * after it, so the reserve stays where it is: a little air round a small
+   * stone costs nothing, and the valley stays the valley.
+   */
   for (let i = 0; i < 22; i++) {
     const spot = sites.findFree(26, 50);
     if (!spot) continue;
-    scenery.push(makeRock(spot.x, spot.y, rr(0.7, 1.3)));
+    scenery.push(makeRock(spot.x, spot.y, rr(0.42, 0.82)));
     sites.reserve(spot.x, spot.y, 24);
   }
   for (let i = 0; i < 150; i++) {
@@ -656,6 +672,52 @@ export function buildLayout(): Layout {
   });
 
   /*
+   * The black stone: a short walk off a path, and nowhere near the spawn.
+   *
+   * Found the same rng-free way the stump and the lion are, and drawn live for
+   * the same reason: it has to glint, and a glint is not something the bake can
+   * hold. That also means it is free to be anywhere — none of this takes a
+   * number from the world's generator, so the whole valley falls where it did.
+   *
+   * Not simply "as far from a path as possible", which was the first rule and
+   * put it in the corner of the search box beside the spawn on one try and in
+   * dead ground nobody walks to on the next. What it wants is a particular
+   * distance: near enough to a path that a wink catches your eye as you go by,
+   * far enough that you have to leave the path to find out what it was. So the
+   * grid is scored rather than filtered, and the best score wins.
+   */
+  const AWAY = 210;
+  const pathNodes = paths.flat();
+  const fromPath = (ax: number, ay: number) =>
+    pathNodes.reduce((least, [px, py]) => Math.min(least, Math.hypot(px - ax, py - ay)), Infinity);
+
+  let secret = { x: 420, y: 1900 };
+  let bestScore = Infinity;
+  for (let ay = 160; ay <= WORLD_HEIGHT - 160; ay += 30) {
+    for (let ax = 160; ax <= WORLD_WIDTH - 160; ax += 30) {
+      if (!near(ax, ay, 40)) continue;
+      // Not the first thing you trip over on the way out of the spawn.
+      if (Math.hypot(ax - SPAWN.x, ay - SPAWN.y) < 520) continue;
+      const score = Math.abs(fromPath(ax, ay) - AWAY);
+      if (score < bestScore) {
+        bestScore = score;
+        secret = { x: ax, y: ay };
+      }
+    }
+  }
+  /*
+   * Solid, and nothing drawn — the stump's arrangement exactly. A stone you
+   * walk through is a smudge on the paper rather than a thing lying in a field,
+   * and pencil strokes pushed into the middle of the bake would move every tree
+   * placed after them.
+   */
+  scenery.push({
+    y: secret.y,
+    colliders: [circleCollider(secret.x, secret.y - 3, 11)],
+    draw() {},
+  });
+
+  /*
    * The hedgehog's bush, last of everything.
    *
    * Last on purpose. `makeBush` draws from the shared rng — a berry check and
@@ -674,6 +736,7 @@ export function buildLayout(): Layout {
     animals,
     owl,
     lion,
+    secret,
     vigil: { x: stump.x, y: stump.y, elephantX: standing.x, elephantY: standing.y },
   };
 }
