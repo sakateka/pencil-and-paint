@@ -97,6 +97,22 @@ printed, in world units:
 npm run display -- node tests/tools/bakedsteps.mjs owl:wings
 ```
 
+## Two things about the rig
+
+**Never time a frame through `?readback`.** [`harness.js`](../harness.js) always
+asks for `preserveDrawingBuffer`, because the suites that read pixels need it,
+and the driver pays for it with a full-screen copy every frame. Hunting the last
+of the microfreezes, nine spikes of 11 to 13 ms in 1200 frames all turned out to
+belong to it: without `?readback` there are none. Anything measuring what a
+frame *costs* — as opposed to what it looks like — has to open the page the way
+a player does. `tmp/freeze-plain.mjs` is the pattern.
+
+**About one run in three under Xvfb draws nothing at all.** The sprites are all
+there and the frame is submitted, but the picture is empty; `drawMs` falls from
+5.8 to 1.1 and `submit` from 2.4 to 0.06. It happens in old builds too, the
+tools survive it by running again, and nobody has found the cause. If a still
+comes back blank, take it again before believing it.
+
 ## Scenes
 
 `scenes.mjs` holds the scripted moments, so that "is it smooth" and "did it

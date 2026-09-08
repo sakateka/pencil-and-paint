@@ -108,6 +108,64 @@ whole safety property: a field that changes continuously cannot be listed, so it
 cannot get into a picture by accident, which is exactly how the old design lost
 eighty megabytes a second to a private counter nobody remembered.
 
+### The invariant: after the loading screen, the GPU gets nothing
+
+This is a requirement, not a target.
+
+> Once the loading screen is gone, the game bakes no canvas, creates no
+> rendering object, and uploads not one byte to the video card for the rest of
+> the session. A frame is transforms.
+
+Not "not in a settled frame" — **not at all**: not the first time a thing is
+seen, not when the camera enters a corner of the map it has not visited, not
+when somebody first lies down in the hammock. Everything that can ever be shown
+is listed, drawn and handed over under the progress bar, and nothing is ever
+thrown away afterwards, because a thing that gets evicted is a thing that gets
+built again. That is where the microfreezes were: an ordinary frame costs 0.4 ms
+and a frame that bakes one tree costs 17 to 22.
+
+**There is exactly one exception, and it is the whole reason the mechanism it
+uses still exists.** The picture the player drew at the easel did not exist when
+the valley was baked, so it is painted once, when it changes, into the one
+remaining cel ([`Stage.cel`](src/render/stage.ts)). Once per drawing, at the
+moment the drawing board closes. Nothing else may use that path.
+
+**How to check.** Press `F`. The line `upload … new … bakes …` must read zero,
+and go on reading zero while you walk, lie down, fish, climb the tree and cross
+the map. `renderer.uploadReport()` and `renderer.createReport()` name the
+culprit when one of them is not zero; `tmp/` has short probes that drive the
+page and print those two per frame.
+
+**The four ways it has actually been broken**, all of them found by walking away
+from something and coming back:
+
+- **Eviction.** Sprites were dropped after three seconds unused, and the cel
+  after 180 frames. Walking north out of sight of the hammock and back down
+  destroyed the easel's cel and rebuilt it — a new texture and all 67,600 pixels
+  of it, on the frame it reappeared, every crossing. Nothing is evicted now.
+  Hide it; never destroy it.
+- **A pool that grows.** `showLook` and `showRope` take their objects from
+  pools, and a pool that fills on demand is a pool that fills during a walk —
+  the picture pool climbed from 25 to 50 crossing the valley. Pools are filled
+  at warm-up to a *measured* peak (`LOOK_POOL`, `STAMP_POOL`), and going over
+  now shows up in `new`.
+- **A creator that does not report.** Those same two were the only ones in the
+  stage that never called `noteCreated`, so they grew while the readout said
+  `new 0`. Anything that can bring an object into being calls it, so that the
+  next mistake of this kind is visible rather than silent.
+- **A shared slot with per-instance state.** Ropes used to be handed out by
+  draw order, so the mirage's 26-point cloud and the hammock's 23-point cloth
+  took turns in one slot, and each swap made Phaser rebuild the vertex, uv,
+  colour and alpha buffers. Ropes are kept per picture now. Images may be
+  pooled because an image carries nothing between frames; anything that does
+  carry something must be keyed by what it draws.
+
+**Lazily is never the answer.** If something cannot be listed in advance, that
+is a fact about the design of the thing, and the thing changes — the campfire
+was "three tongues on six sinusoids, nothing here lines up twice" until its
+frequencies were pulled to whole multiples of one period, and it became what
+drawn fire has always been: a 30-picture cycle.
+
 ### Adding something that moves
 
 The rule, learned the hard way on a hammock:
@@ -137,6 +195,35 @@ So, in order:
 4. **Watch the readout** (`F`): `upload`, `new` and `bakes` are all meant to
    read zero for ever once the valley is warm. If one of them is not zero,
    `renderer.uploadReport()` and `createReport()` name the culprit.
+
+How many pictures a cycle gets is the look's own business — there is no engine
+frequency any more, and there used to be, which is why a frog's dive got four
+frames. A step is eight pictures, an eyelid twelve, the campfire thirty.
+[`bakedsteps.mjs`](tests/tools/README.md) is how you find out whether that is
+enough: no two consecutive drawings more than about a unit apart.
+
+Four things the bake will catch you with, all of them found by being caught:
+
+- **Everything baked needs a transparent margin.** A sprite's edge is a quad
+  edge and is not antialiased; only the *texture* is filtered. Cut tight to the
+  ink, a picture can only stand on whole pixels, which is why a cow's back
+  juddered while a sheep's did not — the sheep's top row of ink happened to be
+  semi-transparent and the cow's did not. `BLEED` in
+  [`looks.ts`](src/render/looks.ts) adds the ring, and
+  [`tests/looks.test.js`](tests/looks.test.js) fails if any picture has ink on
+  it.
+- **Bake on whole pixels.** An odd scratch size puts the drawing's middle on a
+  half pixel, the sprite lands half a texel off the grid its strokes were drawn
+  on, and every edge of it blurs.
+- **Bake at the size it is drawn at.** The owl is drawn at the scale of
+  whichever tree it got, so a one-to-one picture was stretched 6% on the way to
+  the screen — a resample of the whole bird. That is what `grain` is for, and it
+  is why the owl registers its look at warm-up rather than in the constructor.
+- **The graphite copy has its own key.** Every drawing is drawn twice, and the
+  pencil pass ignores things the colour pass cares about (and boils where the
+  colour does not). Say so in `key`, or you bake three identical pictures — or,
+  worse, leave a pencil outline jittering a pixel underneath its own paint,
+  which is what "the cows shimmer" turned out to be.
 
 The awkward one is depth. The world is baked flat, so the walker is painted over
 it, which is how you end up walking across a roof. Making roofs solid fixed it
