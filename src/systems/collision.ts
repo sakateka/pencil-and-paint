@@ -47,6 +47,17 @@ export function resolveCollisions(
       case 'ellipse':
         pushOutOfEllipse(body, radius, collider.x, collider.y, collider.rx, collider.ry);
         break;
+      case 'segment':
+        pushOutOfSegment(
+          body,
+          radius,
+          collider.x1,
+          collider.y1,
+          collider.x2,
+          collider.y2,
+          collider.r,
+        );
+        break;
     }
   }
   body.x = clamp(body.x, edges.minX, edges.maxX);
@@ -104,6 +115,53 @@ function pushOutOfRect(
   else body.y = y + h + radius;
 }
 
+/**
+ * Push out of a thick line — the shape a fence rail actually is.
+ *
+ * Measured in the same squashed space as the circle, so a rail running left to
+ * right holds a cow off at the distance one lying on the ground would, not the
+ * distance a wall standing up facing the camera would.
+ */
+function pushOutOfSegment(
+  body: Body,
+  radius: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  r: number,
+): void {
+  const ax = x1;
+  const ay = y1 * VERTICAL_SQUASH;
+  const ex = x2 - ax;
+  const ey = y2 * VERTICAL_SQUASH - ay;
+  const lengthSq = ex * ex + ey * ey;
+
+  const px = body.x;
+  const py = body.y * VERTICAL_SQUASH;
+  // Clamped, so the ends are round: a body rounding a corner post meets one
+  // curve rather than two flats disagreeing about which way is out.
+  const t = lengthSq > 0.001 ? clamp(((px - ax) * ex + (py - ay) * ey) / lengthSq, 0, 1) : 0;
+  const dx = px - (ax + ex * t);
+  const dy = py - (ay + ey * t);
+  const d = Math.hypot(dx, dy);
+  const minimum = r + radius;
+  if (d >= minimum) return;
+
+  if (d <= 0.001) {
+    // Standing on the rail itself, with no side to be on. Step off sideways.
+    const length = Math.sqrt(lengthSq);
+    if (length <= 0.001) return;
+    body.x += (-ey / length) * minimum;
+    body.y += ((ex / length) * minimum) / VERTICAL_SQUASH;
+    return;
+  }
+
+  const push = minimum - d;
+  body.x += (dx / d) * push;
+  body.y += ((dy / d) * push) / VERTICAL_SQUASH;
+}
+
 function pushOutOfEllipse(
   body: Body,
   radius: number,
@@ -145,6 +203,19 @@ export function isSpotClear(
         const dx = (x - collider.x) / (collider.rx + pad);
         const dy = (y - collider.y) / (collider.ry + pad);
         if (dx * dx + dy * dy < 1) return false;
+        break;
+      }
+      case 'segment': {
+        const ex = collider.x2 - collider.x1;
+        const ey = collider.y2 - collider.y1;
+        const lengthSq = ex * ex + ey * ey;
+        const t =
+          lengthSq > 0.001
+            ? clamp(((x - collider.x1) * ex + (y - collider.y1) * ey) / lengthSq, 0, 1)
+            : 0;
+        const dx = x - (collider.x1 + ex * t);
+        const dy = y - (collider.y1 + ey * t);
+        if (Math.hypot(dx, dy) < collider.r + pad) return false;
         break;
       }
     }

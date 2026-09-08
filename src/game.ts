@@ -417,8 +417,10 @@ export class Game {
       walkerX: this.walker.x,
       walkerY: this.walker.y,
       isAwakeAt: this.isAwakeAt,
+      // The stock list, not the walker's: the fences are in it, so the animals
+      // stay in their fields while you keep the run of the valley.
       resolveCollisions: (body, radius) =>
-        resolveCollisions(body, radius, this.world.colliders, this.edges),
+        resolveCollisions(body, radius, this.world.stockColliders, this.edges),
     });
 
     this.particles.update(

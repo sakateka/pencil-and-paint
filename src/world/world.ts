@@ -101,6 +101,15 @@ export class World {
   private readonly layers: Record<Medium, Layer>;
 
   readonly colliders: readonly Collider[];
+
+  /**
+   * What the livestock is stopped by: everything above, plus the fences.
+   *
+   * The fences are in this list and not in `colliders` because that is the
+   * whole of the difference between a cow and you — she is kept in her field
+   * and you are free to climb in after her.
+   */
+  readonly stockColliders: readonly Collider[];
   /** Bitmap pixels per world unit the layers were baked at. */
   readonly bakeScale: number;
   readonly pond: Ellipse;
@@ -145,6 +154,7 @@ export class World {
   private constructor(
     layers: Record<Medium, Layer>,
     colliders: Collider[],
+    stockColliders: Collider[],
     occluders: Occluder[],
     pond: Ellipse,
     animalSpawns: AnimalSpawn[],
@@ -155,6 +165,7 @@ export class World {
     this.layers = layers;
     this.bakeScale = layers.color.scale;
     this.colliders = colliders;
+    this.stockColliders = stockColliders;
     this.occluders = occluders;
     this.pond = pond;
     this.animalSpawns = animalSpawns;
@@ -305,9 +316,11 @@ export class World {
     };
     onProgress(1);
 
-    const colliders = [...scenery, ...layout.northernLandmarks].flatMap(
-      (piece) => piece.colliders ?? [],
-    );
+    const pieces = [...scenery, ...layout.northernLandmarks];
+    const colliders = pieces.flatMap((piece) => piece.colliders ?? []);
+    // Everything you are stopped by, and then the fences on top. A cow is held
+    // by strictly more than you are, never by less.
+    const stockColliders = [...colliders, ...pieces.flatMap((piece) => piece.stockColliders ?? [])];
 
     const occluders: Occluder[] = [];
     scenery.forEach((piece, i) => {
@@ -331,7 +344,7 @@ export class World {
       });
     }
 
-    const world = new World(layers, colliders, occluders, layout.pond, layout.animals, layout.owl, layout.vigil, layout.lion);
+    const world = new World(layers, colliders, stockColliders, occluders, layout.pond, layout.animals, layout.owl, layout.vigil, layout.lion);
     world.longestSliceMs = longestSlice;
     world.bakePhases = phases;
     world.bakeYields = yields;

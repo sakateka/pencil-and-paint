@@ -23,6 +23,22 @@ export type Collider =
       readonly y: number;
       readonly rx: number;
       readonly ry: number;
+    }
+  /**
+   * A thick line: everything within `r` of the segment is solid.
+   *
+   * For fences. A rail is a line, and the shapes above cannot be one — a row of
+   * circles on the posts leaves a gap between every pair for a lamb to walk
+   * through, and a rectangle round the whole run would be solid ground rather
+   * than a boundary.
+   */
+  | {
+      readonly kind: 'segment';
+      readonly x1: number;
+      readonly y1: number;
+      readonly x2: number;
+      readonly y2: number;
+      readonly r: number;
     };
 
 export const circleCollider = (x: number, y: number, r: number): Collider => ({
@@ -48,6 +64,14 @@ export const ellipseCollider = (x: number, y: number, rx: number, ry: number): C
   ry,
 });
 
+export const segmentCollider = (
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  r: number,
+): Collider => ({ kind: 'segment', x1, y1, x2, y2, r });
+
 /**
  * One piece of scenery.
  *
@@ -61,6 +85,15 @@ export interface Scenery {
 
   /** Solid parts, if any. Returned rather than registered, so nothing is hidden. */
   readonly colliders?: readonly Collider[];
+
+  /**
+   * Solid to the livestock and to nobody else.
+   *
+   * A fence is the one thing in the valley that has to tell the two apart: it
+   * has to hold a cow in, and it must not keep you out — a paddock you cannot
+   * walk into is a paddock you never see the inside of.
+   */
+  readonly stockColliders?: readonly Collider[];
 
   /**
    * Full drawn extent. Required for anything `tall`, since the occluder pass

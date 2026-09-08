@@ -6,7 +6,16 @@ import { pick, rnd, rr } from '../core/rng';
 import { PENCIL } from '../media/medium';
 import { groundShadow, paint } from '../media/pencil';
 import { BARK, BARK_EDGE, BLOOMS, FENCE, GREENS } from './palette';
-import { circleCollider, type Scenery } from './types';
+import { circleCollider, segmentCollider, type Collider, type Scenery } from './types';
+
+/**
+ * How far a rail holds an animal off its own centre line.
+ *
+ * Thin on purpose: the animal's own radius does most of the work, and a fat
+ * rail would keep a sheep standing oddly far back from a fence it wants to
+ * lean on.
+ */
+const RAIL_THICKNESS = 2.5;
 
 /** Trees, bushes, rocks, flowers, fences, lamps — what fills the meadow. */
 
@@ -247,10 +256,21 @@ export function makeFenceRun(path: Point[], height = 32): Scenery {
   const RAIL_HEIGHTS = [height * 0.44, height * 0.75];
   const POST_HEIGHT = height;
 
+  /*
+   * Solid to the stock, and only to the stock.
+   *
+   * One thick line per span rather than a circle per post: the posts stand 34
+   * apart and a chicken is about eleven across, so circles would be a row of
+   * open doors. You walk through all of it regardless — see `stockColliders`.
+   */
+  const rails: Collider[] = [];
+  for (let i = 1; i < posts.length; i++) {
+    rails.push(segmentCollider(posts[i - 1][0], posts[i - 1][1], posts[i][0], posts[i][1], RAIL_THICKNESS));
+  }
+
   return {
-    // Deliberately not solid: a paddock you cannot walk into is a paddock you
-    // never see the inside of.
     y: posts.reduce((lowest, p) => Math.max(lowest, p[1]), -Infinity),
+    stockColliders: rails,
     draw(ctx, medium) {
       if (medium === 'color') {
         ctx.strokeStyle = FENCE;
