@@ -612,6 +612,61 @@ export class Stage {
     }
   }
 
+  /**
+   * Compile every batch shader the frame can ask for, before play starts.
+   *
+   * The last thing left that was still being built during a walk, and the one
+   * the readout could not see: `upload`, `new` and `bakes` all read zero while
+   * this was happening. Phaser picks a shader by *how many distinct textures
+   * ended up in one flushed batch* — a number that depends on what happens to
+   * be on screen together — and compiles a new program the first time each
+   * count comes up. Measured on Firefox, walking the valley with thirteen pots
+   * lit: five programs built after play started, on frames 24, 27, 39, 172 and
+   * 246, costing 104ms, 1.9ms, 2ms, 9.6ms and 2ms. The first of those is a
+   * sixth of a second of nothing moving.
+   *
+   * It cannot be listed the way a picture can, because the count is a fact
+   * about a frame rather than about a drawing — so every count is built here
+   * instead, from one to however many texture units the card gives a batch.
+   * There are sixteen of them and they cost a few milliseconds each after the
+   * first, which is what the loading screen is for.
+   *
+   * Reaches further into Phaser than anything else here does, so every step of
+   * it is guarded: a version that renames these does nothing at all, and the
+   * only cost is the stall coming back.
+   */
+  warmShaders(): number {
+    interface QuadHandler {
+      maxTexturesPerBatch?: number;
+      finalizeTextureCount?: (count: number) => void;
+      programManager?: { getCurrentProgramSuite?: () => unknown };
+    }
+    const nodes = (
+      this.game?.renderer as unknown as {
+        renderNodes?: { getNode?: (name: string) => unknown };
+      } | undefined
+    )?.renderNodes;
+    const quad = nodes?.getNode?.('BatchHandlerQuad') as QuadHandler | undefined | null;
+    const suite = quad?.programManager?.getCurrentProgramSuite;
+    if (!quad || !suite || typeof quad.finalizeTextureCount !== 'function') return 0;
+
+    const most = quad.maxTexturesPerBatch ?? 0;
+    if (most < 1) return 0;
+    let built = 0;
+    for (let count = 1; count <= most; count++) {
+      quad.finalizeTextureCount(count);
+      suite.call(quad.programManager);
+      built++;
+    }
+    /*
+     * And leave the configuration where a batch expects it. Every flush calls
+     * `finalizeTextureCount` itself before asking for its program, so this is
+     * belt and braces rather than a requirement.
+     */
+    quad.finalizeTextureCount(most);
+    return built;
+  }
+
   /** Is this picture on the GPU? Callers fall back to the old path if not. */
   hasLook(id: string, poseKey: string, medium: Medium): boolean {
     return this.lookTextures.has(LookLibrary.slot(id, poseKey, medium));

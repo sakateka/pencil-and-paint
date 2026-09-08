@@ -267,6 +267,7 @@ export class Renderer {
       this.stage.adoptLooks(this.looks);
       this.warmStamps();
       this.warmPools();
+      this.stage.warmShaders();
       if (this.warmedOccluders) this.adoptOccluders(this.warmedOccluders);
     });
   }
@@ -301,6 +302,13 @@ export class Renderer {
     this.stage.adoptLooks(this.looks);
     this.warmStamps();
     this.warmPools();
+    /*
+     * And the shaders a batch can ask for, which are the one thing left that
+     * was still being built during a walk — see `Stage.warmShaders`. Here as
+     * well as in the ready callback because Phaser's boot and the bake race,
+     * and whichever finishes second is the one that can do it.
+     */
+    this.stage.warmShaders();
 
     /*
      * And the occluders: every tall thing in the valley, drawn and handed over

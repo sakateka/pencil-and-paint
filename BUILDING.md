@@ -136,8 +136,8 @@ the map. `renderer.uploadReport()` and `renderer.createReport()` name the
 culprit when one of them is not zero; `tmp/` has short probes that drive the
 page and print those two per frame.
 
-**The four ways it has actually been broken**, all of them found by walking away
-from something and coming back:
+**The five ways it has actually been broken**, most of them found by walking
+away from something and coming back:
 
 - **Eviction.** Sprites were dropped after three seconds unused, and the cel
   after 180 frames. Walking north out of sight of the hammock and back down
@@ -153,6 +153,14 @@ from something and coming back:
   stage that never called `noteCreated`, so they grew while the readout said
   `new 0`. Anything that can bring an object into being calls it, so that the
   next mistake of this kind is visible rather than silent.
+- **A shader compiled by a frame.** The one the readout could not see: Phaser
+  picks a batch shader by *how many distinct textures ended up in one flush*, a
+  number that is a fact about a frame rather than about any drawing, and
+  compiles a program the first time each count comes up. Measured walking with
+  thirteen pots lit: five programs built after play started, on frames 24, 27,
+  39, 172 and 246, costing 104ms, 1.9ms, 2ms, 9.6ms and 2ms — while `upload`,
+  `new` and `bakes` all read zero, because none of those count a program. Every
+  count is built at warm-up now (`Stage.warmShaders`).
 - **A shared slot with per-instance state.** Ropes used to be handed out by
   draw order, so the mirage's 26-point cloud and the hammock's 23-point cloth
   took turns in one slot, and each swap made Phaser rebuild the vertex, uv,
