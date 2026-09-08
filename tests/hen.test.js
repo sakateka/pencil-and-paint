@@ -114,6 +114,95 @@ export async function run(url) {
 
     suite.ok(restarted < 70, 'a new world does not separate them', `${restarted}px`);
 
+    /*
+     * --- and the other hen, the one on the nest ---
+     *
+     * A second bird and deliberately not this one: that hen wanders the run all
+     * day and this one has not moved for a fortnight. What is worth asserting
+     * about her is exactly that — she sits. Everything else in the valley that
+     * is alive either wanders or flees, and she does neither, which is why she
+     * is the only bird you can walk up to and look at.
+     */
+    const broody = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      const of = (kind) => game.herd.animals.filter((a) => a.kind === kind);
+      const her = of('broody')[0];
+      const run = { left: 2200, right: 2430, top: 1290, bottom: 1420 };
+      return {
+        count: of('broody').length,
+        inTheRun:
+          her.x > run.left && her.x < run.right && her.y > run.top && her.y < run.bottom,
+        // Past the five chickens' patch, so nothing wanders over her.
+        clearOfTheFlock: Math.min(
+          ...of('chicken').map((c) => Math.hypot(c.homeX - her.x, c.homeY - her.y) - c.homeRadius),
+        ),
+        /*
+         * Nought, which is the data fact that makes her sit. Not her `scale` —
+         * she is drawn about twice a chicken's size at the same scale, so a
+         * comparison of those two numbers says nothing and passing it would
+         * have been theatre.
+         */
+        speed: her.speed,
+        homeRadius: her.homeRadius,
+        // She is not the hen with the chick: two different animals.
+        separate: of('hen')[0] !== her,
+        at: `${Math.round(her.x)},${Math.round(her.y)}`,
+      };
+    });
+
+    suite.equal(broody.count, 1, 'one hen on the nest');
+    suite.ok(broody.separate, 'and she is not the hen with the chick');
+    suite.ok(broody.inTheRun, 'sitting inside the run', broody.at);
+    suite.ok(broody.clearOfTheFlock > 0, 'out of the flock’s way', `${Math.round(broody.clearOfTheFlock)}px clear`);
+    suite.equal(broody.speed, 0, 'she has no walking speed at all');
+    suite.equal(broody.homeRadius, 0, 'and no patch of field to wander round');
+
+    // Walk right up to her, wait, and she has not budged.
+    const sat = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      game.collectAll();
+      const her = game.herd.animals.find((a) => a.kind === 'broody');
+      const from = { x: her.x, y: her.y };
+      game.teleport(her.x, her.y + 26);
+      let clockRan = 0;
+      const clockAt = her.clock;
+      for (let i = 0; i < 3600; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      }
+      clockRan = her.clock - clockAt;
+      return {
+        moved: +Math.hypot(her.x - from.x, her.y - from.y).toFixed(3),
+        clockRan: +clockRan.toFixed(1),
+        awake: her.awake,
+      };
+    });
+
+    suite.ok(sat.awake, 'the colour is on her');
+    suite.equal(sat.moved, 0, 'a minute of you standing over her and she sits tight');
+    suite.atLeast(sat.clockRan, 50, 'but her clock runs, so she is breathing');
+
+    // And out in the graphite she is a drawing: the clock stops with everything.
+    const away = await game.evaluate((pencil) => {
+      const { game } = pencil;
+      game.restart();
+      const her = game.herd.animals.find((a) => a.kind === 'broody');
+      game.teleport(her.x, her.y + 1200);
+      const clockAt = her.clock;
+      const from = { x: her.x, y: her.y };
+      for (let i = 0; i < 600; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      }
+      return {
+        clockRan: +(her.clock - clockAt).toFixed(3),
+        moved: +Math.hypot(her.x - from.x, her.y - from.y).toFixed(3),
+        awake: her.awake,
+      };
+    });
+
+    suite.equal(away.awake, false, 'walk away and she is out in the graphite');
+    suite.equal(away.clockRan, 0, 'and her breath stops with everything else out there');
+    suite.equal(away.moved, 0, 'a restart does not scatter her off the nest either');
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();

@@ -430,6 +430,19 @@ export function buildLayout(): Layout {
   animals.push({ kind: 'hen', x: 2286, y: 1352, homeRadius: 44, scale: 1.5 });
   animals.push({ kind: 'chick', x: 2302, y: 1358, homeRadius: 44, scale: 0.82 });
 
+  /*
+   * The hen on the nest, in the quiet corner of the run.
+   *
+   * A second hen, and deliberately not the one with the chick: that one
+   * wanders the run all day and this one has not moved for a fortnight. Put in
+   * the far corner, away from the gate and out of the five chickens' patch —
+   * they roam to about x=2358 and she is past that, so nothing walks over her.
+   *
+   * Costs the generator nothing: the coordinates are written down rather than
+   * drawn, exactly like the hen and chick above.
+   */
+  animals.push({ kind: 'broody', x: 2390, y: 1396, homeRadius: 0, scale: 1 });
+
   // a cat asleep by the cottage door
   animals.push({ kind: 'cat', x: 640, y: 1498, homeRadius: 0, scale: 1.05 });
   sites.reserve(640, 1498, 40);

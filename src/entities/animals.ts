@@ -2,9 +2,22 @@ import { roundRectPath } from '../core/geom';
 import { clamp, TAU } from '../core/math';
 import { rnd, rr } from '../core/rng';
 import { ink, inkArc, inkArcs, inkLine, inkLines, inkPoly, jitter } from '../media/ink';
-import { PENCIL, type Medium } from '../media/medium';
+import { PAPER, PENCIL, type Medium } from '../media/medium';
 import { movingShadow } from '../media/sprites';
 import type { AnimalKind } from './animalKinds';
+
+/**
+ * The nesting hen's colours.
+ *
+ * Her white is the paper's own cream rather than a true white, and the outline
+ * is nearly black: in the drawing she comes from, the body is the untouched
+ * page and the crayon is only ever the line round it.
+ */
+const HEN = '#f7f2e6';
+const HEN_EDGE = '#2b2620';
+/** The straw of the nest, thrown out flat around her. */
+const STRAW = '#e8a53c';
+const STRAW_EDGE = '#c07d22';
 
 /**
  * Livestock, drawn live in both media so they can wander.
@@ -166,6 +179,8 @@ const SPEEDS: Record<AnimalKind, number> = {
   sheep: 26,
   cow: 19,
   cat: 0,
+  // Sitting, and the whole point of her is that she does not get up.
+  broody: 0,
   // A frog on a lily pad has arrived. Where would it go?
   frog: 0,
 };
@@ -555,6 +570,283 @@ export function drawChickHead(ctx: CanvasRenderingContext2D, medium: Medium, k: 
     ctx.stroke();
   }
 }
+
+/**
+ * The hen on the nest, straight out of the drawing she comes from.
+ *
+ * Not the hen with the chick — that one wanders the run and this one has not
+ * moved for a fortnight. The drawing is a child's, in crayon, and what it is
+ * about is the *shape*: an enormous smooth white body, far too big for the
+ * head, with a long neck coming up out of one end of it and the smallest
+ * possible curl of tail at the other. Everything worth keeping is in that
+ * silhouette, so the body here is bigger relative to the head than any real
+ * hen's, in the same way the drawing's is.
+ *
+ * Four things in the drawing are doing the work and all four are here: the
+ * black outline heavier than anything else in the picture, the wing sketched on
+ * the body in a completely different and much finer line, the row of pale eggs
+ * showing under her, and the orange straw thrown out flat around the whole
+ * thing like a sunburst. The straw is what makes her a hen on a nest rather
+ * than a hen sitting down.
+ *
+ * One drawing, nest and bird together. She does not walk and she does not
+ * peck, so there is nothing to take apart — the breath is a vertical scale
+ * applied to the whole picture, which is a transform.
+ */
+export function drawBroodyHen(
+  ctx: CanvasRenderingContext2D,
+  medium: Medium,
+  k: number,
+): void {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  /** Her body: one big smooth oval, tipped very slightly nose-up. */
+  const body = () => {
+    ctx.beginPath();
+    ctx.ellipse(0, -11, 13.5, 9.5, -0.06, 0, TAU);
+  };
+
+  /** The neck and head as one shape, rising forward out of the body. */
+  const neck = () => {
+    ctx.beginPath();
+    ctx.moveTo(6, -16);
+    ctx.quadraticCurveTo(13.5, -20, 12.6, -26);
+    ctx.quadraticCurveTo(12, -31.5, 8, -31.5);
+    ctx.quadraticCurveTo(4.2, -31.5, 4.6, -26.5);
+    ctx.quadraticCurveTo(5, -21, 1.5, -17.5);
+    ctx.closePath();
+  };
+
+  /**
+   * The eggs, and they are drawn last of everything.
+   *
+   * Tucked under her they were invisible — her body is a solid oval and it
+   * covered all four. In the drawing they are not under her at all: they are
+   * drawn *over* her lower edge, four pale ovals crossing the black outline,
+   * which is what a child draws when they know the eggs are there. So they
+   * overlap her, and the overlap is the point.
+   */
+  const EGGS: readonly [number, number, number][] = [
+    [-8.6, -5.4, 0.42],
+    [-2.9, -4.4, -0.1],
+    [2.9, -4.6, 0.16],
+    [8.6, -5.6, -0.34],
+  ];
+
+  /** The sunburst of straw, thrown out flat and wider than she is. */
+  const strawSpray = (draw: (fromX: number, fromY: number, toX: number, toY: number, i: number) => void) => {
+    for (let i = 0; i < 19; i++) {
+      const a = Math.PI + (i / 18) * Math.PI;
+      const reach = 22 + jitter(k + i, 4.5);
+      draw(
+        Math.cos(a) * 7,
+        -3 + Math.sin(a) * 1.8,
+        Math.cos(a) * reach,
+        -1.5 + Math.sin(a) * reach * 0.3,
+        i,
+      );
+    }
+  };
+
+  if (medium === 'color') {
+    // The nest first, under everything: the spray, then the mound it sits in.
+    ctx.strokeStyle = STRAW;
+    ctx.lineWidth = 2.3;
+    strawSpray((fx, fy, tx, ty) => {
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+    });
+    ctx.fillStyle = STRAW;
+    ctx.beginPath();
+    ctx.ellipse(0, -3.2, 19.5, 5.8, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = STRAW_EDGE;
+    ctx.lineWidth = 1.1;
+    for (let i = 0; i < 11; i++) {
+      const x = -15 + i * 3;
+      ctx.beginPath();
+      ctx.moveTo(x, -1.2 + jitter(k + 40 + i, 0.8));
+      ctx.lineTo(x + 4.5, -5.6 + jitter(k + 50 + i, 0.8));
+      ctx.stroke();
+    }
+
+    // The tail: the smallest possible curl, as in the drawing, and behind her.
+    ctx.strokeStyle = HEN_EDGE;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-12.5, -15.5);
+    ctx.quadraticCurveTo(-16, -17.4, -14.6, -19.4);
+    ctx.quadraticCurveTo(-13.5, -20.7, -12.6, -19.2);
+    ctx.stroke();
+
+    // Her, in one piece: neck and body filled together so no seam shows.
+    ctx.fillStyle = HEN;
+    neck();
+    ctx.fill();
+    body();
+    ctx.fill();
+
+    /*
+     * The outline, and it is heavier than any other line in the valley on
+     * purpose. In the drawing it is a wax crayon gone over twice and it is the
+     * first thing you see; a polite one-pixel edge loses her completely.
+     */
+    ctx.strokeStyle = HEN_EDGE;
+    ctx.lineWidth = 1.9;
+    neck();
+    ctx.stroke();
+    body();
+    ctx.stroke();
+
+    /*
+     * The wing, in pencil on top of the paint.
+     *
+     * This is the one place the drawing changes tool: the body is crayon and
+     * the wing is a fine graphite outline over it, three layered lobes and no
+     * shading. Drawing it in the body's own colours turned her into a lump, and
+     * the difference in line is the whole reason the wing reads at all.
+     */
+    ctx.strokeStyle = 'rgba(74,68,58,0.7)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-0.5, -15.5);
+    ctx.quadraticCurveTo(6.5, -19.5, 10, -13.5);
+    ctx.quadraticCurveTo(5, -8.6, -0.5, -15.5);
+    ctx.stroke();
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(1.4, -14.6);
+    ctx.quadraticCurveTo(6, -16.6, 8.4, -12.6);
+    ctx.stroke();
+
+    // The comb, and the wattle under the beak. Two blobs and one, as drawn.
+    ctx.fillStyle = '#d9463c';
+    ctx.beginPath();
+    ctx.arc(6.6, -32.3, 1.9, 0, TAU);
+    ctx.arc(9.5, -32.7, 1.6, 0, TAU);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(10.4, -27.4, 1.5, 0, TAU);
+    ctx.fill();
+
+    // The beak, and the one dark dot that makes her look at you.
+    ctx.fillStyle = '#e89a2c';
+    ctx.beginPath();
+    ctx.moveTo(11.6, -29.6);
+    ctx.lineTo(16.4, -28.4);
+    ctx.lineTo(11.6, -26.8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#2e2b26';
+    ctx.beginPath();
+    ctx.arc(10.2, -30.4, 0.95, 0, TAU);
+    ctx.fill();
+
+    // And the eggs over her lower edge — see `EGGS`.
+    for (const [ex, ey, tilt] of EGGS) {
+      ctx.fillStyle = '#f6efdf';
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, 3.3, 4.1, tilt, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#bfae8c';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    /*
+     * A few blades of straw back over the eggs, so they are sitting in the nest
+     * rather than stacked in front of it.
+     */
+    ctx.strokeStyle = STRAW_EDGE;
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 5; i++) {
+      const x = -11 + i * 5.5;
+      ctx.beginPath();
+      ctx.moveTo(x - 3, -1.6 + jitter(k + 90 + i, 0.7));
+      ctx.lineTo(x + 3.5, -4.4 + jitter(k + 96 + i, 0.7));
+      ctx.stroke();
+    }
+    return;
+  }
+
+  /*
+   * In graphite she is the same shape and nothing else. No straw colour, no
+   * red, no orange — the drawing out here is the outline, which is exactly
+   * what the crayon original is underneath its colour.
+   */
+  ink(ctx, 0.36, 0.9);
+  strawSpray((fx, fy, tx, ty, i) => inkLine(ctx, fx, fy, tx, ty, k + 60 + i));
+
+  ink(ctx, 0.5, 1);
+  ctx.beginPath();
+  ctx.moveTo(-12.5, -15.5);
+  ctx.quadraticCurveTo(-16, -17.4, -14.6, -19.4);
+  ctx.quadraticCurveTo(-13.5, -20.7, -12.6, -19.2);
+  ctx.stroke();
+
+  // Knocked out of the paper, then outlined firmly — she is white, and white
+  // over the grain is the paper with a hard line round it.
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = PAPER;
+  neck();
+  ctx.fill();
+  body();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ink(ctx, 0.66, 1.5);
+  neck();
+  ctx.stroke();
+  body();
+  ctx.stroke();
+
+  ink(ctx, 0.34, 0.85);
+  ctx.beginPath();
+  ctx.moveTo(-0.5, -15.5);
+  ctx.quadraticCurveTo(6.5, -19.5, 10, -13.5);
+  ctx.quadraticCurveTo(5, -8.6, -0.5, -15.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(1.4, -14.6);
+  ctx.quadraticCurveTo(6, -16.6, 8.4, -12.6);
+  ctx.stroke();
+
+  ink(ctx, 0.5, 1.05);
+  inkArc(ctx, 6.6, -32.3, 1.8, k + 80);
+  inkArc(ctx, 9.5, -32.7, 1.5, k + 86);
+  inkArc(ctx, 10.4, -27.4, 1.4, k + 92);
+  ctx.beginPath();
+  ctx.moveTo(11.6, -29.6);
+  ctx.lineTo(16.4, -28.4);
+  ctx.lineTo(11.6, -26.8);
+  ctx.closePath();
+  ctx.stroke();
+  ink(ctx, 0.62, 1.25);
+  ctx.beginPath();
+  ctx.arc(10.2, -30.4, 0.8, 0, TAU);
+  ctx.stroke();
+
+  /*
+   * The eggs last out here too, knocked out of the paper so her outline does
+   * not read straight through them.
+   */
+  for (const [ex, ey, tilt] of EGGS) {
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = PAPER;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, 3.3, 4.1, tilt, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ink(ctx, 0.45, 1);
+    ctx.beginPath();
+    ctx.ellipse(ex + jitter(k + 70 + ex, 0.4), ey, 3.3, 4.1, tilt, 0, TAU);
+    ctx.stroke();
+  }
+}
+
 
 /** How the purr moves her, `t` seconds into her own clock. */
 export function catStir(a: Animal, t: number): {

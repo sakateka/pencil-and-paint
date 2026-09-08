@@ -51,6 +51,14 @@ const SHY_DISTANCE: Record<AnimalKind, number> = {
   sheep: 66,
   cow: 66,
   cat: 0,
+  /*
+   * Nought, and this one is stubbornness rather than nerve.
+   *
+   * A hen on eggs sits tight — walking up to one is how you find out she will
+   * not move. She is also the only bird in the run you can get near enough to
+   * look at properly, which is the point of her.
+   */
+  broody: 0,
   frog: 0,
 };
 
@@ -118,6 +126,17 @@ export class Herd {
         a.purr = Math.max(0, a.purr - dt);
         continue;
       }
+
+      /*
+       * She sits, and that is the whole of it.
+       *
+       * The clock above is all she needs — it drives her breath, and it stops
+       * out in the graphite along with everything else. No step, and no
+       * collision resolve either: a hen on eggs being shoved out of a fence
+       * post she has been sitting beside for a fortnight is not a thing that
+       * should be able to happen to her.
+       */
+      if (a.kind === 'broody') continue;
 
       /*
        * A frog stays on its lily pad, and must not be asked to resolve

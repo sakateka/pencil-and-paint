@@ -3,6 +3,7 @@ import {
   catStir,
   chickHinge,
   chickenHinge,
+  drawBroodyHen,
   cowHinge,
   cowTailAngle,
   COW_TAIL,
@@ -216,6 +217,21 @@ const chickenHead = partLook({
   draw: (ctx, medium, k, variant) => drawChickenHead(ctx, medium, k, COATS[variant]),
 });
 
+/**
+ * The hen on the nest: one picture, nest and bird together.
+ *
+ * She has no walk and no peck, so there is no step and no hinge to separate —
+ * and the nest is in the same picture as she is because it never appears
+ * without her and never sorts apart from her. Her breath is a vertical scale
+ * applied at show time.
+ */
+const broodyLook = partLook({
+  id: 'broody',
+  reach: 40,
+  variants: 1,
+  draw: (ctx, medium, k) => drawBroodyHen(ctx, medium, k),
+});
+
 const chickBody = bodyLook({
   id: 'chick',
   reach: 16,
@@ -363,6 +379,7 @@ export function registerHerdLooks(library: LookLibrary): void {
   library.register(chickenHead);
   library.register(chickBody);
   library.register(chickHead);
+  library.register(broodyLook);
   library.register(catBody);
   library.register(catTail);
   library.register(catHead);
@@ -455,6 +472,7 @@ export function showHerdAnimal(
 ): boolean {
   const hand = handOf(a);
   if (a.kind === 'cat') return showCat(stage, library, a, medium, layer, depth, hand);
+  if (a.kind === 'broody') return showBroody(stage, library, a, medium, layer, depth, hand);
   if (a.kind === 'frog') return showFrog(stage, library, a, medium, layer, depth, hand);
 
   const variant = variantOf(a);
@@ -552,6 +570,43 @@ function hingeOf(a: Animal): { x: number; y: number; angle: number } {
  * The breath is a scale and the leap of faith of this whole design: a drawing
  * that swells and settles without a single repaint.
  */
+/**
+ * The hen on the nest, and the one thing she does.
+ *
+ * She sits. Everything about her is one picture, so the only live number is the
+ * breath — a vertical scale about her own ground line, which lifts her back
+ * without lifting the nest she is sitting in off the field, because the nest is
+ * drawn at the bottom of that same picture where the scale barely reaches.
+ *
+ * Not flipped. The drawing she comes from has her facing one way with a
+ * particular curl of tail behind her, and a mirrored version of that reads as a
+ * different bird.
+ */
+function showBroody(
+  stage: Stage,
+  library: LookLibrary,
+  a: Animal,
+  medium: Medium,
+  layer: Layer,
+  depth: number,
+  hand: number,
+): boolean {
+  // Slow and shallow. A hen on eggs is the stillest thing in the valley.
+  const breath = 1 + Math.sin(a.clock * 0.85 + a.phase) * 0.014;
+  return stage.showLook({
+    library,
+    id: broodyLook.id,
+    poseKey: broodyLook.key({ hand, variant: 0 }, medium),
+    medium,
+    layer,
+    x: a.x,
+    y: a.y,
+    depth,
+    scale: a.scale,
+    scaleY: a.scale * breath,
+  });
+}
+
 function showCat(
   stage: Stage,
   library: LookLibrary,
