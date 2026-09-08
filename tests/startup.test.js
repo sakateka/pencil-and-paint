@@ -84,6 +84,87 @@ export async function run(url) {
     suite.ok(after.running, 'an early press starts the game once it is ready');
     suite.ok(after.introHidden, 'and the title card goes away');
     await early.close();
+
+    /*
+     * --- the load report: folded away, but reachable and copyable ---
+     *
+     * The build id stays out because it is the only way to tell from a phone
+     * whether you are looking at current code or yesterday's cache. Everything
+     * else is diagnostics and belongs behind a fold — and behind it, it has to
+     * be takeable in one press, because the person who wants it is the person
+     * who cannot select eight lines of 11px monospace with a thumb.
+     */
+    const context = await browser.newContext({ viewport: { width: 412, height: 892 } });
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const card = await context.newPage();
+    const cardErrors = [];
+    card.on('pageerror', (e) => cardErrors.push(e.message));
+    await card.goto(gameUrl(url));
+    // Left on the title card on purpose — this is the one screen it lives on.
+    await card.waitForSelector('#buildDetails:not(.hidden)', { timeout: 60000 });
+
+    const shown = await card.evaluate(() => ({
+      stamp: document.querySelector('#buildStamp').textContent,
+      open: document.querySelector('#buildDetails').open,
+      summary: document.querySelector('#buildDetails summary').textContent,
+      report: document.querySelector('#buildReport').textContent,
+      started: globalThis.pencil !== undefined,
+    }));
+
+    suite.ok(shown.stamp.length > 0, 'the build id is out on the card', shown.stamp);
+    suite.equal(
+      shown.stamp.includes('\n'),
+      false,
+      'and it is the only line out there',
+      JSON.stringify(shown.stamp),
+    );
+    suite.equal(shown.open, false, 'the timings are folded away to begin with');
+    suite.ok(shown.summary.length > 0, 'behind something that says what it is', shown.summary);
+    suite.ok(shown.report.includes('bake'), 'the bake is in the report');
+    suite.atLeast(shown.report.split('\n').length, 3, 'and so is the rest of the load');
+    suite.equal(
+      shown.report.includes(shown.stamp),
+      false,
+      'the id is not repeated inside it',
+    );
+
+    await card.click('#buildDetails summary');
+
+    /*
+     * Unfolding it must not start the game.
+     *
+     * Any pointerdown on the page is the first gesture, and the first gesture
+     * takes the card away — so before this was spared, the report was the one
+     * panel on the card that could not be read: reaching for it dismissed the
+     * thing it was written on.
+     */
+    const afterOpening = await card.evaluate(() => ({
+      open: document.querySelector('#buildDetails').open,
+      introUp: !document.getElementById('intro').classList.contains('hidden'),
+      started: globalThis.pencil !== undefined,
+    }));
+    suite.ok(afterOpening.open, 'the fold opens when you press it');
+    suite.ok(afterOpening.introUp, 'and the title card is still there');
+    suite.ok(!afterOpening.started, 'reading the report does not start the game');
+
+    await card.click('#buildCopy');
+    suite.ok(
+      await card.evaluate(() => !document.getElementById('intro').classList.contains('hidden')),
+      'nor does copying it',
+    );
+    const copied = await card.evaluate(() => navigator.clipboard.readText());
+    suite.ok(
+      copied.startsWith(shown.stamp),
+      'what it copies leads with the build id',
+      copied.slice(0, 40),
+    );
+    suite.ok(
+      copied.includes('bake') && copied.length > shown.stamp.length + 20,
+      'and carries the whole report with it',
+      `${copied.length} characters`,
+    );
+    suite.equal(cardErrors.length, 0, 'no page errors on the card', cardErrors.join(' | '));
+    await context.close();
   } finally {
     await browser.close();
   }

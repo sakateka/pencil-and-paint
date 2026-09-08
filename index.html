@@ -282,10 +282,34 @@
   .hidden { opacity:0; pointer-events:none; visibility:hidden; }
 
   /* Which build this is. Small, but the only way to tell from a phone whether
-     you are looking at current code or a cached copy of yesterday's. */
+     you are looking at current code or a cached copy of yesterday's — so this
+     line stays out where it can be read without asking for it. */
+  /* No `white-space:pre-line` here any more: it was for the days when the whole
+     report was one run of text in this div, and now it only turns the newlines
+     between the tags below into blank lines. The report keeps its own. */
   .build {
-    margin-top:14px; font-size:11px; opacity:.45; white-space:pre-line; line-height:1.5;
+    margin-top:14px; font-size:11px; opacity:.45; line-height:1.5;
     font-family:ui-monospace, Menlo, Consolas, monospace;
+  }
+  /* And the dozen lines of bake and load timings behind it, which are for
+     whoever is chasing something and nobody else. Folded away by default: it
+     is the first screen of the game, not a diagnostics page. */
+  #buildDetails { margin-top:6px; }
+  #buildDetails summary {
+    cursor:pointer; opacity:.75; list-style:none; display:inline-block;
+    border-bottom:1px dotted rgba(60,55,45,.5); padding-bottom:1px;
+  }
+  #buildDetails summary::-webkit-details-marker { display:none; }
+  /* Selectable, scrollable and left-aligned — it is meant to be read and
+     copied, and the card centres everything else. */
+  #buildReport {
+    margin:8px 0 0; text-align:left; white-space:pre; overflow-x:auto;
+    max-height:34vh; overflow-y:auto; font-size:11px; line-height:1.5;
+    -webkit-user-select:text; user-select:text;
+  }
+  #buildCopy {
+    margin-top:8px; font-size:12px; padding:4px 12px; border-radius:7px;
+    box-shadow:1px 2px 0 rgba(60,55,45,.3); background:rgba(246,241,229,.9);
   }
 
   /* What the pond gave up. Under the counter on the left: the bottom of the
@@ -408,7 +432,14 @@
     </div>
     <p style="font-size:15px;opacity:.7;margin-top:12px" data-i18n="intro.gather">Gather the spilled paint pots to widen the colour.</p>
     <button id="startBtn" data-i18n="intro.start">Start walking</button>
-    <div id="build" class="build"></div>
+    <div id="build" class="build">
+      <div id="buildStamp"></div>
+      <details id="buildDetails" class="hidden">
+        <summary data-i18n="intro.details">how this load went</summary>
+        <pre id="buildReport"></pre>
+        <button type="button" id="buildCopy" class="text" data-i18n="intro.copy">copy</button>
+      </details>
+    </div>
   </div>
 </div>
 

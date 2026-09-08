@@ -104,9 +104,20 @@ const MAX_STEP = 0.05;
  */
 function firstGesture(button: HTMLButtonElement | null): Promise<void> {
   return new Promise((resolve) => {
+    /*
+     * The corner controls, and the load report.
+     *
+     * Both are things you do *to the title card* rather than instead of it, and
+     * a gesture that starts the game would take the card away mid-reach. The
+     * report is the sharper case: unfolding it is a tap, copying it is another,
+     * and selecting a line of it is a press and a drag — so without this it is
+     * the one panel on the card that cannot be read at all.
+     */
+    const spared = (target: EventTarget | null) =>
+      (target as Element | null)?.closest?.('#corner, #build') != null;
+
     const done = (e?: Event) => {
-      // Tapping the corner controls should not start the game.
-      if (e && (e.target as Element | null)?.closest?.('#corner')) return;
+      if (e && spared(e.target)) return;
       button?.removeEventListener('click', done);
       removeEventListener('keydown', onKey);
       removeEventListener('pointerdown', done);
@@ -114,6 +125,8 @@ function firstGesture(button: HTMLButtonElement | null): Promise<void> {
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Enter on the focused fold opens it; it does not also start the game.
+      if (spared(document.activeElement)) return;
       done();
     };
     button?.addEventListener('click', done);
@@ -140,6 +153,52 @@ document.addEventListener('visibilitychange', () => {
     hiddenSince = 0;
   }
 });
+
+/**
+ * Fill in the load report on the title card and let it be taken away.
+ *
+ * `shown` is what the panel displays; `whole` is what the button copies, which
+ * carries the build id on the front. The first question about any report from a
+ * deployed page is whether it is even the code you think it is, and a report
+ * pasted into a message without that line cannot answer it — while on the card
+ * the id is already sitting above, and repeating it there would be noise.
+ */
+function showBuildReport(shown: string, whole: string): void {
+  const panel = document.querySelector<HTMLElement>('#buildDetails');
+  const body = document.querySelector<HTMLElement>('#buildReport');
+  const button = document.querySelector<HTMLButtonElement>('#buildCopy');
+  if (!panel || !body) return;
+  body.textContent = shown;
+  panel.classList.remove('hidden');
+
+  button?.addEventListener('click', async () => {
+    /*
+     * The clipboard, and then the honest fallback.
+     *
+     * `navigator.clipboard` does not exist on an insecure origin, and even on a
+     * secure one it can be refused — so the failure has to leave the person
+     * somewhere useful rather than with a button that silently did nothing.
+     * Selecting the text is that: it puts them one long-press from the
+     * platform's own copy, which is what they were reaching for anyway.
+     */
+    let copied = false;
+    try {
+      await navigator.clipboard?.writeText(whole);
+      copied = true;
+    } catch {
+      copied = false;
+    }
+    if (!copied) {
+      const range = document.createRange();
+      range.selectNodeContents(body);
+      const selection = getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    button.textContent = t(copied ? 'intro.copied' : 'intro.selected');
+    setTimeout(() => (button.textContent = t('intro.copy')), 2000);
+  });
+}
 
 async function boot(): Promise<void> {
   const bootAt = performance.now();
@@ -168,7 +227,7 @@ async function boot(): Promise<void> {
   setLanguage(detectLanguage());
   translateDom();
 
-  const stamp = document.querySelector<HTMLElement>('#build');
+  const stamp = document.querySelector<HTMLElement>('#buildStamp');
   if (stamp) stamp.textContent = BUILD_ID;
 
   const startButton = document.querySelector<HTMLButtonElement>('#startBtn');
@@ -291,14 +350,22 @@ async function boot(): Promise<void> {
       ` · work ${(performance.now() - bootAt).toFixed(0)}/${(Date.now() - bootAtWall).toFixed(0)}` +
       (nav ? `\n${netPhases(nav)}` : '');
     const lastLoad = remember(thisLoad);
-    const report = `${BUILD_ID}\n${world.bakeSummary}\n${thisLoad}` +
-      (lastLoad ? `\nprevious load: ${lastLoad}` : '');
     /*
      * The title card, and `pencil.report()`. It used to be carried in the F-key
      * readout as well, which put a dozen lines of load timings under a display
      * whose whole job is to say what this frame is doing right now.
+     *
+     * The build id stays out on the card and the timings fold away behind it.
+     * All of this used to sit open under the Start button, which meant the
+     * first thing anybody saw of the game was a paragraph of diagnostics — and
+     * it still could not be got at usefully, because the one person who wants
+     * it is on a phone chasing a slow load and cannot select eight lines of
+     * 11px monospace with a thumb. So: folded, and with a button that copies.
      */
-    stamp.textContent = report;
+    const detail = `${world.bakeSummary}\n${thisLoad}` +
+      (lastLoad ? `\nprevious load: ${lastLoad}` : '');
+    stamp.textContent = BUILD_ID;
+    showBuildReport(detail, `${BUILD_ID}\n${detail}`);
   }
 
   /* The card is readable for as long as they like; this only takes it away. */
