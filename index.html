@@ -361,7 +361,7 @@
   <div id="meterWrap"><div id="meter"></div></div>
 </div>
 
-<div id="hint" class="panel" data-i18n="hint.default">the world is only coloured where you stand — go and find the rest</div>
+<div id="hint" class="panel" data-i18n="hint.default">follow the paths and look for paint pots</div>
 
 <div id="actions">
   <button id="action" class="panel hidden" type="button">
@@ -409,7 +409,7 @@
 </div>
 
 <div id="studio" class="hidden">
-  <div id="studioTitle" data-i18n="studio.title">the easel</div>
+  <div id="studioTitle" data-i18n="studio.title">a place to draw</div>
   <canvas id="paper" width="800" height="600"></canvas>
   <div class="studio-row" id="palette"></div>
   <div class="studio-row" id="nibs"></div>
@@ -418,24 +418,24 @@
     <button type="button" class="text primary" id="studioClose" data-i18n="studio.close">done</button>
   </div>
   <div id="gallery"></div>
-  <div id="galleryEmpty" data-i18n="studio.empty">nothing kept yet</div>
-  <div id="collectionTitle" class="hidden" data-i18n="studio.collection">and these were here all along</div>
+  <div id="galleryEmpty" data-i18n="studio.empty">your drawings will go here</div>
+  <div id="collectionTitle" class="hidden" data-i18n="studio.collection">more pictures to look at</div>
   <div id="collection" class="hidden"></div>
 </div>
 
 <div id="intro" class="overlay">
   <div class="card">
     <h1>Pencil &amp; Paint</h1>
-    <p><span data-i18n="intro.tagline1">Someone left the world half-finished, in graphite.</span><br><span data-i18n="intro.tagline2">Only what is near you remembers its colours.</span></p>
+    <p><span data-i18n="intro.tagline1">Someone drew this world in pencil and left it for you to colour.</span><br><span data-i18n="intro.tagline2">As you walk, the world fills with colour around you.</span></p>
     <div class="keys">
       <span class="key">W A S D</span><span class="key">↑ ← ↓ →</span><span class="key" data-i18n="intro.drag">drag to walk</span>
     </div>
-    <p style="font-size:15px;opacity:.7;margin-top:12px" data-i18n="intro.gather">Gather the spilled paint pots to widen the colour.</p>
+    <p style="font-size:15px;opacity:.7;margin-top:12px" data-i18n="intro.gather">Collect paint pots to spread colour further.</p>
     <button id="startBtn" data-i18n="intro.start">Start walking</button>
     <div id="build" class="build">
       <div id="buildStamp"></div>
       <details id="buildDetails" class="hidden">
-        <summary data-i18n="intro.details">how this load went</summary>
+        <summary data-i18n="intro.details">loading details</summary>
         <pre id="buildReport"></pre>
         <button type="button" id="buildCopy" class="text" data-i18n="intro.copy">copy</button>
       </details>
@@ -451,9 +451,9 @@
 <div id="done" class="panel hidden">
   <button id="doneTab" type="button" aria-expanded="true"><span aria-hidden="true">›</span></button>
   <div id="doneBody">
-    <div class="done-title" data-i18n="done.title">The world remembers.</div>
+    <div class="done-title" data-i18n="done.title">The world is coloured in!</div>
     <div class="done-sub" id="doneSub">Every pot found in —.</div>
-    <button id="againBtn" data-i18n="done.again">Start a new world</button>
+    <button id="againBtn" data-i18n="done.again">Play again</button>
   </div>
 </div>
 

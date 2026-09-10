@@ -78,11 +78,11 @@ export async function run(url) {
       return out;
     });
 
-    suite.equal(counting.enPots[0], '1 pot still in graphite', 'English has a singular');
-    suite.equal(counting.enPots[2], '5 pots still in graphite', 'and a plural');
-    suite.equal(counting.ruPots[0], 'осталась 1 нераскрашенная банка', 'Russian declines for one');
-    suite.equal(counting.ruPots[1], 'осталось 2 нераскрашенные банки', 'differently for a few');
-    suite.equal(counting.ruPots[2], 'осталось 5 нераскрашенных банок', 'and differently again for many');
+    suite.equal(counting.enPots[0], '1 paint pot left to find', 'English has a singular');
+    suite.equal(counting.enPots[2], '5 paint pots left to find', 'and a plural');
+    suite.equal(counting.ruPots[0], 'осталось найти 1 банку', 'Russian declines for one');
+    suite.equal(counting.ruPots[1], 'осталось найти 2 банки', 'differently for a few');
+    suite.equal(counting.ruPots[2], 'осталось найти 5 банок', 'and differently again for many');
 
     suite.equal(counting.enRoach[0], 'a roach', 'a single fish is named, not counted');
     suite.equal(counting.enRoach[2], '5 roach', 'and roach do not take an s');
