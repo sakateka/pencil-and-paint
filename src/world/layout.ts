@@ -4,6 +4,7 @@ import { HAMMOCK_SPAN, makeHammock } from './hammock';
 import { lerp, TAU } from '../core/math';
 import { rng, rnd, rr } from '../core/rng';
 import type { AnimalKind } from '../entities/animalKinds';
+import { SECRET_SCALE } from '../entities/stone';
 import { makeBarn, makeHouse } from './buildings';
 import {
   makeBench,
@@ -726,7 +727,7 @@ export function buildLayout(): Layout {
    */
   scenery.push({
     y: secret.y,
-    colliders: [circleCollider(secret.x, secret.y - 3, 11)],
+    colliders: [circleCollider(secret.x, secret.y - 3 * SECRET_SCALE, 11 * SECRET_SCALE)],
     draw() {},
   });
 

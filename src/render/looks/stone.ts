@@ -1,4 +1,4 @@
-import { drawGlint, drawSecretStone, type SecretStone } from '../../entities/stone';
+import { drawGlint, drawSecretStone, SECRET_SCALE, type SecretStone } from '../../entities/stone';
 import { withBoilAt } from '../../media/ink';
 import type { Medium } from '../../media/medium';
 import type { Look, LookLibrary } from '../looks';
@@ -70,6 +70,7 @@ export function showSecretStone(
     layer,
     x: stone.x,
     y: stone.y,
+    scale: SECRET_SCALE,
     depth,
   });
 
@@ -81,11 +82,11 @@ export function showSecretStone(
     medium,
     layer,
     // On the facet, which is up and a little right of the stone's own origin.
-    x: stone.x + 1.5,
-    y: stone.y - 6,
+    x: stone.x + 1.5 * SECRET_SCALE,
+    y: stone.y - 6 * SECRET_SCALE,
     depth: depth + 0.000001,
     // Opening out as it brightens, so the light arrives rather than appears.
-    scale: 0.55 + stone.glint * 0.65,
+    scale: (0.55 + stone.glint * 0.65) * SECRET_SCALE,
     alpha: stone.glint,
   });
 }

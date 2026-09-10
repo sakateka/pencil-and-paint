@@ -28,7 +28,7 @@ export async function run(url) {
           (c) =>
             c.kind === 'circle' &&
             Math.abs(c.x - game.world.secret.x) < 1 &&
-            Math.abs(c.y - (game.world.secret.y - 3)) < 1,
+            Math.abs(c.y - (game.world.secret.y - 1.5)) < 1,
         ),
         lit: game.secret.lit,
         glint: game.secret.glint,

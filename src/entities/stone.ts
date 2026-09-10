@@ -28,6 +28,9 @@ const FACET = '#453d4c';
 /** The seed every wobble in the graphite stone is drawn from. */
 const K = 9100;
 
+/** A small pebble, half the width and height of the original drawing. */
+export const SECRET_SCALE = 0.5;
+
 /**
  * How far the drawing reaches from the point the stone stands on.
  *
@@ -35,7 +38,7 @@ const K = 9100;
  * is ten units across and its glint throws light a dozen further, so asking at
  * the origin would have it flashing while its own light fell on the graphite.
  */
-export const SECRET_REACH = 22;
+export const SECRET_REACH = 22 * SECRET_SCALE;
 
 /** How long one wink takes, and the range of quiet between them. */
 const WINK_SECONDS = 0.34;
