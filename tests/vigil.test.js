@@ -67,12 +67,21 @@ export async function run(url) {
       game.interact();
       const fromY = game.camera.y;
       const topY = game.camera.topCentreY;
-      for (let i = 0; i < 60; i++) {
+      let speed = 0;
+      let maxSpeedChange = 0;
+      const step = () => {
+        const before = game.camera.y;
         game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        const nextSpeed = (before - game.camera.y) * 60;
+        maxSpeedChange = Math.max(maxSpeedChange, Math.abs(nextSpeed - speed));
+        speed = nextSpeed;
+      };
+      for (let i = 0; i < 60; i++) {
+        step();
       }
       const afterOne = game.camera.y;
       for (let i = 0; i < 60 * 14; i++) {
-        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        step();
       }
       const held = {
         sitting: game.vigil.sitting,
@@ -84,6 +93,7 @@ export async function run(url) {
         afterOne,
         topY,
         cameraY: game.camera.y,
+        maxSpeedChange,
       };
       game.cancel(); // back on your feet — `interact` sits, it does not stand
       return held;
@@ -95,6 +105,11 @@ export async function run(url) {
     suite.equal(tooSoon.seen, false, 'nothing has been seen');
     suite.equal(tooSoon.lit, false, 'because the colour is nowhere near that sky');
     suite.ok(tooSoon.afterOne < tooSoon.fromY, 'the camera begins looking up when you sit');
+    suite.atMost(
+      tooSoon.maxSpeedChange / Math.abs(tooSoon.fromY - tooSoon.topY),
+      0.025,
+      'the whole climb accelerates and brakes without abrupt speed changes',
+    );
     suite.ok(
       tooSoon.afterOne - tooSoon.topY > (tooSoon.fromY - tooSoon.topY) * 0.6,
       'and takes its time rather than jumping there',
@@ -250,6 +265,9 @@ export async function run(url) {
       // Far enough that it is graphite again, near enough to still be on screen.
       game.teleport(v.x - 330, v.y + 190);
       for (let i = 0; i < 120; i++) game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      // Compare the drawing in a fixed frame, not two positions of the sky pan.
+      // The ink clock still ticks while simulation and camera motion are paused.
+      game.running = false;
       pencil.renderOnce();
     });
 
@@ -263,6 +281,7 @@ export async function run(url) {
       `${firstFrame.opaque} opaque pixels`,
     );
     suite.equal(laterFrame.hash, firstFrame.hash, 'in graphite nothing twitches');
+    await game.evaluate((pencil) => { pencil.game.running = true; });
 
     /*
      * And the cloud does not breathe where the colour has not reached it.

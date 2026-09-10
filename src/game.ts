@@ -493,32 +493,22 @@ export class Game {
      */
     if (this.fishing.active) this.herd.startle(this.fishing.floatX, this.fishing.floatY);
     else this.herd.calm();
-    let cameraX = this.walker.x;
-    let cameraY = this.walker.y;
-    const vigilPan = this.vigil.sitting;
-    if (vigilPan) {
+    if (this.vigil.sitting) {
       /*
-       * Sitting on the stump means looking up. Over six seconds the frame rises
-       * all the way to the top edge of the painted sky; slow enough to feel like
-       * attention wandering rather than a cut, and independent of whether the
-       * shape in the cloud is allowed to arrive yet.
+       * Look up from wherever the camera actually is. Give it one destination
+       * and let it ease into the journey and out of it, even before the valley
+       * is coloured and the shape in the cloud is allowed to arrive.
        *
        * A narrow screen also has to travel sideways once the valley is coloured,
        * because it cannot hold both the stump and the enlarged mirage at once.
        */
-      const t = clamp(this.vigil.gazeClock / 6, 0, 1);
-      const focus = t * t * (3 - 2 * t);
-      if (this.won && this.isMobileViewport) {
-        const sidewaysT = clamp(this.vigil.gazeClock / 3, 0, 1);
-        const sidewaysFocus = sidewaysT * sidewaysT * (3 - 2 * sidewaysT);
-        cameraX = lerp(this.walker.x, this.vigil.elephantX, sidewaysFocus);
-      }
+      const cameraX = this.won && this.isMobileViewport ? this.vigil.elephantX : this.camera.x;
       // `focus` subtracts the walker's usual fourteen-unit headroom; add it
       // here so the camera centre itself lands exactly on the sky limit.
-      cameraY = lerp(this.walker.y, this.camera.topCentreY + 14, focus);
+      this.camera.focus(cameraX, this.camera.topCentreY + 14, dt);
+    } else {
+      this.camera.follow(this.walker.x, this.walker.y, dt);
     }
-    if (vigilPan) this.camera.focus(cameraX, cameraY, dt);
-    else this.camera.follow(cameraX, cameraY, dt);
   }
 
   /**

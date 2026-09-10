@@ -8,6 +8,8 @@ const DEFAULT_DEAD_ZONE = 80;
 const CAMERA_MAX_SPEED = 560;
 const CAMERA_ACCELERATION = 1350;
 const CAMERA_DECELERATION = 2100;
+/** A quiet pan: most of the journey takes about six seconds. */
+const FOCUS_RESPONSE = 1.2;
 
 /**
  * Follows the walker, stays inside the map, and never lets the viewport show
@@ -79,7 +81,27 @@ export class Camera {
 
   /** Smoothly pan to a scripted point of interest, without a walker dead zone. */
   focus(targetX: number, targetY: number, dt: number): void {
-    this.track(targetX, targetY, dt, false);
+    if (!Number.isFinite(dt) || dt <= 0) return;
+    [this.x, this.velocityX] = this.focusAxis(this.x, this.velocityX, targetX, dt);
+    [this.y, this.velocityY] = this.focusAxis(this.y, this.velocityY, targetY - 14, dt);
+  }
+
+  /**
+   * Exact critically damped motion toward a fixed destination. Keep momentum
+   * on entry and let it fade continuously on arrival. The walker's braking
+   * controller resets speed whenever it catches its goal; chasing an animated
+   * goal with that controller made the upward pan repeatedly stop and restart.
+   */
+  private focusAxis(position: number, velocity: number, target: number, dt: number): [number, number] {
+    const offset = position - target;
+    const drift = velocity + FOCUS_RESPONSE * offset;
+    const decay = Math.exp(-FOCUS_RESPONSE * dt);
+    const nextPosition = target + (offset + drift * dt) * decay;
+    const nextVelocity = (velocity - FOCUS_RESPONSE * drift * dt) * decay;
+    if (Math.abs(nextPosition - target) < 0.001 && Math.abs(nextVelocity) < 0.001) {
+      return [target, 0];
+    }
+    return [nextPosition, nextVelocity];
   }
 
   /** Centre position that puts the very top of the painted sky on screen. */

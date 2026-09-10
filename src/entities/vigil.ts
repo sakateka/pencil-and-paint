@@ -129,9 +129,6 @@ const EYE = '#3a2f26';
 export class Vigil {
   sitting = false;
 
-  /** Seconds spent looking up, whether or not the valley is finished. */
-  gazeClock = 0;
-
   /** Seconds sat, which goes back to nothing the moment you stand up. */
   clock = 0;
 
@@ -167,7 +164,6 @@ export class Vigil {
   getUp(): void {
     this.sitting = false;
     this.clock = 0;
-    this.gazeClock = 0;
   }
 
   reset(): void {
@@ -197,7 +193,6 @@ export class Vigil {
      * and drifts on the same clock. Frozen out of the colour, like everything.
      */
     if (this.lit) this.beastClock += dt;
-    if (this.sitting) this.gazeClock += dt;
 
     if (!this.sitting || !mayArrive) {
       this.elephant = Math.max(0, this.elephant - dt / LEAVING);

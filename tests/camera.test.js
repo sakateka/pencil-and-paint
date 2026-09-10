@@ -122,6 +122,42 @@ export async function run(url) {
     suite.equal(motion.snapFollowDelta.x, 0, 'snapTo clears horizontal momentum');
     suite.equal(motion.snapFollowDelta.y, 0, 'snapTo clears vertical momentum');
 
+    const pan = await game.evaluate((pencil) => {
+      const camera = pencil.game.camera;
+      const run = (steps) => {
+        camera.snapTo(1000, 1000);
+        let previousSpeed = 0;
+        let maxSpeedChange = 0;
+        let reversed = false;
+        let atOne = 0;
+        for (let i = 0; i < steps.length; i++) {
+          const before = camera.y;
+          camera.focus(1000, 414, steps[i]);
+          const speed = (before - camera.y) / steps[i];
+          maxSpeedChange = Math.max(maxSpeedChange, Math.abs(speed - previousSpeed));
+          reversed ||= speed < -1e-8;
+          previousSpeed = speed;
+          if (i === 59) atOne = camera.y;
+        }
+        return { y: camera.y, maxSpeedChange, reversed, atOne };
+      };
+      const sixty = run(Array(900).fill(1 / 60));
+      const atThree = [30, 60, 144].map((fps) => run(Array(fps * 3).fill(1 / fps)).y);
+      const uneven = run(Array.from({ length: 120 }, () => [1 / 120, 1 / 24]).flat()).y;
+      return { sixty, atThree, uneven, regular: run(Array(360).fill(1 / 60)).y };
+    });
+
+    suite.atMost(pan.sixty.maxSpeedChange, 15, 'the sky pan changes speed gently on every frame');
+    suite.equal(pan.sixty.reversed, false, 'the sky pan never bounces back');
+    suite.ok(pan.sixty.atOne > 760 && pan.sixty.atOne < 1000, 'the first second eases into the climb');
+    suite.equal(pan.sixty.y, 400, 'the pan settles at its destination');
+    suite.atMost(
+      Math.max(...pan.atThree) - Math.min(...pan.atThree),
+      1e-7,
+      '30, 60 and 144 fps follow the same pan',
+    );
+    suite.atMost(Math.abs(pan.uneven - pan.regular), 1e-7, 'uneven frames keep the same gentle trajectory');
+
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
     await game.close();
