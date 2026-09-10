@@ -86,6 +86,63 @@ export async function run(url) {
       suite.equal(occlusion.inFront, 0, 'standing in front of it, nothing covers you');
     }
 
+    /*
+     * Tour the whole boundary twice. This was the exact failure mode of the old
+     * forty-eight-sprite cache: first visits baked trees, and later visits baked
+     * the same trees again after eviction.
+     */
+    const warmedOccluders = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      renderer.createReport();
+      const path = [];
+      for (let x = 200; x < 2600; x += 40) path.push([x, 400]);
+      for (let y = 400; y < 1800; y += 40) path.push([2600, y]);
+      for (let x = 2600; x > 200; x -= 40) path.push([x, 1800]);
+      for (let y = 1800; y > 400; y -= 40) path.push([200, y]);
+      let bakes = 0;
+      for (let lap = 0; lap < 2; lap++) {
+        for (const [x, y] of path) {
+          game.teleport(x, y);
+          game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+          renderer.render(game.scene);
+          bakes += renderer.frameStages.bakes;
+        }
+      }
+      return { bakes, created: renderer.createReport().total };
+    });
+
+    suite.equal(warmedOccluders.bakes, 0, 'crossing the whole valley bakes no occluders');
+    suite.equal(warmedOccluders.created, 0, 'and creates no occluder objects');
+
+    /*
+     * Circle the scarecrow itself. The chicken run shares this view, which made
+     * the lazy tall-scenery bake look as though the hens were uploading while
+     * they pecked. Pin the reported place, not just the generic boundary tour.
+     */
+    const scarecrowCost = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      renderer.uploadReport();
+      renderer.createReport();
+      let bakes = 0;
+      for (let i = 0; i < 240; i++) {
+        const angle = (i / 240) * Math.PI * 2;
+        // SCARECROW in world/layout.ts.
+        game.teleport(1900 + Math.cos(angle) * 180, 1148 + Math.sin(angle) * 140);
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        renderer.render(game.scene);
+        bakes += renderer.frameStages.bakes;
+      }
+      return {
+        uploads: renderer.uploadReport().totalMb,
+        created: renderer.createReport().total,
+        bakes,
+      };
+    });
+
+    suite.equal(scarecrowCost.uploads, 0, 'the chicken run uploads no drawing');
+    suite.equal(scarecrowCost.created, 0, 'the scarecrow view creates no GPU objects');
+    suite.equal(scarecrowCost.bakes, 0, 'and bakes no tall scenery');
+
     // An occluder sprite must reproduce the baked strokes exactly, or the
     // overlay would ghost against the copy underneath.
     const deterministic = await game.evaluate((pencil) => {
@@ -97,6 +154,7 @@ export async function run(url) {
         y1: Infinity,
       })][0];
 
+      const original = new Map(occluder.sprites);
       const snapshot = () => {
         occluder.sprites.clear();
         const sprite = game.world.spriteFor(occluder, 'sketch');
@@ -108,7 +166,11 @@ export async function run(url) {
         }
         return hash;
       };
-      return { first: snapshot(), second: snapshot() };
+      const result = { first: snapshot(), second: snapshot() };
+      // Keep the canvases already held by the renderer after this isolated probe.
+      occluder.sprites.clear();
+      for (const [medium, sprite] of original) occluder.sprites.set(medium, sprite);
+      return result;
     });
 
     suite.equal(
@@ -595,6 +657,68 @@ export async function run(url) {
       'the flooding colour is not clipped to one side',
       `left ${midFlood.left}px, right ${midFlood.right}px`,
     );
+
+    /*
+     * Walking across the treehouse window used to repaint a 360px cel every
+     * frame: `offset` and `walk` are continuous, so no pose key could save it.
+     * Render every step here — one final still would miss the repeated upload.
+     */
+    const windowUpload = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      game.collectAll();
+      game.teleport(game.treehouse.x, game.treehouse.y + 40);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      const climbed = game.interact() && game.treehouse.inside;
+      renderer.render(game.scene);
+      renderer.uploadReport();
+      for (let i = 0; i < 120; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: i < 60 ? 1 : -1, y: 0 }) });
+        renderer.render(game.scene);
+      }
+      const report = { ...renderer.uploadReport(), climbed, walked: game.treehouse.walk > 0 };
+      game.cancel();
+      return report;
+    });
+
+    suite.ok(windowUpload.climbed && windowUpload.walked, 'the upload probe walks inside the treehouse');
+    suite.equal(windowUpload.totalMb, 0, 'walking behind the window uploads no new drawing');
+
+    /*
+     * Hearts used to be the final cel: their moving bounds changed the canvas
+     * size and recreated it repeatedly, while the curve itself re-uploaded at
+     * twelve frames a second. One stroke measured 0.3MB and thirteen new cels.
+     */
+    const petCost = await game.evaluate((pencil) => {
+      const { game, renderer } = pencil;
+      const cat = game.herd.animals.find((a) => a.kind === 'cat');
+      // The isolated cow probe moved every other animal off the map.
+      cat.x = cat.homeX;
+      cat.y = cat.homeY;
+      game.running = true;
+      game.teleport(cat.x + 24, cat.y + 14);
+      game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+      renderer.render(game.scene);
+      renderer.uploadReport();
+      renderer.createReport();
+      const petted = game.pet();
+      let bakes = 0;
+      for (let i = 0; i < 120; i++) {
+        game.advance(1 / 60, { direction: () => ({ x: 0, y: 0 }) });
+        renderer.render(game.scene);
+        bakes += renderer.frameStages.bakes;
+      }
+      return {
+        petted,
+        uploads: renderer.uploadReport().totalMb,
+        created: renderer.createReport().total,
+        bakes,
+      };
+    });
+
+    suite.ok(petCost.petted, 'the upload probe actually strokes the cat');
+    suite.equal(petCost.uploads, 0, 'stroking the cat uploads no drawing');
+    suite.equal(petCost.created, 0, 'and creates no GPU objects');
+    suite.equal(petCost.bakes, 0, 'and causes no bake');
 
     suite.equal(game.errors.length, 0, 'no page errors', game.errors.join(' | '));
   } finally {
